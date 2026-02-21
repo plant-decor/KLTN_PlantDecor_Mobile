@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,87 +7,117 @@ import {
   TouchableOpacity,
   Image,
   FlatList,
-  ActivityIndicator,
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS, FONTS, SPACING, RADIUS, SHADOWS } from '../../constants';
-import { useProductStore, useAuthStore } from '../../stores';
-import { RootStackParamList, Product, Category } from '../../types';
+import { useProductStore, useCartStore } from '../../stores';
+import { MainTabParamList, Product } from '../../types';
 
-type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+type NavigationProp = BottomTabNavigationProp<MainTabParamList, 'Home'>;
+
+type HomePlant = {
+  id: string;
+  name: string;
+  subtitle: string;
+  price: number;
+  image: string;
+};
 
 const { width } = Dimensions.get('window');
-const CARD_WIDTH = (width - SPACING.lg * 3) / 2;
+const CARD_WIDTH = (width - SPACING.lg * 3) / 2 - 2;
+
+const FILTERS = ['Tất cả', 'Trong nhà', 'Ngoài trời', 'Để bàn'];
+
+const MOCK_PLANTS: HomePlant[] = [
+  {
+    id: 'm1',
+    name: 'Cây gà',
+    subtitle: 'Dễ chăm sóc • Trong nhà',
+    price: 250000,
+    image:
+      'https://images.unsplash.com/photo-1614594975525-e45190c55d0b?auto=format&fit=crop&w=900&q=80',
+  },
+  {
+    id: 'm2',
+    name: 'Cây gà',
+    subtitle: 'Dễ chăm sóc • Trong nhà',
+    price: 250000,
+    image:
+      'https://images.unsplash.com/photo-1614594975525-e45190c55d0b?auto=format&fit=crop&w=900&q=80',
+  },
+  {
+    id: 'm3',
+    name: 'Monstera',
+    subtitle: 'Dễ chăm sóc • Trong nhà',
+    price: 390000,
+    image:
+      'https://images.unsplash.com/photo-1604762524889-3e2fcc145683?auto=format&fit=crop&w=900&q=80',
+  },
+  {
+    id: 'm4',
+    name: 'Kim tiền',
+    subtitle: 'Dễ chăm sóc • Trong nhà',
+    price: 290000,
+    image:
+      'https://images.unsplash.com/photo-1463320898484-cdee8141c787?auto=format&fit=crop&w=900&q=80',
+  },
+];
 
 export default function HomeScreen() {
   const navigation = useNavigation<NavigationProp>();
-  const { products, categories, isLoading, fetchProducts, fetchCategories } =
-    useProductStore();
-  const { user, isAuthenticated } = useAuthStore();
+  const { products, fetchProducts } = useProductStore();
+  const totalItems = useCartStore((state) => state.totalItems);
 
   useEffect(() => {
     fetchProducts();
-    fetchCategories();
-  }, []);
+  }, [fetchProducts]);
 
-  const renderCategoryItem = ({ item }: { item: Category }) => (
-    <TouchableOpacity
-      style={styles.categoryItem}
-      onPress={() =>
-        navigation.navigate('CategoryProducts', {
-          categoryId: item.id,
-          categoryName: item.name,
-        })
-      }
-    >
-      <View style={styles.categoryIcon}>
-        <Ionicons name="leaf" size={24} color={COLORS.primary} />
+  const homePlants = useMemo<HomePlant[]>(() => {
+    if (products.length === 0) {
+      return MOCK_PLANTS;
+    }
+
+    return products.slice(0, 4).map((item: Product) => ({
+      id: item.id,
+      name: item.name,
+      subtitle: 'Dễ chăm sóc • Trong nhà',
+      price: item.salePrice ?? item.price,
+      image: item.images?.[0] || MOCK_PLANTS[0].image,
+    }));
+  }, [products]);
+
+  const renderPlantCard = ({ item }: { item: HomePlant }) => (
+    <TouchableOpacity style={styles.productCard}>
+      <View style={styles.imageWrap}>
+        <Image source={{ uri: item.image }} style={styles.productImage} resizeMode="cover" />
+
+        <View style={styles.hotBadge}>
+          <Text style={styles.hotBadgeText}>HOT</Text>
+        </View>
+
+        <TouchableOpacity style={styles.favoriteBtn}>
+          <Ionicons name="heart-outline" size={16} color={COLORS.white} />
+        </TouchableOpacity>
+
+        <View style={styles.ratingBadge}>
+          <Ionicons name="star" size={10} color={COLORS.warning} />
+          <Text style={styles.ratingBadgeText}>4.8</Text>
+        </View>
       </View>
-      <Text style={styles.categoryName} numberOfLines={1}>
-        {item.name}
-      </Text>
-    </TouchableOpacity>
-  );
 
-  const renderProductItem = ({ item }: { item: Product }) => (
-    <TouchableOpacity
-      style={styles.productCard}
-      onPress={() => navigation.navigate('ProductDetail', { productId: item.id })}
-    >
-      <Image
-        source={{ uri: item.images[0] }}
-        style={styles.productImage}
-        resizeMode="cover"
-      />
-      {item.salePrice && (
-        <View style={styles.saleBadge}>
-          <Text style={styles.saleBadgeText}>
-            -{Math.round(((item.price - item.salePrice) / item.price) * 100)}%
-          </Text>
-        </View>
-      )}
       <View style={styles.productInfo}>
-        <Text style={styles.productName} numberOfLines={2}>
-          {item.name}
-        </Text>
+        <Text style={styles.productName}>{item.name}</Text>
+        <Text style={styles.productSub}>{item.subtitle}</Text>
         <View style={styles.priceRow}>
-          <Text style={styles.productPrice}>
-            {(item.salePrice ?? item.price).toLocaleString('vi-VN')}đ
-          </Text>
-          {item.salePrice && (
-            <Text style={styles.originalPrice}>
-              {item.price.toLocaleString('vi-VN')}đ
-            </Text>
-          )}
-        </View>
-        <View style={styles.ratingRow}>
-          <Ionicons name="star" size={12} color={COLORS.warning} />
-          <Text style={styles.ratingText}>{item.rating}</Text>
-          <Text style={styles.reviewCount}>({item.reviewCount})</Text>
+          <Text style={styles.productPrice}>{item.price.toLocaleString('vi-VN')}đ</Text>
+          <TouchableOpacity style={styles.plusBtn}>
+            <Ionicons name="add" size={15} color={COLORS.black} />
+          </TouchableOpacity>
         </View>
       </View>
     </TouchableOpacity>
@@ -95,79 +125,93 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Header */}
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.contentWrap}>
         <View style={styles.header}>
-          <View>
-            <Text style={styles.greeting}>
-              {isAuthenticated ? `Xin chào, ${user?.fullName}` : 'Xin chào! 👋'}
-            </Text>
-            <Text style={styles.subtitle}>Khám phá không gian xanh của bạn</Text>
+          <TouchableOpacity style={styles.iconBtn}>
+            <Ionicons name="menu" size={22} color={COLORS.textPrimary} />
+          </TouchableOpacity>
+
+          <View style={styles.brandRow}>
+            <Ionicons name="leaf" size={18} color={COLORS.primaryLight} />
+            <Text style={styles.brandText}>PlantDecor</Text>
           </View>
-          <TouchableOpacity
-            style={styles.searchButton}
-            onPress={() => navigation.navigate('Search')}
-          >
-            <Ionicons name="search" size={22} color={COLORS.gray700} />
+
+          <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.navigate('CartTab')}>
+            <Ionicons name="bag-outline" size={21} color={COLORS.textPrimary} />
+            {totalItems() > 0 && <View style={styles.cartDot} />}
           </TouchableOpacity>
         </View>
 
-        {/* AI Design Banner */}
-        <TouchableOpacity
-          style={styles.aiBanner}
-          onPress={() => navigation.navigate('AIDesign')}
-        >
-          <View style={styles.aiBannerContent}>
-            <Ionicons name="sparkles" size={28} color={COLORS.white} />
-            <View style={styles.aiBannerText}>
-              <Text style={styles.aiBannerTitle}>Thiết kế AI</Text>
-              <Text style={styles.aiBannerSubtitle}>
-                Tạo không gian xanh thông minh với AI
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={24} color={COLORS.white} />
+        <View style={styles.searchWrap}>
+          <View style={styles.searchInputWrap}>
+            <Ionicons name="search" size={20} color={COLORS.primary} />
+            <Text style={styles.searchText}>Tìm kiếm cây...</Text>
           </View>
-        </TouchableOpacity>
-
-        {/* Categories */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Danh mục</Text>
-          <FlatList
-            data={categories}
-            renderItem={renderCategoryItem}
-            keyExtractor={(item) => item.id}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.categoryList}
-          />
+          <TouchableOpacity style={styles.filterBtn}>
+            <Ionicons name="options-outline" size={20} color={COLORS.primary} />
+          </TouchableOpacity>
         </View>
 
-        {/* Products */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Sản phẩm nổi bật</Text>
-            <TouchableOpacity>
-              <Text style={styles.seeAll}>Xem tất cả</Text>
+        <FlatList
+          data={FILTERS}
+          horizontal
+          keyExtractor={(item) => item}
+          contentContainerStyle={styles.filterList}
+          showsHorizontalScrollIndicator={false}
+          renderItem={({ item, index }) => (
+            <TouchableOpacity style={[styles.filterChip, index === 0 && styles.filterChipActive]}>
+              <Text style={[styles.filterText, index === 0 && styles.filterTextActive]}>{item}</Text>
             </TouchableOpacity>
-          </View>
-
-          {isLoading ? (
-            <ActivityIndicator
-              size="large"
-              color={COLORS.primary}
-              style={styles.loader}
-            />
-          ) : (
-            <FlatList
-              data={products.slice(0, 6)}
-              renderItem={renderProductItem}
-              keyExtractor={(item) => item.id}
-              numColumns={2}
-              columnWrapperStyle={styles.productRow}
-              scrollEnabled={false}
-            />
           )}
+        />
+
+        <View style={styles.sectionHeader}>
+          <Ionicons name="sparkles" size={16} color={COLORS.primaryLight} />
+          <Text style={styles.sectionTitle}>Gợi ý từ AI</Text>
         </View>
+
+        <FlatList
+          data={homePlants.slice(0, 2)}
+          renderItem={renderPlantCard}
+          keyExtractor={(item) => item.id}
+          numColumns={2}
+          columnWrapperStyle={styles.productRow}
+          scrollEnabled={false}
+        />
+
+        <LinearGradient
+          colors={[COLORS.primaryDark, COLORS.primary]}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
+          style={styles.banner}
+        >
+          <View style={styles.bannerContent}>
+            <View style={styles.bannerLeft}>
+              <Text style={styles.bannerTag}>MÙA HÈ XANH</Text>
+              <Text style={styles.bannerTitle}>Giảm 20% các loại{`\n`}cây nhiệt đới</Text>
+              <TouchableOpacity style={styles.bannerBtn}>
+                <Text style={styles.bannerBtnText}>Khám phá ngay</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.bannerRight}>
+              <Ionicons name="leaf" size={72} color={COLORS.secondaryLight} />
+            </View>
+          </View>
+        </LinearGradient>
+
+        <Text style={styles.bestSellerTitle}>Bán chạy nhất</Text>
+
+        <FlatList
+          data={homePlants}
+          renderItem={renderPlantCard}
+          keyExtractor={(item) => `best-${item.id}`}
+          numColumns={2}
+          columnWrapperStyle={styles.productRow}
+          scrollEnabled={false}
+          contentContainerStyle={styles.bestList}
+        />
+
+        <View style={styles.bottomSpace} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -176,102 +220,104 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: COLORS.gray100,
+  },
+  contentWrap: {
+    paddingHorizontal: SPACING.lg,
   },
   header: {
+    marginTop: SPACING.sm,
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
+    justifyContent: 'space-between',
+    marginBottom: SPACING.lg,
   },
-  greeting: {
+  iconBtn: {
+    width: 34,
+    height: 34,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  brandText: {
     fontSize: FONTS.sizes['2xl'],
     fontWeight: '700',
     color: COLORS.textPrimary,
   },
-  subtitle: {
-    fontSize: FONTS.sizes.md,
-    color: COLORS.textSecondary,
-    marginTop: 2,
-  },
-  searchButton: {
-    width: 44,
-    height: 44,
+  cartDot: {
+    position: 'absolute',
+    top: 6,
+    right: 4,
+    width: 8,
+    height: 8,
     borderRadius: RADIUS.full,
+    backgroundColor: COLORS.primaryLight,
+  },
+  searchWrap: {
     backgroundColor: COLORS.white,
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...SHADOWS.sm,
-  },
-  aiBanner: {
-    marginHorizontal: SPACING.lg,
-    marginVertical: SPACING.md,
-    borderRadius: RADIUS.xl,
-    backgroundColor: COLORS.primary,
-    overflow: 'hidden',
-    ...SHADOWS.md,
-  },
-  aiBannerContent: {
+    borderRadius: RADIUS['2xl'],
     flexDirection: 'row',
     alignItems: 'center',
-    padding: SPACING.lg,
-    gap: SPACING.md,
+    overflow: 'hidden',
+    marginBottom: SPACING.md,
   },
-  aiBannerText: {
+  searchInputWrap: {
     flex: 1,
+    height: 46,
+    paddingHorizontal: SPACING.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
   },
-  aiBannerTitle: {
-    fontSize: FONTS.sizes.lg,
-    fontWeight: '700',
-    color: COLORS.white,
+  searchText: {
+    fontSize: FONTS.sizes.xl,
+    color: COLORS.primary,
   },
-  aiBannerSubtitle: {
-    fontSize: FONTS.sizes.sm,
-    color: COLORS.secondaryLight,
-    marginTop: 2,
+  filterBtn: {
+    height: 46,
+    width: 46,
+    borderLeftWidth: 1,
+    borderLeftColor: COLORS.gray200,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  section: {
-    marginTop: SPACING.lg,
+  filterList: {
+    paddingVertical: SPACING.sm,
+    gap: SPACING.sm,
+  },
+  filterChip: {
+    backgroundColor: COLORS.gray200,
     paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm + 2,
+    borderRadius: RADIUS.full,
+  },
+  filterChipActive: {
+    backgroundColor: COLORS.primaryLight,
+    ...SHADOWS.md,
+  },
+  filterText: {
+    fontSize: FONTS.sizes.lg,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  filterTextActive: {
+    color: COLORS.white,
   },
   sectionHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
     marginBottom: SPACING.md,
   },
   sectionTitle: {
-    fontSize: FONTS.sizes.xl,
+    fontSize: FONTS.sizes['2xl'],
     fontWeight: '700',
     color: COLORS.textPrimary,
-    marginBottom: SPACING.sm,
-  },
-  seeAll: {
-    fontSize: FONTS.sizes.md,
-    color: COLORS.primary,
-    fontWeight: '600',
-  },
-  categoryList: {
-    gap: SPACING.md,
-  },
-  categoryItem: {
-    alignItems: 'center',
-    width: 72,
-  },
-  categoryIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: RADIUS.xl,
-    backgroundColor: COLORS.secondaryLight,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: SPACING.xs,
-  },
-  categoryName: {
-    fontSize: FONTS.sizes.xs,
-    color: COLORS.textPrimary,
-    textAlign: 'center',
   },
   productRow: {
     justifyContent: 'space-between',
@@ -279,70 +325,149 @@ const styles = StyleSheet.create({
   },
   productCard: {
     width: CARD_WIDTH,
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.gray50,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.sm,
+  },
+  imageWrap: {
     borderRadius: RADIUS.lg,
     overflow: 'hidden',
-    ...SHADOWS.sm,
+    backgroundColor: COLORS.gray200,
+    height: CARD_WIDTH,
+    position: 'relative',
   },
   productImage: {
     width: '100%',
-    height: CARD_WIDTH,
-    backgroundColor: COLORS.gray100,
+    height: '100%',
   },
-  saleBadge: {
+  hotBadge: {
     position: 'absolute',
-    top: SPACING.sm,
     left: SPACING.sm,
+    top: SPACING.sm,
     backgroundColor: COLORS.error,
+    borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.sm,
-    paddingVertical: 2,
-    borderRadius: RADIUS.sm,
+    paddingVertical: 3,
   },
-  saleBadgeText: {
+  hotBadgeText: {
     color: COLORS.white,
-    fontSize: FONTS.sizes.xs,
+    fontSize: FONTS.sizes.sm,
     fontWeight: '700',
   },
-  productInfo: {
-    padding: SPACING.sm,
+  favoriteBtn: {
+    position: 'absolute',
+    top: SPACING.sm,
+    right: SPACING.sm,
+    width: 24,
+    height: 24,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.gray500,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  productName: {
-    fontSize: FONTS.sizes.md,
-    fontWeight: '600',
-    color: COLORS.textPrimary,
-    marginBottom: SPACING.xs,
-  },
-  priceRow: {
+  ratingBadge: {
+    position: 'absolute',
+    left: SPACING.sm,
+    bottom: SPACING.sm,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.xs,
+    gap: 4,
+    backgroundColor: COLORS.gray800,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
+  },
+  ratingBadgeText: {
+    color: COLORS.white,
+    fontSize: FONTS.sizes.md,
+    fontWeight: '600',
+  },
+  productInfo: {
+    paddingTop: SPACING.sm,
+    gap: 2,
+  },
+  productName: {
+    fontSize: FONTS.sizes['2xl'],
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  productSub: {
+    fontSize: FONTS.sizes.lg,
+    color: COLORS.primary,
+  },
+  priceRow: {
+    marginTop: SPACING.xs,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   productPrice: {
-    fontSize: FONTS.sizes.lg,
+    fontSize: FONTS.sizes.xl,
     fontWeight: '700',
     color: COLORS.primary,
   },
-  originalPrice: {
-    fontSize: FONTS.sizes.sm,
-    color: COLORS.textLight,
-    textDecorationLine: 'line-through',
-  },
-  ratingRow: {
-    flexDirection: 'row',
+  plusBtn: {
+    width: 22,
+    height: 22,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.primaryLight,
+    justifyContent: 'center',
     alignItems: 'center',
-    gap: 2,
-    marginTop: SPACING.xs,
   },
-  ratingText: {
-    fontSize: FONTS.sizes.sm,
-    fontWeight: '600',
+  banner: {
+    marginTop: SPACING.lg,
+    borderRadius: RADIUS.xl,
+    overflow: 'hidden',
+  },
+  bannerContent: {
+    flexDirection: 'row',
+    minHeight: 145,
+  },
+  bannerLeft: {
+    flex: 2,
+    padding: SPACING.lg,
+    justifyContent: 'space-between',
+  },
+  bannerTag: {
+    color: COLORS.secondaryLight,
+    fontSize: FONTS.sizes.lg,
+    fontWeight: '700',
+  },
+  bannerTitle: {
+    color: COLORS.white,
+    fontSize: FONTS.sizes['3xl'],
+    fontWeight: '700',
+    lineHeight: 30,
+  },
+  bannerBtn: {
+    backgroundColor: COLORS.primaryLight,
+    paddingVertical: SPACING.sm + 2,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: RADIUS.full,
+    alignSelf: 'flex-start',
+  },
+  bannerBtnText: {
+    color: COLORS.black,
+    fontSize: FONTS.sizes.lg,
+    fontWeight: '700',
+  },
+  bannerRight: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.primary,
+  },
+  bestSellerTitle: {
+    marginTop: SPACING.xl,
+    marginBottom: SPACING.md,
+    fontSize: FONTS.sizes['3xl'],
+    fontWeight: '700',
     color: COLORS.textPrimary,
   },
-  reviewCount: {
-    fontSize: FONTS.sizes.sm,
-    color: COLORS.textSecondary,
+  bestList: {
+    paddingBottom: SPACING.lg,
   },
-  loader: {
-    marginVertical: SPACING['3xl'],
+  bottomSpace: {
+    height: 80,
   },
 });

@@ -1,6 +1,7 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { COLORS, FONTS } from '../constants';
 import { MainTabParamList } from '../types';
 import { useCartStore } from '../stores';
@@ -23,26 +24,16 @@ export default function BottomTabNavigator() {
         headerShown: false,
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.gray500,
-        tabBarLabelStyle: {
-          fontSize: FONTS.sizes.xs,
-          fontWeight: '600',
-        },
-        tabBarStyle: {
-          backgroundColor: COLORS.white,
-          borderTopColor: COLORS.borderLight,
-          paddingBottom: 6,
-          paddingTop: 6,
-          height: 60,
-        },
+        tabBarShowLabel: false,
+        tabBarStyle: styles.tabBar,
       }}
     >
       <Tab.Screen
         name="Home"
         component={HomeScreen}
         options={{
-          tabBarLabel: 'Trang chủ',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home" size={size} color={color} />
+            <Ionicons name="home-outline" size={size + 1} color={color} />
           ),
         }}
       />
@@ -50,9 +41,8 @@ export default function BottomTabNavigator() {
         name="Products"
         component={ProductsScreen}
         options={{
-          tabBarLabel: 'Cây cảnh',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="leaf" size={size} color={color} />
+            <Ionicons name="gift-outline" size={size} color={color} />
           ),
         }}
       />
@@ -60,9 +50,30 @@ export default function BottomTabNavigator() {
         name="AIDesignTab"
         component={AIDesignScreen}
         options={{
-          tabBarLabel: 'Thiết kế AI',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="sparkles" size={size} color={color} />
+          tabBarIcon: () => (
+            <View style={styles.centerIconWrap}>
+              <Ionicons name="sparkles" size={24} color={COLORS.black} />
+            </View>
+          ),
+          tabBarButton: ({
+            children,
+            onPress,
+            onLongPress,
+            accessibilityState,
+            accessibilityLabel,
+            testID,
+          }) => (
+            <Pressable
+              onPress={onPress}
+              onLongPress={onLongPress}
+              accessibilityRole="button"
+              accessibilityState={accessibilityState}
+              accessibilityLabel={accessibilityLabel}
+              testID={testID}
+              style={styles.centerButton}
+            >
+              {children}
+            </Pressable>
           ),
         }}
       />
@@ -70,27 +81,68 @@ export default function BottomTabNavigator() {
         name="CartTab"
         component={CartScreen}
         options={{
-          tabBarLabel: 'Giỏ hàng',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="cart" size={size} color={color} />
+            <Ionicons name="heart-outline" size={size} color={color} />
           ),
-          tabBarBadge: totalItems() > 0 ? totalItems() : undefined,
-          tabBarBadgeStyle: {
-            backgroundColor: COLORS.error,
-            fontSize: FONTS.sizes.xs,
-          },
+          tabBarBadge: totalItems() > 0 ? '' : undefined,
+          tabBarBadgeStyle: styles.dotBadge,
         }}
       />
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
         options={{
-          tabBarLabel: 'Tài khoản',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person" size={size} color={color} />
+            <Ionicons name="person-outline" size={size} color={color} />
           ),
         }}
       />
     </Tab.Navigator>
   );
 }
+
+const styles = StyleSheet.create({
+  tabBar: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 14,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: COLORS.white,
+    borderTopWidth: 0,
+    paddingHorizontal: 10,
+    shadowColor: COLORS.black,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    elevation: 8,
+  },
+  centerButton: {
+    top: -16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  centerIconWrap: {
+    width: 62,
+    height: 62,
+    borderRadius: 31,
+    backgroundColor: COLORS.primaryLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: COLORS.black,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  dotBadge: {
+    backgroundColor: COLORS.primaryLight,
+    minWidth: 8,
+    height: 8,
+    borderRadius: 4,
+    top: 6,
+    right: 12,
+    fontSize: FONTS.sizes.xs,
+  },
+});
