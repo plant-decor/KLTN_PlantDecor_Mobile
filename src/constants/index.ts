@@ -2,7 +2,7 @@
 export const COLORS = {
   // Primary - Green theme for plant app
   primary: '#2D6A4F',
-  primaryLight: '#52B788',
+  primaryLight: '#13EC6D',
   primaryDark: '#1B4332',
 
   // Secondary

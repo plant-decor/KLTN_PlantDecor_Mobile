@@ -1,10 +1,8 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { COLORS, FONTS } from '../constants';
+import { COLORS } from '../constants';
 import { MainTabParamList } from '../types';
-import { useCartStore } from '../stores';
 import {
   HomeScreen,
   ProductsScreen,
@@ -12,38 +10,39 @@ import {
   ProfileScreen,
   AIDesignScreen,
 } from '../screens';
+import HomeIcon from '../../assets/icons/navbar.svg';
+import ProductIcon from '../../assets/icons/Icons-2.svg';
+import AiIcon from '../../assets/icons/Icons-1.svg';
+import FavoriteIcon from '../../assets/icons/Icons.svg';
+import ProfileIcon from '../../assets/icons/Vector.svg';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
 export default function BottomTabNavigator() {
-  const totalItems = useCartStore((state) => state.totalItems);
-
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: COLORS.primary,
-        tabBarInactiveTintColor: COLORS.gray500,
+        tabBarActiveTintColor: '#14DD59',
+        tabBarInactiveTintColor: '#98A2B3',
         tabBarShowLabel: false,
         tabBarStyle: styles.tabBar,
+        tabBarItemStyle: styles.tabBarItem,
+        tabBarIconStyle: styles.tabBarIcon,
       }}
     >
       <Tab.Screen
         name="Home"
         component={HomeScreen}
         options={{
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home-outline" size={size + 1} color={color} />
-          ),
+          tabBarIcon: () => <HomeIcon width={25} height={28} />,
         }}
       />
       <Tab.Screen
         name="Products"
         component={ProductsScreen}
         options={{
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="gift-outline" size={size} color={color} />
-          ),
+          tabBarIcon: () => <ProductIcon width={25} height={28} />,
         }}
       />
       <Tab.Screen
@@ -51,8 +50,10 @@ export default function BottomTabNavigator() {
         component={AIDesignScreen}
         options={{
           tabBarIcon: () => (
-            <View style={styles.centerIconWrap}>
-              <Ionicons name="sparkles" size={24} color={COLORS.black} />
+            <View style={styles.centerOuterRing}>
+              <View style={styles.centerIconWrap}>
+                <AiIcon width={28} height={32} />
+              </View>
             </View>
           ),
           tabBarButton: ({
@@ -81,20 +82,14 @@ export default function BottomTabNavigator() {
         name="CartTab"
         component={CartScreen}
         options={{
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="heart-outline" size={size} color={color} />
-          ),
-          tabBarBadge: totalItems() > 0 ? '' : undefined,
-          tabBarBadgeStyle: styles.dotBadge,
+          tabBarIcon: () => <FavoriteIcon width={25} height={28} />,
         }}
       />
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
         options={{
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person-outline" size={size} color={color} />
-          ),
+          tabBarIcon: () => <ProfileIcon width={16} height={18} />,
         }}
       />
     </Tab.Navigator>
@@ -104,45 +99,56 @@ export default function BottomTabNavigator() {
 const styles = StyleSheet.create({
   tabBar: {
     position: 'absolute',
-    left: 16,
-    right: 16,
-    bottom: 14,
-    height: 64,
-    borderRadius: 32,
+    left: 20,
+    right: 20,
+    bottom: 16,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: COLORS.white,
     borderTopWidth: 0,
     paddingHorizontal: 10,
+    paddingTop: 4,
     shadowColor: COLORS.black,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 14,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    elevation: 14,
+  },
+  tabBarItem: {
+    paddingTop: 2,
+  },
+  tabBarIcon: {
+    marginTop: 2,
   },
   centerButton: {
-    top: -16,
+    top: -5,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  centerIconWrap: {
-    width: 62,
-    height: 62,
-    borderRadius: 31,
-    backgroundColor: COLORS.primaryLight,
+  centerOuterRing: {
+    width: 66,
+    height: 66,
+    borderRadius: 33,
+  backgroundColor: '#F4FFF8',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: COLORS.black,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 5,
   },
-  dotBadge: {
-    backgroundColor: COLORS.primaryLight,
-    minWidth: 8,
-    height: 8,
-    borderRadius: 4,
-    top: 6,
-    right: 12,
-    fontSize: FONTS.sizes.xs,
+  centerIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#14F25F',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: COLORS.black,
+    shadowOffset: { width: 0, height: 7 },
+    shadowOpacity: 0.24,
+    shadowRadius: 10,
+    elevation: 12,
   },
 });
