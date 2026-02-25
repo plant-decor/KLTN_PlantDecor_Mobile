@@ -3,6 +3,7 @@ import ProductIcon from '../../assets/icons/Icons-2.svg';
 import AiIcon from '../../assets/icons/Icons-1.svg';
 import FavoriteIcon from '../../assets/icons/Icons.svg';
 import ProfileIcon from '../../assets/icons/Vector.svg';
+import GoogleIcon from '../../assets/icons/Google_Icon.svg';
 
 // ==================== Icons ====================
 export const ICONS = {
@@ -11,6 +12,7 @@ export const ICONS = {
   aiDesign: AiIcon,
   cart: FavoriteIcon,
   profile: ProfileIcon,
+  google: GoogleIcon,
 } as const;
 
 // ==================== Colors ====================

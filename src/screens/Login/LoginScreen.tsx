@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
-import { COLORS, FONTS, RADIUS, SPACING } from '../../constants';
+import { COLORS, FONTS, ICONS, RADIUS, SPACING } from '../../constants';
 import { RootStackParamList } from '../../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
@@ -106,7 +106,7 @@ export default function LoginScreen() {
             </View>
 
             <TouchableOpacity style={styles.googleBtn}>
-              <Text style={styles.googleIcon}>G</Text>
+              <ICONS.google width={24} height={24} />
               <Text style={styles.googleText}>{t('common.continueWithGoogle')}</Text>
             </TouchableOpacity>
 
@@ -309,11 +309,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 13,
     backgroundColor: COLORS.white,
-  },
-  googleIcon: {
-    color: '#EA4335',
-    fontSize: 26,
-    fontWeight: '700',
   },
   googleText: {
     color: '#102216',

@@ -16,7 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
-import { COLORS, RADIUS } from '../../constants';
+import { COLORS, ICONS, RADIUS } from '../../constants';
 import { RootStackParamList } from '../../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Register'>;
@@ -134,7 +134,7 @@ export default function RegisterScreen() {
             </View>
 
             <TouchableOpacity style={styles.googleBtn}>
-              <Text style={styles.googleIcon}>G</Text>
+              <ICONS.google width={24} height={24} />
               <Text style={styles.googleText}>{t('common.continueWithGoogle')}</Text>
             </TouchableOpacity>
 
@@ -340,11 +340,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexDirection: 'row',
     gap: 13,
-  },
-  googleIcon: {
-    color: '#EA4335',
-    fontSize: 26,
-    fontWeight: '700',
   },
   googleText: {
     color: '#102216',
