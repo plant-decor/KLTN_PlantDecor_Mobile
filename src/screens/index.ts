@@ -4,3 +4,5 @@ export { default as ProductDetailScreen } from './ProductDetail/ProductDetailScr
 export { default as CartScreen } from './Cart/CartScreen';
 export { default as ProfileScreen } from './Profile/ProfileScreen';
 export { default as AIDesignScreen } from './AIDesign/AIDesignScreen';
+export { default as LoginScreen } from './Login/LoginScreen';
+export { default as RegisterScreen } from './Register/RegisterScreen';

@@ -11,6 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, SPACING, RADIUS, SHADOWS } from '../../constants';
 import { useCartStore } from '../../stores';
 import { RootStackParamList, CartItem } from '../../types';
@@ -18,6 +19,7 @@ import { RootStackParamList, CartItem } from '../../types';
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function CartScreen() {
+  const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
   const {
     items,
@@ -27,6 +29,7 @@ export default function CartScreen() {
     decrementQuantity,
     removeFromCart,
   } = useCartStore();
+  const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
 
   const renderCartItem = ({ item }: { item: CartItem }) => {
     const price = item.product.salePrice ?? item.product.price;
@@ -43,7 +46,7 @@ export default function CartScreen() {
             {item.product.name}
           </Text>
           <Text style={styles.itemPrice}>
-            {price.toLocaleString('vi-VN')}đ
+            {price.toLocaleString(locale)}đ
           </Text>
           <View style={styles.quantityRow}>
             <TouchableOpacity
@@ -75,14 +78,12 @@ export default function CartScreen() {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Giỏ hàng</Text>
+          <Text style={styles.headerTitle}>{t('cart.header')}</Text>
         </View>
         <View style={styles.emptyContainer}>
           <Ionicons name="cart-outline" size={80} color={COLORS.gray300} />
-          <Text style={styles.emptyText}>Giỏ hàng trống</Text>
-          <Text style={styles.emptySubtext}>
-            Hãy thêm cây cảnh yêu thích vào giỏ hàng
-          </Text>
+          <Text style={styles.emptyText}>{t('cart.emptyTitle')}</Text>
+          <Text style={styles.emptySubtext}>{t('cart.emptySubtitle')}</Text>
         </View>
       </SafeAreaView>
     );
@@ -91,7 +92,7 @@ export default function CartScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Giỏ hàng ({totalItems()})</Text>
+        <Text style={styles.headerTitle}>{t('cart.headerWithCount', { count: totalItems() })}</Text>
       </View>
 
       <FlatList
@@ -105,16 +106,16 @@ export default function CartScreen() {
       {/* Bottom bar */}
       <View style={styles.bottomBar}>
         <View style={styles.totalRow}>
-          <Text style={styles.totalLabel}>Tổng cộng:</Text>
+          <Text style={styles.totalLabel}>{t('cart.total')}</Text>
           <Text style={styles.totalPrice}>
-            {totalPrice().toLocaleString('vi-VN')}đ
+            {totalPrice().toLocaleString(locale)}đ
           </Text>
         </View>
         <TouchableOpacity
           style={styles.checkoutButton}
           onPress={() => navigation.navigate('Checkout')}
         >
-          <Text style={styles.checkoutButtonText}>Thanh toán</Text>
+          <Text style={styles.checkoutButtonText}>{t('cart.checkout')}</Text>
           <Ionicons name="arrow-forward" size={20} color={COLORS.white} />
         </TouchableOpacity>
       </View>

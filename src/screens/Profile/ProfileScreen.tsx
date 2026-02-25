@@ -12,7 +12,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { COLORS, FONTS, SPACING, RADIUS, SHADOWS } from '../../constants';
+import { useTranslation } from 'react-i18next';
+import i18n from '../../i18n';
+import { APP_CONFIG, COLORS, FONTS, SPACING, RADIUS, SHADOWS } from '../../constants';
 import { useAuthStore, useCartStore } from '../../stores';
 import { RootStackParamList } from '../../types';
 
@@ -20,14 +22,23 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function ProfileScreen() {
   const navigation = useNavigation<NavigationProp>();
+  const { t } = useTranslation();
   const { user, isAuthenticated, logout } = useAuthStore();
   const { totalItems } = useCartStore();
 
+  const selectedLanguage = i18n.language === 'vi' ? 'vi' : 'en';
+
+  const handleChangeLanguage = (language: 'en' | 'vi') => {
+    if (selectedLanguage !== language) {
+      i18n.changeLanguage(language);
+    }
+  };
+
   const handleLogout = () => {
-    Alert.alert('Đăng xuất', 'Bạn có chắc chắn muốn đăng xuất?', [
-      { text: 'Hủy', style: 'cancel' },
+    Alert.alert(t('profile.logoutConfirmTitle'), t('profile.logoutConfirmMessage'), [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: 'Đăng xuất',
+        text: t('common.logout'),
         style: 'destructive',
         onPress: () => logout(),
       },
@@ -39,21 +50,19 @@ export default function ProfileScreen() {
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.guestContainer}>
           <Ionicons name="person-circle-outline" size={100} color={COLORS.gray300} />
-          <Text style={styles.guestTitle}>Chào mừng đến PlantDecor</Text>
-          <Text style={styles.guestSubtitle}>
-            Đăng nhập để trải nghiệm đầy đủ tính năng
-          </Text>
+          <Text style={styles.guestTitle}>{t('profile.guestTitle')}</Text>
+          <Text style={styles.guestSubtitle}>{t('profile.guestSubtitle')}</Text>
           <TouchableOpacity
             style={styles.loginButton}
             onPress={() => navigation.navigate('Login')}
           >
-            <Text style={styles.loginButtonText}>Đăng nhập</Text>
+            <Text style={styles.loginButtonText}>{t('profile.login')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.registerButton}
             onPress={() => navigation.navigate('Register')}
           >
-            <Text style={styles.registerButtonText}>Đăng ký tài khoản mới</Text>
+            <Text style={styles.registerButtonText}>{t('profile.registerNew')}</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -63,32 +72,32 @@ export default function ProfileScreen() {
   const menuItems = [
     {
       icon: 'person-outline' as const,
-      label: 'Chỉnh sửa hồ sơ',
+      label: t('profile.editProfile'),
       onPress: () => navigation.navigate('EditProfile'),
     },
     {
       icon: 'receipt-outline' as const,
-      label: 'Lịch sử đơn hàng',
+      label: t('profile.orderHistory'),
       onPress: () => navigation.navigate('OrderHistory'),
     },
     {
       icon: 'cart-outline' as const,
-      label: `Giỏ hàng (${totalItems()})`,
+      label: t('profile.cartWithCount', { count: totalItems() }),
       onPress: () => navigation.navigate('Cart'),
     },
     {
       icon: 'sparkles-outline' as const,
-      label: 'Thiết kế AI của tôi',
+      label: t('profile.myAIDesign'),
       onPress: () => navigation.navigate('AIDesign'),
     },
     {
       icon: 'heart-outline' as const,
-      label: 'Sản phẩm yêu thích',
+      label: t('profile.favoriteProducts'),
       onPress: () => {},
     },
     {
       icon: 'settings-outline' as const,
-      label: 'Cài đặt',
+      label: t('profile.settings'),
       onPress: () => {},
     },
   ];
@@ -134,14 +143,54 @@ export default function ProfileScreen() {
           ))}
         </View>
 
+        <View style={styles.languageContainer}>
+          <Text style={styles.languageTitle}>{t('common.language')}</Text>
+          <View style={styles.languageSwitchRow}>
+            <TouchableOpacity
+              style={[
+                styles.languageButton,
+                selectedLanguage === 'en' && styles.languageButtonActive,
+              ]}
+              onPress={() => handleChangeLanguage('en')}
+            >
+              <Text
+                style={[
+                  styles.languageButtonText,
+                  selectedLanguage === 'en' && styles.languageButtonTextActive,
+                ]}
+              >
+                {t('common.english')}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.languageButton,
+                selectedLanguage === 'vi' && styles.languageButtonActive,
+              ]}
+              onPress={() => handleChangeLanguage('vi')}
+            >
+              <Text
+                style={[
+                  styles.languageButtonText,
+                  selectedLanguage === 'vi' && styles.languageButtonTextActive,
+                ]}
+              >
+                {t('common.vietnamese')}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {/* Logout */}
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <Ionicons name="log-out-outline" size={22} color={COLORS.error} />
-          <Text style={styles.logoutText}>Đăng xuất</Text>
+          <Text style={styles.logoutText}>{t('common.logout')}</Text>
         </TouchableOpacity>
 
         {/* App Version */}
-        <Text style={styles.version}>PlantDecor v1.0.0</Text>
+        <Text style={styles.version}>
+          {t('profile.version', { version: APP_CONFIG.VERSION })}
+        </Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -237,6 +286,43 @@ const styles = StyleSheet.create({
     marginHorizontal: SPACING.lg,
     borderRadius: RADIUS.xl,
     ...SHADOWS.sm,
+  },
+  languageContainer: {
+    backgroundColor: COLORS.white,
+    marginHorizontal: SPACING.lg,
+    marginTop: SPACING.lg,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.lg,
+    ...SHADOWS.sm,
+  },
+  languageTitle: {
+    fontSize: FONTS.sizes.md,
+    color: COLORS.textSecondary,
+    marginBottom: SPACING.md,
+  },
+  languageSwitchRow: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.gray100,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.xs,
+    gap: SPACING.sm,
+  },
+  languageButton: {
+    flex: 1,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.sm,
+    alignItems: 'center',
+  },
+  languageButtonActive: {
+    backgroundColor: COLORS.primary,
+  },
+  languageButtonText: {
+    fontSize: FONTS.sizes.md,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  languageButtonTextActive: {
+    color: COLORS.white,
   },
   menuItem: {
     flexDirection: 'row',

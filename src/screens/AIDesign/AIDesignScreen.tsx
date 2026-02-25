@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useTranslation } from 'react-i18next';
 import * as ImagePicker from 'expo-image-picker';
 import { COLORS, FONTS, SPACING, RADIUS, SHADOWS } from '../../constants';
 import { useAIDesignStore } from '../../stores';
@@ -19,23 +20,8 @@ import { RootStackParamList, AIDesignRequest } from '../../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
-const ROOM_TYPES = [
-  { key: 'living_room', label: 'Phòng khách', icon: 'home-outline' },
-  { key: 'bedroom', label: 'Phòng ngủ', icon: 'bed-outline' },
-  { key: 'office', label: 'Văn phòng', icon: 'desktop-outline' },
-  { key: 'balcony', label: 'Ban công', icon: 'sunny-outline' },
-  { key: 'garden', label: 'Sân vườn', icon: 'leaf-outline' },
-] as const;
-
-const STYLES = [
-  { key: 'modern', label: 'Hiện đại' },
-  { key: 'minimalist', label: 'Tối giản' },
-  { key: 'tropical', label: 'Nhiệt đới' },
-  { key: 'zen', label: 'Zen' },
-  { key: 'classic', label: 'Cổ điển' },
-] as const;
-
 export default function AIDesignScreen() {
+  const { t } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
   const { isGenerating, generateDesign } = useAIDesignStore();
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -44,10 +30,26 @@ export default function AIDesignScreen() {
   const [selectedStyle, setSelectedStyle] =
     useState<AIDesignRequest['style']>('modern');
 
+  const roomTypes = [
+    { key: 'living_room' as const, label: t('aiDesign.roomLivingRoom'), icon: 'home-outline' as const },
+    { key: 'bedroom' as const, label: t('aiDesign.roomBedroom'), icon: 'bed-outline' as const },
+    { key: 'office' as const, label: t('aiDesign.roomOffice'), icon: 'desktop-outline' as const },
+    { key: 'balcony' as const, label: t('aiDesign.roomBalcony'), icon: 'sunny-outline' as const },
+    { key: 'garden' as const, label: t('aiDesign.roomGarden'), icon: 'leaf-outline' as const },
+  ];
+
+  const styleOptions = [
+    { key: 'modern' as const, label: t('aiDesign.styleModern') },
+    { key: 'minimalist' as const, label: t('aiDesign.styleMinimalist') },
+    { key: 'tropical' as const, label: t('aiDesign.styleTropical') },
+    { key: 'zen' as const, label: t('aiDesign.styleZen') },
+    { key: 'classic' as const, label: t('aiDesign.styleClassic') },
+  ];
+
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Cần quyền truy cập', 'Vui lòng cấp quyền truy cập thư viện ảnh');
+      Alert.alert(t('aiDesign.permissionTitle'), t('aiDesign.mediaPermissionMessage'));
       return;
     }
 
@@ -66,7 +68,7 @@ export default function AIDesignScreen() {
   const takePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Cần quyền truy cập', 'Vui lòng cấp quyền truy cập camera');
+      Alert.alert(t('aiDesign.permissionTitle'), t('aiDesign.cameraPermissionMessage'));
       return;
     }
 
@@ -83,7 +85,7 @@ export default function AIDesignScreen() {
 
   const handleGenerate = async () => {
     if (!selectedImage) {
-      Alert.alert('Thiếu ảnh', 'Vui lòng chọn hoặc chụp ảnh không gian');
+      Alert.alert(t('aiDesign.missingImageTitle'), t('aiDesign.missingImageMessage'));
       return;
     }
 
@@ -95,7 +97,7 @@ export default function AIDesignScreen() {
       });
       // Navigate to result screen after generation
     } catch {
-      Alert.alert('Lỗi', 'Không thể tạo thiết kế. Vui lòng thử lại.');
+      Alert.alert(t('aiDesign.errorTitle'), t('aiDesign.errorMessage'));
     }
   };
 
@@ -103,15 +105,13 @@ export default function AIDesignScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Thiết kế AI 🪄</Text>
-          <Text style={styles.headerSubtitle}>
-            Chụp ảnh không gian, AI sẽ thiết kế cây cảnh phù hợp
-          </Text>
+          <Text style={styles.headerTitle}>{t('aiDesign.headerTitle')}</Text>
+          <Text style={styles.headerSubtitle}>{t('aiDesign.headerSubtitle')}</Text>
         </View>
 
         {/* Image Picker */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Ảnh không gian</Text>
+          <Text style={styles.sectionTitle}>{t('aiDesign.sectionImage')}</Text>
           {selectedImage ? (
             <View style={styles.imagePreview}>
               <Image source={{ uri: selectedImage }} style={styles.previewImage} />
@@ -126,11 +126,11 @@ export default function AIDesignScreen() {
             <View style={styles.imagePickerRow}>
               <TouchableOpacity style={styles.pickerOption} onPress={pickImage}>
                 <Ionicons name="images-outline" size={32} color={COLORS.primary} />
-                <Text style={styles.pickerOptionText}>Thư viện</Text>
+                <Text style={styles.pickerOptionText}>{t('aiDesign.library')}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.pickerOption} onPress={takePhoto}>
                 <Ionicons name="camera-outline" size={32} color={COLORS.primary} />
-                <Text style={styles.pickerOptionText}>Chụp ảnh</Text>
+                <Text style={styles.pickerOptionText}>{t('aiDesign.takePhoto')}</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -138,9 +138,9 @@ export default function AIDesignScreen() {
 
         {/* Room Type */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Loại không gian</Text>
+          <Text style={styles.sectionTitle}>{t('aiDesign.sectionRoomType')}</Text>
           <View style={styles.optionsGrid}>
-            {ROOM_TYPES.map((room) => (
+            {roomTypes.map((room) => (
               <TouchableOpacity
                 key={room.key}
                 style={[
@@ -171,9 +171,9 @@ export default function AIDesignScreen() {
 
         {/* Style */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Phong cách</Text>
+          <Text style={styles.sectionTitle}>{t('aiDesign.sectionStyle')}</Text>
           <View style={styles.optionsGrid}>
-            {STYLES.map((style) => (
+            {styleOptions.map((style) => (
               <TouchableOpacity
                 key={style.key}
                 style={[
@@ -206,7 +206,7 @@ export default function AIDesignScreen() {
         >
           <Ionicons name="sparkles" size={22} color={COLORS.white} />
           <Text style={styles.generateButtonText}>
-            {isGenerating ? 'Đang tạo thiết kế...' : 'Tạo thiết kế'}
+            {isGenerating ? t('aiDesign.generating') : t('aiDesign.generate')}
           </Text>
         </TouchableOpacity>
       </ScrollView>

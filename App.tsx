@@ -6,6 +6,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StyleSheet } from 'react-native';
 import { RootNavigator } from './src/navigation';
 import { useAuthStore } from './src/stores';
+import './src/i18n';
 
 export default function App() {
   const checkAuth = useAuthStore((state) => state.checkAuth);

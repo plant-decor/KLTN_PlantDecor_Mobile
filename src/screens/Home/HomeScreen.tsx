@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { useNavigation } from '@react-navigation/native';
+import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, SPACING, RADIUS, SHADOWS } from '../../constants';
 import { useProductStore, useCartStore } from '../../stores';
 import { MainTabParamList, Product } from '../../types';
@@ -30,8 +31,6 @@ type HomePlant = {
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - SPACING.lg * 3) / 2 - 2;
-
-const FILTERS = ['Tất cả', 'Trong nhà', 'Ngoài trời', 'Để bàn'];
 
 const MOCK_PLANTS: HomePlant[] = [
   {
@@ -69,9 +68,18 @@ const MOCK_PLANTS: HomePlant[] = [
 ];
 
 export default function HomeScreen() {
+  const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
   const { products, fetchProducts } = useProductStore();
   const totalItems = useCartStore((state) => state.totalItems);
+  const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
+
+  const filters = [
+    t('home.filterAll'),
+    t('home.filterIndoor'),
+    t('home.filterOutdoor'),
+    t('home.filterTableTop'),
+  ];
 
   useEffect(() => {
     fetchProducts();
@@ -85,11 +93,11 @@ export default function HomeScreen() {
     return products.slice(0, 4).map((item: Product) => ({
       id: item.id,
       name: item.name,
-      subtitle: 'Dễ chăm sóc • Trong nhà',
+      subtitle: t('home.defaultSubtitle'),
       price: item.salePrice ?? item.price,
       image: item.images?.[0] || MOCK_PLANTS[0].image,
     }));
-  }, [products]);
+  }, [products, t]);
 
   const renderPlantCard = ({ item }: { item: HomePlant }) => (
     <TouchableOpacity style={styles.productCard}>
@@ -97,7 +105,7 @@ export default function HomeScreen() {
         <Image source={{ uri: item.image }} style={styles.productImage} resizeMode="cover" />
 
         <View style={styles.hotBadge}>
-          <Text style={styles.hotBadgeText}>HOT</Text>
+          <Text style={styles.hotBadgeText}>{t('home.hot')}</Text>
         </View>
 
         <TouchableOpacity style={styles.favoriteBtn}>
@@ -114,7 +122,7 @@ export default function HomeScreen() {
         <Text style={styles.productName}>{item.name}</Text>
         <Text style={styles.productSub}>{item.subtitle}</Text>
         <View style={styles.priceRow}>
-          <Text style={styles.productPrice}>{item.price.toLocaleString('vi-VN')}đ</Text>
+          <Text style={styles.productPrice}>{item.price.toLocaleString(locale)}đ</Text>
           <TouchableOpacity style={styles.plusBtn}>
             <Ionicons name="add" size={15} color={COLORS.black} />
           </TouchableOpacity>
@@ -145,7 +153,7 @@ export default function HomeScreen() {
         <View style={styles.searchWrap}>
           <View style={styles.searchInputWrap}>
             <Ionicons name="search" size={20} color={COLORS.primary} />
-            <Text style={styles.searchText}>Tìm kiếm cây...</Text>
+            <Text style={styles.searchText}>{t('home.searchPlaceholder')}</Text>
           </View>
           <TouchableOpacity style={styles.filterBtn}>
             <Ionicons name="options-outline" size={20} color={COLORS.primary} />
@@ -153,7 +161,7 @@ export default function HomeScreen() {
         </View>
 
         <FlatList
-          data={FILTERS}
+          data={filters}
           horizontal
           keyExtractor={(item) => item}
           contentContainerStyle={styles.filterList}
@@ -167,7 +175,7 @@ export default function HomeScreen() {
 
         <View style={styles.sectionHeader}>
           <Ionicons name="sparkles" size={16} color={COLORS.primaryLight} />
-          <Text style={styles.sectionTitle}>Gợi ý từ AI</Text>
+          <Text style={styles.sectionTitle}>{t('home.aiSuggestions')}</Text>
         </View>
 
         <FlatList
@@ -187,10 +195,10 @@ export default function HomeScreen() {
         >
           <View style={styles.bannerContent}>
             <View style={styles.bannerLeft}>
-              <Text style={styles.bannerTag}>MÙA HÈ XANH</Text>
-              <Text style={styles.bannerTitle}>Giảm 20% các loại{`\n`}cây nhiệt đới</Text>
+              <Text style={styles.bannerTag}>{t('home.summerTag')}</Text>
+              <Text style={styles.bannerTitle}>{t('home.summerTitle', { newline: '\n' })}</Text>
               <TouchableOpacity style={styles.bannerBtn}>
-                <Text style={styles.bannerBtnText}>Khám phá ngay</Text>
+                <Text style={styles.bannerBtnText}>{t('home.discoverNow')}</Text>
               </TouchableOpacity>
             </View>
             <View style={styles.bannerRight}>
@@ -199,7 +207,7 @@ export default function HomeScreen() {
           </View>
         </LinearGradient>
 
-        <Text style={styles.bestSellerTitle}>Bán chạy nhất</Text>
+        <Text style={styles.bestSellerTitle}>{t('home.bestSeller')}</Text>
 
         <FlatList
           data={homePlants}

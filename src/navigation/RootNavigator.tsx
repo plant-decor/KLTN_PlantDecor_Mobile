@@ -2,7 +2,13 @@ import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
 import BottomTabNavigator from './BottomTabNavigator';
-import { ProductDetailScreen, CartScreen, AIDesignScreen } from '../screens';
+import {
+  ProductDetailScreen,
+  CartScreen,
+  AIDesignScreen,
+  LoginScreen,
+  RegisterScreen,
+} from '../screens';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -18,9 +24,9 @@ export default function RootNavigator() {
       <Stack.Screen name="ProductDetail" component={ProductDetailScreen} />
       <Stack.Screen name="Cart" component={CartScreen} />
       <Stack.Screen name="AIDesign" component={AIDesignScreen} />
+      <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name="Register" component={RegisterScreen} />
       {/* Add more stack screens as needed:
-        <Stack.Screen name="Login" component={LoginScreen} />
-        <Stack.Screen name="Register" component={RegisterScreen} />
         <Stack.Screen name="Checkout" component={CheckoutScreen} />
         <Stack.Screen name="Search" component={SearchScreen} />
         <Stack.Screen name="OrderDetail" component={OrderDetailScreen} />

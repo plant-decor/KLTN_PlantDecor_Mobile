@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
+import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, SPACING, RADIUS, SHADOWS } from '../../constants';
 import { useProductStore } from '../../stores';
 import { RootStackParamList, Product } from '../../types';
@@ -23,6 +24,7 @@ const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - SPACING.lg * 3) / 2;
 
 export default function ProductsScreen() {
+  const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
   const {
     products,
@@ -31,6 +33,7 @@ export default function ProductsScreen() {
     fetchProducts,
     fetchMoreProducts,
   } = useProductStore();
+  const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
 
   useEffect(() => {
     fetchProducts();
@@ -55,16 +58,16 @@ export default function ProductsScreen() {
           {item.name}
         </Text>
         <Text style={styles.productPrice}>
-          {(item.salePrice ?? item.price).toLocaleString('vi-VN')}đ
+          {(item.salePrice ?? item.price).toLocaleString(locale)}đ
         </Text>
         <View style={styles.metaRow}>
           <View style={styles.careLevelBadge}>
             <Text style={styles.careLevelText}>
               {item.careLevel === 'easy'
-                ? 'Dễ chăm'
+                ? t('products.careEasy')
                 : item.careLevel === 'medium'
-                  ? 'Trung bình'
-                  : 'Khó chăm'}
+                  ? t('products.careMedium')
+                  : t('products.careHard')}
             </Text>
           </View>
           <View style={styles.ratingRow}>
@@ -98,7 +101,7 @@ export default function ProductsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Cây cảnh</Text>
+        <Text style={styles.headerTitle}>{t('products.headerTitle')}</Text>
         <TouchableOpacity onPress={() => navigation.navigate('Search')}>
           <Ionicons name="search" size={24} color={COLORS.textPrimary} />
         </TouchableOpacity>

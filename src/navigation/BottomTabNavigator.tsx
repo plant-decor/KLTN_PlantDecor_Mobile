@@ -1,7 +1,7 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { COLORS } from '../constants';
+import { COLORS, ICONS } from '../constants';
 import { MainTabParamList } from '../types';
 import {
   HomeScreen,
@@ -10,11 +10,6 @@ import {
   ProfileScreen,
   AIDesignScreen,
 } from '../screens';
-import HomeIcon from '../../assets/icons/navbar.svg';
-import ProductIcon from '../../assets/icons/Icons-2.svg';
-import AiIcon from '../../assets/icons/Icons-1.svg';
-import FavoriteIcon from '../../assets/icons/Icons.svg';
-import ProfileIcon from '../../assets/icons/Vector.svg';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
@@ -35,14 +30,14 @@ export default function BottomTabNavigator() {
         name="Home"
         component={HomeScreen}
         options={{
-          tabBarIcon: () => <HomeIcon width={25} height={28} />,
+          tabBarIcon: () => <ICONS.home width={25} height={28} />,
         }}
       />
       <Tab.Screen
         name="Products"
         component={ProductsScreen}
         options={{
-          tabBarIcon: () => <ProductIcon width={25} height={28} />,
+          tabBarIcon: () => <ICONS.products width={25} height={28} />,
         }}
       />
       <Tab.Screen
@@ -52,7 +47,7 @@ export default function BottomTabNavigator() {
           tabBarIcon: () => (
             <View style={styles.centerOuterRing}>
               <View style={styles.centerIconWrap}>
-                <AiIcon width={28} height={32} />
+                <ICONS.aiDesign width={28} height={32} />
               </View>
             </View>
           ),
@@ -82,14 +77,14 @@ export default function BottomTabNavigator() {
         name="CartTab"
         component={CartScreen}
         options={{
-          tabBarIcon: () => <FavoriteIcon width={25} height={28} />,
+          tabBarIcon: () => <ICONS.cart width={25} height={28} />,
         }}
       />
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
         options={{
-          tabBarIcon: () => <ProfileIcon width={16} height={18} />,
+          tabBarIcon: () => <ICONS.profile width={16} height={18} />,
         }}
       />
     </Tab.Navigator>
@@ -99,56 +94,55 @@ export default function BottomTabNavigator() {
 const styles = StyleSheet.create({
   tabBar: {
     position: 'absolute',
-    left: 20,
-    right: 20,
-    bottom: 16,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: COLORS.white,
-    borderTopWidth: 0,
-    paddingHorizontal: 10,
-    paddingTop: 4,
+    left: 16,
+    right: 16,
+    bottom: 12,
+    height: 58,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.90)',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 16,
+    paddingVertical: 9,
     shadowColor: COLORS.black,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.22,
-    shadowRadius: 18,
-    elevation: 14,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 10,
   },
   tabBarItem: {
-    paddingTop: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
   },
   tabBarIcon: {
-    marginTop: 2,
+    marginTop: 0,
   },
-  centerButton: {
-    top: -5,
+  centerButton: { 
+    top: 0,
     justifyContent: 'center',
     alignItems: 'center',
   },
   centerOuterRing: {
-    width: 66,
-    height: 66,
-    borderRadius: 33,
-  backgroundColor: '#F4FFF8',
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'transparent', 
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: COLORS.black,
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 5,
   },
   centerIconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#14F25F',
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#13EC5B',
+    borderWidth: 4,
+    borderColor: '#F6F8F6',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: COLORS.black,
-    shadowOffset: { width: 0, height: 7 },
-    shadowOpacity: 0.24,
-    shadowRadius: 10,
-    elevation: 12,
+    shadowColor: '#13EC5B',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 14,
   },
 });

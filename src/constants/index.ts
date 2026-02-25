@@ -1,3 +1,18 @@
+import HomeIcon from '../../assets/icons/navbar.svg';
+import ProductIcon from '../../assets/icons/Icons-2.svg';
+import AiIcon from '../../assets/icons/Icons-1.svg';
+import FavoriteIcon from '../../assets/icons/Icons.svg';
+import ProfileIcon from '../../assets/icons/Vector.svg';
+
+// ==================== Icons ====================
+export const ICONS = {
+  home: HomeIcon,
+  products: ProductIcon,
+  aiDesign: AiIcon,
+  cart: FavoriteIcon,
+  profile: ProfileIcon,
+} as const;
+
 // ==================== Colors ====================
 export const COLORS = {
   // Primary - Green theme for plant app
@@ -172,5 +187,6 @@ export const APP_CONFIG = {
     ACCESS_TOKEN: 'access_token',
     REFRESH_TOKEN: 'refresh_token',
     USER_DATA: 'user_data',
+    APP_LANGUAGE: 'app_language',
   },
 } as const;

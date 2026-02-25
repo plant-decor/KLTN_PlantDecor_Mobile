@@ -29,6 +29,7 @@ PlantDecor là ứng dụng di động giúp người dùng khám phá, mua sắ
 | **Axios** | HTTP client với interceptors & token refresh |
 | **Expo SecureStore** | Lưu trữ token bảo mật |
 | **Expo ImagePicker** | Chọn ảnh / chụp ảnh cho AI Design |
+| **i18next + react-i18next** | Đa ngôn ngữ (English / Vietnamese) |
 
 ---
 
@@ -38,6 +39,11 @@ PlantDecor là ứng dụng di động giúp người dùng khám phá, mua sắ
 src/
 ├── constants/           # Colors, fonts, spacing, API endpoints
 │   └── index.ts
+├── i18n/                # i18n config + translation resources
+│   ├── index.ts
+│   └── translations/
+│       ├── en.ts
+│       └── vi.ts
 ├── hooks/               # Custom React hooks
 │   ├── index.ts
 │   └── useDebounce.ts
@@ -141,6 +147,15 @@ export const API = {
 ```
 
 > **Lưu ý:** Với thiết bị thật qua Expo Go, thay `10.0.2.2` bằng IP máy tính trong mạng LAN (ví dụ `192.168.1.x`).
+
+---
+
+## 🌐 Đa ngôn ngữ
+
+- Ứng dụng hỗ trợ 2 ngôn ngữ: **English (`en`)** và **Tiếng Việt (`vi`)**.
+- i18n được khởi tạo tại `App.tsx` thông qua `src/i18n/index.ts`.
+- Ngôn ngữ người dùng được lưu bằng `Expo SecureStore` với key `app_language`.
+- Có thể đổi ngôn ngữ trực tiếp trong màn hình **Profile**.
 
 ---
 
