@@ -13,13 +13,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
-import { useNavigation } from '@react-navigation/native';
+import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, SPACING, RADIUS, SHADOWS } from '../../constants';
 import { useProductStore, useCartStore } from '../../stores';
-import { MainTabParamList, Product } from '../../types';
+import { MainTabParamList, RootStackParamList, Product } from '../../types';
 
-type NavigationProp = BottomTabNavigationProp<MainTabParamList, 'Home'>;
+type NavigationProp = CompositeNavigationProp<
+  BottomTabNavigationProp<MainTabParamList, 'Home'>,
+  NativeStackNavigationProp<RootStackParamList>
+>;
 
 type HomePlant = {
   id: string;
@@ -100,7 +104,11 @@ export default function HomeScreen() {
   }, [products, t]);
 
   const renderPlantCard = ({ item }: { item: HomePlant }) => (
-    <TouchableOpacity style={styles.productCard}>
+    <TouchableOpacity
+      style={styles.productCard}
+      onPress={() => navigation.navigate('ProductDetail', { productId: item.id })}
+      activeOpacity={0.7}
+    >
       <View style={styles.imageWrap}>
         <Image source={{ uri: item.image }} style={styles.productImage} resizeMode="cover" />
 

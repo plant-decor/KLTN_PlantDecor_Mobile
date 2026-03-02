@@ -15,6 +15,7 @@ const vi = {
     and: ' VÀ',
     privacyPolicy: ' CHÍNH SÁCH BẢO MẬT',
     termsSuffix: ' CỦA CHÚNG TÔI.',
+    backToHome: 'Trang chủ',
   },
   home: {
     searchPlaceholder: 'Tìm kiếm cây...',

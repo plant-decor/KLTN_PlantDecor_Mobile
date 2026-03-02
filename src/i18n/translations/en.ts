@@ -15,6 +15,7 @@ const en = {
     and: ' AND',
     privacyPolicy: ' PRIVACY POLICY',
     termsSuffix: ' OF OURS.',
+    backToHome: 'Home',
   },
   home: {
     searchPlaceholder: 'Search plants...',

@@ -21,6 +21,7 @@ import { RootStackParamList } from '../../types';
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
 
 const { width } = Dimensions.get('window');
+const HERO_HEIGHT = 344;
 
 const TOP_IMAGE =
   'https://images.unsplash.com/photo-1614594975525-e45190c55d0b?auto=format&fit=crop&w=1400&q=80';
@@ -31,8 +32,10 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
+
   return (
     <View style={styles.container}>
+      {/* Hero background */}
       <View style={styles.heroWrap}>
         <Image source={{ uri: TOP_IMAGE }} style={styles.topImage} resizeMode="cover" />
         <View style={styles.heroOverlay} />
@@ -47,11 +50,25 @@ export default function LoginScreen() {
         </View>
       </View>
 
+      {/* Back to home button */}
+      <TouchableOpacity
+        style={styles.backBtn}
+        onPress={() => navigation.navigate('MainTabs')}
+        activeOpacity={0.7}
+      >
+        <Ionicons name="home-outline" size={20} color={COLORS.white} />
+        <Text style={styles.backBtnText}>{t('common.backToHome')}</Text>
+      </TouchableOpacity>
+
+      {/* Scrollable content */}
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.formWrap}
+        style={{ flex: 1 }}
       >
         <ScrollView showsVerticalScrollIndicator={false}>
+          {/* Spacer so card starts below the hero */}
+          <View style={{ height: HERO_HEIGHT - 14 }} />
+
           <View style={styles.card}>
             <Text style={styles.title}>{t('login.title')}</Text>
             <Text style={styles.subtitle}>{t('login.subtitle')}</Text>
@@ -130,14 +147,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#F6F8F6',
   },
   heroWrap: {
-    width: '100%',
-    height: 344,
-    position: 'relative',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: HERO_HEIGHT,
     overflow: 'hidden',
   },
   topImage: {
     width,
-    height: 396,
+    height: HERO_HEIGHT + 52,
     position: 'absolute',
     top: -52,
     left: 0,
@@ -174,9 +193,23 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.75,
   },
-  formWrap: {
-    flex: 1,
-    marginTop: -14,
+  backBtn: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 54 : 38,
+    left: SPACING.xl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.30)',
+    zIndex: 10,
+  },
+  backBtnText: {
+    color: COLORS.white,
+    fontSize: 13,
+    fontWeight: '600',
   },
   card: {
     backgroundColor: '#F6F8F6',

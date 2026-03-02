@@ -16,12 +16,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
-import { COLORS, ICONS, RADIUS } from '../../constants';
+import { COLORS, ICONS, RADIUS, SPACING } from '../../constants';
 import { RootStackParamList } from '../../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Register'>;
 
 const { width } = Dimensions.get('window');
+const HERO_HEIGHT = 352;
 
 const TOP_IMAGE =
   'https://images.unsplash.com/photo-1485955900006-10f4d324d411?auto=format&fit=crop&w=1400&q=80';
@@ -34,8 +35,10 @@ export default function RegisterScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
+
   return (
     <View style={styles.container}>
+      {/* Hero background */}
       <View style={styles.heroWrap}>
         <Image source={{ uri: TOP_IMAGE }} style={styles.topImage} resizeMode="cover" />
         <LinearGradient
@@ -55,11 +58,25 @@ export default function RegisterScreen() {
         </View>
       </View>
 
+      {/* Back to home button */}
+      <TouchableOpacity
+        style={styles.backBtn}
+        onPress={() => navigation.navigate('MainTabs')}
+        activeOpacity={0.7}
+      >
+        <Ionicons name="home-outline" size={20} color={COLORS.white} />
+        <Text style={styles.backBtnText}>{t('common.backToHome')}</Text>
+      </TouchableOpacity>
+
+      {/* Scrollable content */}
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.formWrap}
+        style={{ flex: 1 }}
       >
         <ScrollView showsVerticalScrollIndicator={false}>
+          {/* Spacer so card starts below the hero */}
+          <View style={{ height: HERO_HEIGHT - 48 }} />
+
           <View style={styles.card}>
             <View style={styles.headerTexts}>
               <Text style={styles.title}>{t('register.title')}</Text>
@@ -165,16 +182,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#FAFAFA',
   },
   heroWrap: {
-    width: '100%',
-    height: 352,
-    position: 'relative',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: HERO_HEIGHT,
     overflow: 'hidden',
     justifyContent: 'center',
     alignItems: 'center',
   },
   topImage: {
     width,
-    height: 352,
+    height: HERO_HEIGHT,
     position: 'absolute',
     top: 0,
     left: 0,
@@ -208,9 +227,23 @@ const styles = StyleSheet.create({
     lineHeight: 40,
     fontWeight: '400',
   },
-  formWrap: {
-    flex: 1,
-    marginTop: -48,
+  backBtn: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 54 : 38,
+    left: SPACING.xl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.30)',
+    zIndex: 10,
+  },
+  backBtnText: {
+    color: COLORS.white,
+    fontSize: 13,
+    fontWeight: '600',
   },
   card: {
     marginHorizontal: 0,
