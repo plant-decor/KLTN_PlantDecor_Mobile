@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -6,7 +6,7 @@ import {
   ScrollView,
   Image,
   TouchableOpacity,
-  ActivityIndicator,
+  // ActivityIndicator,
   Dimensions,
   FlatList,
 } from 'react-native';
@@ -102,6 +102,32 @@ const MOCK_RELATED: {
   },
 ];
 
+// ---------- Mock product (used when API data is unavailable) ----------
+const MOCK_PRODUCT: Product = {
+  id: 'mock-1',
+  name: 'Monstera Deliciosa',
+  slug: 'monstera-deliciosa',
+  description:
+    'Monstera Deliciosa là loại cây lá lớn nhiệt đới nổi tiếng với những chiếc lá xẻ tự nhiên. Thích hợp trồng trong nhà, dễ chăm sóc, mang đến không gian xanh mát và hiện đại.',
+  price: 450000,
+  salePrice: 390000,
+  images: [
+    'https://images.unsplash.com/photo-1604762524889-3e2fcc145683?auto=format&fit=crop&w=900&q=80',
+    'https://images.unsplash.com/photo-1614594975525-e45190c55d0b?auto=format&fit=crop&w=900&q=80',
+  ],
+  category: { id: 'c1', name: 'Indoor', slug: 'indoor' },
+  tags: ['popular', 'indoor'],
+  stock: 25,
+  rating: 4.8,
+  reviewCount: 124,
+  careLevel: 'easy',
+  lightRequirement: 'medium',
+  waterFrequency: '1 lần / tuần',
+  size: 'medium',
+  isAvailable: true,
+  createdAt: new Date().toISOString(),
+};
+
 // ============================================================
 export default function ProductDetailScreen() {
   const { t, i18n } = useTranslation();
@@ -118,7 +144,8 @@ export default function ProductDetailScreen() {
     fetchProductDetail(productId);
   }, [productId]);
 
-  const product = selectedProduct;
+  // Use store product if available, otherwise fall back to mock
+  const product: Product = selectedProduct ?? MOCK_PRODUCT;
 
   // Related products from store (exclude current), fall back to mock
   const relatedPlants = useMemo(() => {
@@ -137,7 +164,7 @@ export default function ProductDetailScreen() {
 
   // ---------- helpers ----------
   const getCareLabel = () => {
-    if (!product) return '';
+    // if (!product) return '';
     switch (product.careLevel) {
       case 'easy':
         return t('productDetail.careEasy');
@@ -149,7 +176,7 @@ export default function ProductDetailScreen() {
   };
 
   const getLightLabel = () => {
-    if (!product) return '';
+    // if (!product) return '';
     switch (product.lightRequirement) {
       case 'low':
         return t('productDetail.lightLow');
@@ -161,13 +188,13 @@ export default function ProductDetailScreen() {
   };
 
   // ---------- loading / empty state ----------
-  if (isLoading || !product) {
-    return (
-      <View style={styles.loaderContainer}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-      </View>
-    );
-  }
+  // if (isLoading || !product) {
+  //   return (
+  //     <View style={styles.loaderContainer}>
+  //       <ActivityIndicator size="large" color={COLORS.primary} />
+  //     </View>
+  //   );
+  // }
 
   const price = product.salePrice ?? product.price;
 
@@ -407,7 +434,7 @@ export default function ProductDetailScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F6F8F6',
+    backgroundColor: COLORS.background,
   },
   scrollContent: {
     paddingBottom: 0,

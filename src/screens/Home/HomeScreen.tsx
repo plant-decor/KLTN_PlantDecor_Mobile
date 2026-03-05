@@ -141,21 +141,27 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.contentWrap}>
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.iconBtn}>
-            <Ionicons name="menu" size={22} color={COLORS.textPrimary} />
-          </TouchableOpacity>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.contentWrap}
+        stickyHeaderIndices={[0]}
+      >
+        <View style={styles.stickyHeader}>
+          <View style={styles.header}>
+            <TouchableOpacity style={styles.iconBtn}>
+              <Ionicons name="menu" size={22} color={COLORS.textPrimary} />
+            </TouchableOpacity>
 
-          <View style={styles.brandRow}>
-            <Ionicons name="leaf" size={18} color={COLORS.primaryLight} />
-            <Text style={styles.brandText}>PlantDecor</Text>
+            <View style={styles.brandRow}>
+              <Ionicons name="leaf" size={18} color={COLORS.primaryLight} />
+              <Text style={styles.brandText}>PlantDecor</Text>
+            </View>
+
+            <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.navigate('CartTab')}>
+              <Ionicons name="bag-outline" size={21} color={COLORS.textPrimary} />
+              {totalItems() > 0 && <View style={styles.cartDot} />}
+            </TouchableOpacity>
           </View>
-
-          <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.navigate('CartTab')}>
-            <Ionicons name="bag-outline" size={21} color={COLORS.textPrimary} />
-            {totalItems() > 0 && <View style={styles.cartDot} />}
-          </TouchableOpacity>
         </View>
 
         <View style={styles.searchWrap}>
@@ -236,10 +242,14 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.gray100,
+    backgroundColor: COLORS.background,
   },
   contentWrap: {
     paddingHorizontal: SPACING.lg,
+  },
+  stickyHeader: {
+    backgroundColor: COLORS.gray100,
+    zIndex: 10,
   },
   header: {
     marginTop: SPACING.sm,
@@ -408,7 +418,7 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
   },
   productSub: {
-    fontSize: FONTS.sizes.lg,
+    fontSize: FONTS.sizes.md,
     color: COLORS.primary,
   },
   priceRow: {
@@ -420,7 +430,7 @@ const styles = StyleSheet.create({
   productPrice: {
     fontSize: FONTS.sizes.xl,
     fontWeight: '700',
-    color: COLORS.primary,
+    color: COLORS.primaryLight,
   },
   plusBtn: {
     width: 22,
@@ -456,6 +466,7 @@ const styles = StyleSheet.create({
     lineHeight: 30,
   },
   bannerBtn: {
+    marginTop: SPACING.sm,
     backgroundColor: COLORS.primaryLight,
     paddingVertical: SPACING.sm + 2,
     paddingHorizontal: SPACING.lg,

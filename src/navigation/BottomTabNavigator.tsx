@@ -78,6 +78,7 @@ export default function BottomTabNavigator() {
         component={CartScreen}
         options={{
           tabBarIcon: () => <ICONS.cart width={25} height={28} />,
+          tabBarStyle: { display: 'none' },
         }}
       />
       <Tab.Screen

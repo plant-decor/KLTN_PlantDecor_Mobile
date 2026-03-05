@@ -5,6 +5,7 @@ import BottomTabNavigator from './BottomTabNavigator';
 import {
   ProductDetailScreen,
   CartScreen,
+  CheckoutScreen,
   AIDesignScreen,
   LoginScreen,
   RegisterScreen,
@@ -23,6 +24,7 @@ export default function RootNavigator() {
       <Stack.Screen name="MainTabs" component={BottomTabNavigator} />
       <Stack.Screen name="ProductDetail" component={ProductDetailScreen} />
       <Stack.Screen name="Cart" component={CartScreen} />
+      <Stack.Screen name="Checkout" component={CheckoutScreen} />
       <Stack.Screen name="AIDesign" component={AIDesignScreen} />
       <Stack.Screen name="Login" component={LoginScreen} options={{ animation: 'fade_from_bottom' }} />
       <Stack.Screen name="Register" component={RegisterScreen} options={{ animation: 'fade_from_bottom' }} />
