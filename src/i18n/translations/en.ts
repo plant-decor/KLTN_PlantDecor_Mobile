@@ -85,6 +85,14 @@ const en = {
     total: 'Total',
     checkoutButton: 'Checkout',
   },
+  verifyCode: {
+    headerTitle: 'OTP Verification',
+    title: 'Enter verification code',
+    subtitle: 'We sent a 6-digit verification code to your phone number/email.',
+    didNotReceive: 'Did not receive the code?',
+    resend: 'Resend code',
+    confirm: 'Confirm',
+  },
   aiDesign: {
     headerTitle: 'AI Design 🪄',
     headerSubtitle: 'Capture your space, AI will suggest suitable plants',

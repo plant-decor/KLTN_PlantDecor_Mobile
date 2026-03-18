@@ -85,6 +85,14 @@ const vi = {
     total: 'Tổng cộng',
     checkoutButton: 'Thanh toán',
   },
+  verifyCode: {
+    headerTitle: 'Xac thuc ma OTP',
+    title: 'Nhap ma xac thuc',
+    subtitle: 'Chung toi da gui ma xac thuc gom 6 chu so den so dien thoai/email cua ban.',
+    didNotReceive: 'Ban chua nhan duoc ma?',
+    resend: 'Gui lai ma',
+    confirm: 'Xac nhan',
+  },
   aiDesign: {
     headerTitle: 'Thiết kế AI 🪄',
     headerSubtitle: 'Chụp ảnh không gian, AI sẽ thiết kế cây cảnh phù hợp',

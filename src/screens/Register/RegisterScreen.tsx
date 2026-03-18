@@ -140,7 +140,7 @@ export default function RegisterScreen() {
               </View>
             </View>
 
-            <TouchableOpacity style={styles.primaryBtn}>
+            <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.navigate('VerifyCode')}>
               <Text style={styles.primaryBtnText}>{t('common.register')}</Text>
             </TouchableOpacity>
 
@@ -276,7 +276,7 @@ const styles = StyleSheet.create({
   },
   switchRow: {
     width: '100%',
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#E5E7EB',
     borderRadius: RADIUS.full,
     padding: 4,
     flexDirection: 'row',

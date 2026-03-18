@@ -146,6 +146,7 @@ export type RootStackParamList = {
   AIDesignResult: { resultId: string };
   Cart: undefined;
   Checkout: undefined;
+  VerifyCode: undefined;
   OrderDetail: { orderId: string };
   Login: undefined;
   Register: undefined;
