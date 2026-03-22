@@ -54,12 +54,14 @@ export const useProductStore = create<ProductState>((set, get) => ({
         page: 1,
         ...params,
       });
-      set({
-        products: result.items,
-        currentPage: result.page,
-        totalPages: result.totalPages,
-        isLoading: false,
-      });
+      if (result) {
+        set({
+          products: result.items,
+          currentPage: result.page,
+          totalPages: result.totalPages,
+          isLoading: false,
+        });
+      }
     } catch (error: any) {
       set({
         error: error.response?.data?.message || 'Không thể tải sản phẩm',
@@ -81,12 +83,14 @@ export const useProductStore = create<ProductState>((set, get) => ({
         category: selectedCategory || undefined,
         search: searchQuery || undefined,
       });
-      set((state) => ({
-        products: [...state.products, ...result.items],
-        currentPage: result.page,
-        totalPages: result.totalPages,
-        isLoadingMore: false,
-      }));
+      if (result) {
+        set((state) => ({
+          products: [...state.products, ...result.items],
+          currentPage: result.page,
+          totalPages: result.totalPages,
+          isLoadingMore: false,
+        }));
+      }
     } catch {
       set({ isLoadingMore: false });
     }
@@ -118,12 +122,14 @@ export const useProductStore = create<ProductState>((set, get) => ({
     set({ isLoading: true, searchQuery: query, error: null });
     try {
       const result = await productService.searchProducts(query);
-      set({
-        products: result.items,
-        currentPage: result.page,
-        totalPages: result.totalPages,
-        isLoading: false,
-      });
+      if (result) {
+        set({
+          products: result.items,
+          currentPage: result.page,
+          totalPages: result.totalPages,
+          isLoading: false,
+        });
+      }
     } catch (error: any) {
       set({
         error: error.response?.data?.message || 'Tìm kiếm thất bại',

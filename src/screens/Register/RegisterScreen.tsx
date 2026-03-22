@@ -10,6 +10,7 @@ import {
   ScrollView,
   Image,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -18,6 +19,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { COLORS, ICONS, RADIUS, SPACING } from '../../constants';
 import { RootStackParamList } from '../../types';
+import { useAuthStore } from '../../stores/useAuthStore';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Register'>;
 
@@ -30,11 +32,55 @@ const TOP_IMAGE =
 export default function RegisterScreen() {
   const { t } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
+  const register = useAuthStore((state) => state.register);
+  const isLoading = useAuthStore((state) => state.isLoading);
+
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
+
+  const handleRegister = async () => {
+    // Basic validation
+    if (!email || !password || !confirmPassword || !fullName || !username || !phoneNumber) {
+      Alert.alert(t('common.error'), t('register.fillAllFields') || 'Please fill in all fields');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      Alert.alert(t('common.error'), t('register.passwordMismatch') || 'Passwords do not match');
+      return;
+    }
+
+    try {
+      const { message } = await register({
+        email,
+        password,
+        confirmPassword,
+        username,
+        fullName,
+        phoneNumber,
+      });
+
+      // Show success message
+      Alert.alert(
+        t('common.success'),
+        message || t('register.success') || 'Registration successful! Please verify your email.',
+        [
+          {
+            text: 'OK',
+            onPress: () => navigation.navigate('VerifyCode', { email, password }),
+          },
+        ]
+      );
+    } catch (error: any) {
+      const errorMessage = error?.response?.data?.message || t('common.error') || 'Registration failed';
+      Alert.alert(t('common.error'), errorMessage);
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -105,6 +151,17 @@ export default function RegisterScreen() {
               </View>
 
               <View style={styles.inputWrap}>
+                <Ionicons name="at-outline" size={20} color="#9CA3AF" />
+                <TextInput
+                  value={username}
+                  onChangeText={setUsername}
+                  placeholder={t('register.username')}
+                  placeholderTextColor="#9CA3AF"
+                  style={styles.input}
+                />
+              </View>
+
+              <View style={styles.inputWrap}>
                 <Ionicons name="mail-outline" size={20} color="#9CA3AF" />
                 <TextInput
                   value={email}
@@ -112,6 +169,18 @@ export default function RegisterScreen() {
                   placeholder={t('register.emailOrPhone')}
                   placeholderTextColor="#9CA3AF"
                   style={styles.input}
+                />
+              </View>
+
+              <View style={styles.inputWrap}>
+                <Ionicons name="call-outline" size={20} color="#9CA3AF" />
+                <TextInput
+                  value={phoneNumber}
+                  onChangeText={setPhoneNumber}
+                  placeholder={t('register.phoneNumber')}
+                  placeholderTextColor="#9CA3AF"
+                  style={styles.input}
+                  keyboardType="phone-pad"
                 />
               </View>
 
@@ -140,8 +209,14 @@ export default function RegisterScreen() {
               </View>
             </View>
 
-            <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.navigate('VerifyCode')}>
-              <Text style={styles.primaryBtnText}>{t('common.register')}</Text>
+            <TouchableOpacity
+              style={[styles.primaryBtn, isLoading && styles.primaryBtnDisabled]}
+              onPress={handleRegister}
+              disabled={isLoading}
+            >
+              <Text style={styles.primaryBtnText}>
+                {isLoading ? t('common.loading') : t('common.register')}
+              </Text>
             </TouchableOpacity>
 
             <View style={styles.dividerRow}>
@@ -344,6 +419,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 24,
     fontWeight: '700',
+  },
+  primaryBtnDisabled: {
+    backgroundColor: '#9CA3AF',
+    shadowColor: '#9CA3AF',
+    opacity: 0.6,
   },
   dividerRow: {
     width: '100%',

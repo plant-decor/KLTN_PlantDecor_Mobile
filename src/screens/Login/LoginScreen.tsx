@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import {
   View,
   Text,
@@ -10,13 +11,17 @@ import {
   Platform,
   ScrollView,
   Dimensions,
+  Alert,
 } from 'react-native';
+import * as Device from 'expo-device';
+import * as Application from 'expo-application';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, ICONS, RADIUS, SPACING } from '../../constants';
 import { RootStackParamList } from '../../types';
+import { useAuthStore } from '../../stores/useAuthStore';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
 
@@ -29,8 +34,76 @@ const TOP_IMAGE =
 export default function LoginScreen() {
   const { t } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
+  const { login, isLoading } = useAuthStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [deviceId, setDeviceId] = useState('');
+
+  useEffect(() => {
+    const resolveDeviceId = async () => {
+      try {
+        if (Platform.OS === 'android') {
+          // Android OS-provided ID
+          const androidId = await Application.getAndroidId();
+          return androidId ?? `${Application.applicationId}-android`;
+        }
+
+        if (Platform.OS === 'ios') {
+          // iOS vendor ID
+          const iosId = await Application.getIosIdForVendorAsync();
+          return iosId ?? `${Application.applicationId}-ios`;
+        }
+
+        return Device.deviceName ?? `${Platform.OS}-unknown`;
+      } catch {
+        return Device.deviceName ?? `${Platform.OS}-${Date.now()}`;
+      }
+    };
+
+    resolveDeviceId().then(setDeviceId);
+  }, []);
+
+  const getLoginErrorMessage = (err: unknown) => {
+    if (axios.isAxiosError(err)) {
+      const apiMessage = err.response?.data?.message;
+      if (typeof apiMessage === 'string' && apiMessage.trim().length > 0) {
+        return apiMessage;
+      }
+
+      if (!err.response || err.code === 'ECONNABORTED' || err.message === 'Network Error') {
+        return t('login.networkError', {
+          defaultValue: 'Cannot connect to server. Please check API URL and network.',
+        });
+      }
+
+      if (err.response?.status === 401) {
+        return t('login.invalidCredentials', {
+          defaultValue: 'Invalid email or password.',
+        });
+      }
+    }
+
+    return t('login.loginFailed', {
+      defaultValue: 'Login failed. Please try again.',
+    });
+  };
+
+  const handleLogin = async () => {
+    if (!email || !password) {
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        t('login.fillAllFields', { defaultValue: 'Please fill in all fields.' })
+      );
+      return;
+    }
+
+    try {
+      await login(email.trim(), password, deviceId || 'unknown-device');
+      navigation.navigate('MainTabs');
+    } catch (err) {
+      Alert.alert(t('common.error', { defaultValue: 'Error' }), getLoginErrorMessage(err));
+    }
+  };
 
 
   return (
@@ -112,8 +185,17 @@ export default function LoginScreen() {
               <Text style={styles.forgotText}>{t('login.forgotPassword')}</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.primaryBtn}>
-              <Text style={styles.primaryBtnText}>{t('common.login')}</Text>
+            <TouchableOpacity 
+              style={styles.primaryBtn}
+              onPress={handleLogin}
+              disabled={isLoading}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.primaryBtnText}>
+                {isLoading
+                  ? t('common.loading', { defaultValue: 'Loading...' })
+                  : t('common.login', { defaultValue: 'Login' })}
+              </Text>
             </TouchableOpacity>
 
             <View style={styles.dividerRow}>

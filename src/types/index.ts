@@ -1,3 +1,4 @@
+import * as SecureStore from 'expo-secure-store';
 // ==================== User & Auth ====================
 export interface User {
   id: string;
@@ -7,6 +8,10 @@ export interface User {
   avatar?: string;
   address?: Address;
   createdAt: string;
+  updatedAt?: string;
+  status?: string;
+  isVerified?: boolean;
+  role?: string;
 }
 
 export interface Address {
@@ -20,6 +25,95 @@ export interface Address {
 export interface AuthTokens {
   accessToken: string;
   refreshToken: string;
+}
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+  deviceId: string;
+}
+
+// Matches the exact API envelope: { success, statusCode, message, payload: { accessToken, refreshToken } }
+export interface LoginResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: AuthTokens;
+}
+
+export interface RegisterRequest {
+  email: string;
+  password: string;
+  confirmPassword: string;
+  username: string;
+  fullName: string;
+  phoneNumber: string;
+}
+
+export interface RegisterResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: {
+    user: {
+      id: number;
+      email: string;
+      username: string;
+      phoneNumber: string;
+      createdAt: string;
+      updatedAt: string;
+      status: string;
+      isVerified: boolean;
+      role: string;
+      fullName: string;
+      receiveNotifications: boolean;
+    };
+  };
+}
+
+export interface SendOTPRequest {
+  email: string;
+}
+
+export interface SendOTPResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: {
+    success: boolean;
+    message: string;
+    expiresAt: string;
+  };
+}
+
+export interface VerifyOTPRequest {
+  email: string;
+  otpCode: string;
+}
+
+export interface VerifyOTPResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: {
+    success: boolean;
+    message: string;
+  };
+}
+
+// Matches the decoded JWT payload from /api/Authentication/login
+export interface AuthJwtClaims {
+  sub?: string;           // user id
+  name?: string;          // full name
+  email?: string;
+  Role?: string;          // "Admin" | "Manager" | "Staff" | "Shipper" | "Caretaker" | "Customer"
+  avatarURL?: string;
+  SecurityStamp?: string;
+  aud?: string;
+  iss?: string;
+  exp?: number;
+  iat?: number;
+  nbf?: number;
 }
 
 // ==================== Product ====================
@@ -124,9 +218,12 @@ export interface Review {
 }
 
 // ==================== API Response ====================
+// Generic envelope used by most endpoints (data or payload field)
 export interface ApiResponse<T> {
   success: boolean;
-  data: T;
+  statusCode?: number;
+  data?: T;
+  payload?: T;
   message?: string;
 }
 
@@ -146,7 +243,7 @@ export type RootStackParamList = {
   AIDesignResult: { resultId: string };
   Cart: undefined;
   Checkout: undefined;
-  VerifyCode: undefined;
+  VerifyCode: { email: string; password: string };
   OrderDetail: { orderId: string };
   Login: undefined;
   Register: undefined;

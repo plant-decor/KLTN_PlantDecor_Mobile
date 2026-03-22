@@ -7,16 +7,23 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
+import * as Device from 'expo-device';
+import * as Application from 'expo-application';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, RADIUS, SPACING } from '../../constants';
 import { RootStackParamList } from '../../types';
+import { authService } from '../../services/authService';
+import { useAuthStore } from '../../stores/useAuthStore';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'VerifyCode'>;
+type RouteParams = RouteProp<RootStackParamList, 'VerifyCode'>;
 
 const OTP_LENGTH = 6;
 const INITIAL_SECONDS = 59;
@@ -24,9 +31,56 @@ const INITIAL_SECONDS = 59;
 export default function VerifyCodeScreen() {
   const { t } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
+  const route = useRoute<RouteParams>();
+  const { email, password } = route.params;
+  const { login } = useAuthStore();
+
   const [otp, setOtp] = useState<string[]>(Array(OTP_LENGTH).fill(''));
   const [seconds, setSeconds] = useState(INITIAL_SECONDS);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isResending, setIsResending] = useState(false);
+  const [deviceId, setDeviceId] = useState('');
   const inputRefs = useRef<Array<TextInput | null>>([]);
+
+  // Get device ID
+  useEffect(() => {
+    const resolveDeviceId = async () => {
+      try {
+        if (Platform.OS === 'android') {
+          const androidId = await Application.getAndroidId();
+          return androidId ?? `${Application.applicationId}-android`;
+        }
+
+        if (Platform.OS === 'ios') {
+          const iosId = await Application.getIosIdForVendorAsync();
+          return iosId ?? `${Application.applicationId}-ios`;
+        }
+
+        return Device.deviceName ?? `${Platform.OS}-unknown`;
+      } catch {
+        return Device.deviceName ?? `${Platform.OS}-${Date.now()}`;
+      }
+    };
+
+    resolveDeviceId().then(setDeviceId);
+  }, []);
+
+  // Send OTP on mount
+  useEffect(() => {
+    sendOTPCode();
+  }, []);
+
+  const sendOTPCode = async () => {
+    try {
+      setIsResending(true);
+      await authService.sendOTP(email);
+    } catch (error: any) {
+      const errorMessage = error?.response?.data?.message || 'Failed to send OTP';
+      Alert.alert(t('common.error'), errorMessage);
+    } finally {
+      setIsResending(false);
+    }
+  };
 
   useEffect(() => {
     if (seconds === 0) return;
@@ -57,11 +111,35 @@ export default function VerifyCodeScreen() {
     }
   };
 
-  const handleResend = () => {
+  const handleResend = async () => {
     if (seconds > 0) return;
     setOtp(Array(OTP_LENGTH).fill(''));
     setSeconds(INITIAL_SECONDS);
     inputRefs.current[0]?.focus();
+    await sendOTPCode();
+  };
+
+  const handleConfirm = async () => {
+    if (!isOtpComplete) return;
+
+    try {
+      setIsLoading(true);
+      const otpCode = otp.join('');
+
+      // First verify OTP
+      await authService.verifyOTP(email, otpCode);
+
+      // Then auto-login
+      await login(email, password, deviceId || 'unknown-device');
+
+      // Navigate to main app
+      navigation.navigate('MainTabs');
+    } catch (error: any) {
+      const errorMessage = error?.response?.data?.message || 'Verification or login failed';
+      Alert.alert(t('common.error'), errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const isOtpComplete = otp.every((digit) => digit.length === 1);
@@ -139,12 +217,19 @@ export default function VerifyCodeScreen() {
           </View>
 
           <TouchableOpacity
-            style={[styles.confirmButton, !isOtpComplete && styles.confirmButtonDisabled]}
+            style={[styles.confirmButton, (!isOtpComplete || isLoading) && styles.confirmButtonDisabled]}
             activeOpacity={0.85}
-            disabled={!isOtpComplete}
+            disabled={!isOtpComplete || isLoading}
+            onPress={handleConfirm}
           >
-            <Text style={styles.confirmButtonText}>{t('verifyCode.confirm')}</Text>
-            <Ionicons name="arrow-forward" size={18} color={COLORS.black} />
+            {isLoading ? (
+              <ActivityIndicator size="small" color={COLORS.black} />
+            ) : (
+              <>
+                <Text style={styles.confirmButtonText}>{t('verifyCode.confirm')}</Text>
+                <Ionicons name="arrow-forward" size={18} color={COLORS.black} />
+              </>
+            )}
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>

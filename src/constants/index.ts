@@ -5,6 +5,7 @@ import FavoriteIcon from '../../assets/icons/Icons.svg';
 import ProfileIcon from '../../assets/icons/Vector.svg';
 import GoogleIcon from '../../assets/icons/Google_Icon.svg';
 import CartBagIcon from '../../assets/icons/cart_bag.svg';
+import ENV from '../config/env';
 
 // ==================== Icons ====================
 export const ICONS = {
@@ -142,19 +143,21 @@ export const SHADOWS = {
 // ==================== API ====================
 export const API = {
   BASE_URL: __DEV__
-    ? 'http://10.0.2.2:3000/api' // Android emulator
-    : 'https://api.plantdecor.vn/api',
-  TIMEOUT: 15000,
+    ? ENV.DEV_API_URL
+    : ENV.PROD_API_URL,
+  TIMEOUT: ENV.API_TIMEOUT,
   ENDPOINTS: {
     // Auth
-    LOGIN: '/auth/login',
-    REGISTER: '/auth/register',
-    REFRESH_TOKEN: '/auth/refresh',
-    LOGOUT: '/auth/logout',
+    LOGIN: '/Authentication/login',
+    REGISTER: '/Authentication/register',
+    REFRESH_TOKEN: '/Authentication/refresh',
+    LOGOUT: '/Authentication/logout',
+    SEND_OTP_EMAIL: '/Authentication/send-otp-email-verification',
+    VERIFY_OTP_EMAIL: '/Authentication/verify-otp-email-verification',
 
     // Products
-    PRODUCTS: '/products',
-    PRODUCT_DETAIL: (id: string) => `/products/${id}`,
+    PRODUCTS: '/shop/plants/search',
+    PRODUCT_DETAIL: (id: string) => `/shop/plants/${id}`,
     CATEGORIES: '/categories',
 
     // Cart
@@ -172,8 +175,8 @@ export const API = {
     AI_DESIGN_RESULT: (id: string) => `/ai/design/${id}`,
 
     // User
-    PROFILE: '/user/profile',
-    UPDATE_PROFILE: '/user/profile',
+    PROFILE: '/User/user-profile',
+    UPDATE_PROFILE: '/User/user-profile',
 
     // Reviews
     REVIEWS: (productId: string) => `/products/${productId}/reviews`,
@@ -182,8 +185,8 @@ export const API = {
 
 // ==================== App Config ====================
 export const APP_CONFIG = {
-  APP_NAME: 'PlantDecor',
-  VERSION: '1.0.0',
+  APP_NAME: ENV.APP_NAME,
+  VERSION: ENV.APP_VERSION,
   ITEMS_PER_PAGE: 20,
   MAX_CART_QUANTITY: 99,
   IMAGE_QUALITY: 0.8,
