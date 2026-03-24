@@ -54,7 +54,7 @@ export default function CheckoutScreen() {
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
 
   const subTotal = useMemo(
-    () => CHECKOUT_ITEMS.reduce((sum, item) => sum + item.price * item.quantity, 0),
+    () => CHECKOUT_ITEMS.reduce((sum, item) => sum + (item.price || 0) * item.quantity, 0),
     [],
   );
   const totalQuantity = useMemo(
@@ -105,7 +105,7 @@ export default function CheckoutScreen() {
               <View style={styles.orderInfo}>
                 <Text style={styles.orderName}>{item.name}</Text>
                 <Text style={styles.orderSize}>{t('checkout.size', { size: item.size })}</Text>
-                <Text style={styles.orderPrice}>{item.price.toLocaleString(locale)}đ</Text>
+                <Text style={styles.orderPrice}>{(item.price || 0).toLocaleString(locale)}đ</Text>
               </View>
             </View>
           ))}

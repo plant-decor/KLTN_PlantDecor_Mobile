@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Category, Product } from '../types';
+import { Category, Product, SearchProductsRequest } from '../types';
 import { productService } from '../services/productService';
 
 interface ProductState {
@@ -27,6 +27,7 @@ interface ProductState {
   fetchProductDetail: (id: string) => Promise<void>;
   fetchCategories: () => Promise<void>;
   searchProducts: (query: string) => Promise<void>;
+  searchShopProducts: (request: SearchProductsRequest) => Promise<void>;
   setSelectedCategory: (categoryId: string | null) => void;
   clearProducts: () => void;
   clearError: () => void;
@@ -134,6 +135,47 @@ export const useProductStore = create<ProductState>((set, get) => ({
       set({
         error: error.response?.data?.message || 'Tìm kiếm thất bại',
         isLoading: false,
+      });
+    }
+  },
+
+  searchShopProducts: async (request) => {
+    set({ isLoading: true, error: null });
+    try {
+      const result = await productService.searchShopProducts(request);
+      if (result && result.items) {
+        // Transform products to ensure proper image handling
+        const transformedProducts = result.items.map((item) => ({
+          ...item,
+          id: String(item.id),
+          price: item.basePrice,
+          images: item.primaryImageUrl ? [item.primaryImageUrl] : [],
+          stock: item.totalAvailableStock || 0,
+          rating: item.rating || 4.5,
+          reviewCount: item.reviewCount || 0,
+        }));
+
+        set({
+          products: transformedProducts,
+          currentPage: result.pageNumber,
+          totalPages: result.totalPages,
+          isLoading: false,
+        });
+      } else {
+        // No results but success - set empty array
+        set({
+          products: [],
+          currentPage: 1,
+          totalPages: 1,
+          isLoading: false,
+        });
+      }
+    } catch (error: any) {
+      console.error('Search shop products error:', error);
+      set({
+        error: error.response?.data?.message || 'Tìm kiếm thất bại',
+        isLoading: false,
+        products: [],
       });
     }
   },

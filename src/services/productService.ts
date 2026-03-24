@@ -5,6 +5,9 @@ import {
   PaginatedResponse,
   Product,
   Review,
+  SearchProductsRequest,
+  SearchProductsResponse,
+  PlantDetailResponse,
 } from '../types';
 import api from './api';
 
@@ -28,10 +31,15 @@ export const productService = {
   },
 
   getProductDetail: async (id: string) => {
-    const response = await api.get<ApiResponse<Product>>(
-      API.ENDPOINTS.PRODUCT_DETAIL(id)
-    );
-    return response.data.data;
+    try {
+      const response = await api.get<PlantDetailResponse>(
+        API.ENDPOINTS.PRODUCT_DETAIL(id)
+      );
+      return response.data.payload;
+    } catch (error: any) {
+      console.error('getProductDetail error:', error.response?.data || error.message);
+      throw error;
+    }
   },
 
   getCategories: async () => {
@@ -55,5 +63,18 @@ export const productService = {
       { params: { search: query } }
     );
     return response.data.data;
+  },
+
+  searchShopProducts: async (request: SearchProductsRequest) => {
+    try {
+      const response = await api.post<SearchProductsResponse>(
+        API.ENDPOINTS.PRODUCTS,
+        request
+      );
+      return response.data.payload;
+    } catch (error: any) {
+      console.error('searchShopProducts error:', error.response?.data || error.message);
+      throw error;
+    }
   },
 };

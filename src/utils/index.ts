@@ -1,8 +1,8 @@
 /**
  * Format price in Vietnamese Dong
  */
-export function formatPrice(price: number): string {
-  return price.toLocaleString('vi-VN') + 'đ';
+export function formatPrice(price: number | undefined | null): string {
+  return (price || 0).toLocaleString('vi-VN') + 'đ';
 }
 
 /**

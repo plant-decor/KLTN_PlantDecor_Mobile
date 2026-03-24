@@ -5,7 +5,7 @@ import { COLORS, ICONS } from '../constants';
 import { MainTabParamList } from '../types';
 import {
   HomeScreen,
-  ProductsScreen,
+  CatalogScreen,
   CartScreen,
   ProfileScreen,
   AIDesignScreen,
@@ -35,7 +35,7 @@ export default function BottomTabNavigator() {
       />
       <Tab.Screen
         name="Products"
-        component={ProductsScreen}
+        component={CatalogScreen}
         options={{
           tabBarIcon: () => <ICONS.products width={25} height={28} />,
         }}

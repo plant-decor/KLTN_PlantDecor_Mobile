@@ -77,7 +77,7 @@ export default function CartScreen() {
     () =>
       items
         .filter((item) => item.isAvailable)
-        .reduce((sum, item) => sum + item.price * item.quantity, 0),
+        .reduce((sum, item) => sum + (item.price || 0) * item.quantity, 0),
     [items],
   );
 
@@ -131,10 +131,10 @@ export default function CartScreen() {
               <View style={styles.soldOutBadge}>
                 <Text style={styles.soldOutText}>{t('cart.soldOut')}</Text>
               </View>
-              <Text style={styles.oldPrice}>{item.oldPrice?.toLocaleString(locale)}đ</Text>
+              <Text style={styles.oldPrice}>{(item.oldPrice || 0).toLocaleString(locale)}đ</Text>
             </View>
           ) : (
-            <Text style={styles.itemPrice}>{item.price.toLocaleString(locale)}đ</Text>
+            <Text style={styles.itemPrice}>{(item.price || 0).toLocaleString(locale)}đ</Text>
           )}
 
           <View style={styles.bottomRow}>

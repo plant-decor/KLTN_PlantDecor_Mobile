@@ -109,6 +109,7 @@ const MOCK_PRODUCT: Product = {
   slug: 'monstera-deliciosa',
   description:
     'Monstera Deliciosa là loại cây lá lớn nhiệt đới nổi tiếng với những chiếc lá xẻ tự nhiên. Thích hợp trồng trong nhà, dễ chăm sóc, mang đến không gian xanh mát và hiện đại.',
+  basePrice: 450000,
   price: 450000,
   salePrice: 390000,
   images: [
@@ -116,15 +117,21 @@ const MOCK_PRODUCT: Product = {
     'https://images.unsplash.com/photo-1614594975525-e45190c55d0b?auto=format&fit=crop&w=900&q=80',
   ],
   category: { id: 'c1', name: 'Indoor', slug: 'indoor' },
-  tags: ['popular', 'indoor'],
+  tags: [
+    { id: 1, tagName: 'Popular', tagType: 1 },
+    { id: 2, tagName: 'Indoor', tagType: 1 },
+  ],
   stock: 25,
   rating: 4.8,
   reviewCount: 124,
-  careLevel: 'easy',
+  careLevel: 'Easy',
+  careLevelTypeName: 'Easy',
   lightRequirement: 'medium',
   waterFrequency: '1 lần / tuần',
-  size: 'medium',
+  size: 2,
+  sizeName: 'Medium',
   isAvailable: true,
+  isActive: true,
   createdAt: new Date().toISOString(),
 };
 
@@ -155,7 +162,7 @@ export default function ProductDetailScreen() {
         id: p.id,
         name: p.name,
         subtitle: t('productDetail.defaultSubtitle'),
-        price: p.salePrice ?? p.price,
+        price: p.salePrice ?? p.price ?? 0,
         image: p.images?.[0] || MOCK_RELATED[0].image,
       }));
     }
@@ -164,19 +171,28 @@ export default function ProductDetailScreen() {
 
   // ---------- helpers ----------
   const getCareLabel = () => {
-    // if (!product) return '';
-    switch (product.careLevel) {
+    if (product.careLevelTypeName) {
+      return product.careLevelTypeName;
+    }
+    // Fallback to care level string
+    switch (product.careLevel?.toLowerCase()) {
       case 'easy':
         return t('productDetail.careEasy');
       case 'medium':
         return t('productDetail.careMedium');
       case 'hard':
         return t('productDetail.careHard');
+      default:
+        return product.careLevel;
     }
   };
 
   const getLightLabel = () => {
-    // if (!product) return '';
+    // Use placement type if available
+    if (product.placementTypeName) {
+      return product.placementTypeName;
+    }
+    // Fallback to light requirement
     switch (product.lightRequirement) {
       case 'low':
         return t('productDetail.lightLow');
@@ -184,7 +200,16 @@ export default function ProductDetailScreen() {
         return t('productDetail.lightIndirect');
       case 'high':
         return t('productDetail.lightBright');
+      default:
+        return product.lightRequirement || '';
     }
+  };
+
+  const getSizeLabel = () => {
+    if (product.sizeName) {
+      return product.sizeName;
+    }
+    return typeof product.size === 'string' ? product.size : String(product.size);
   };
 
   // ---------- loading / empty state ----------
@@ -196,7 +221,7 @@ export default function ProductDetailScreen() {
   //   );
   // }
 
-  const price = product.salePrice ?? product.price;
+  const price = product.salePrice ?? product.price ?? 0;
 
   // ============ RENDER ============
   return (
@@ -237,15 +262,43 @@ export default function ProductDetailScreen() {
 
           {/* Name + rating */}
           <View style={styles.nameRow}>
-            <Text style={styles.productName}>{product.name}</Text>
-            <View style={styles.ratingBadge}>
-              <Ionicons name="star" size={16} color="#EAB308" />
-              <Text style={styles.ratingText}>{product.rating}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.productName}>{product.name}</Text>
+              {product.specificName && (
+                <Text style={styles.specificName}>{product.specificName}</Text>
+              )}
             </View>
+            {product.rating && (
+              <View style={styles.ratingBadge}>
+                <Ionicons name="star" size={16} color="#EAB308" />
+                <Text style={styles.ratingText}>{product.rating}</Text>
+              </View>
+            )}
           </View>
 
           {/* Price */}
           <Text style={styles.price}>{price.toLocaleString(locale)} ₫</Text>
+
+          {/* Origin & Tags */}
+          {(product.origin || (product.tags && product.tags.length > 0)) && (
+            <View style={styles.metaRow}>
+              {product.origin && (
+                <View style={styles.originBadge}>
+                  <Ionicons name="location" size={14} color="#4C9A66" />
+                  <Text style={styles.originText}>{product.origin}</Text>
+                </View>
+              )}
+              {product.tags && product.tags.length > 0 && (
+                <View style={styles.tagsContainer}>
+                  {product.tags.slice(0, 3).map((tag) => (
+                    <View key={tag.id} style={styles.tagBadge}>
+                      <Text style={styles.tagText}>{tag.tagName}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
 
           {/* Description */}
           <Text style={styles.description}>{product.description}</Text>
@@ -260,12 +313,8 @@ export default function ProductDetailScreen() {
                 icon="leaf-outline"
                 iconColor="#15803D"
                 iconBg="#DBEAFE"
-                label={t('productDetail.location')}
-                value={
-                  product.size === 'small' || product.size === 'medium'
-                    ? t('productDetail.locationTable')
-                    : t('productDetail.locationFloor')
-                }
+                label={t('productDetail.size')}
+                value={getSizeLabel()}
               />
               <AttributeCard
                 icon="flower-outline"
@@ -278,32 +327,111 @@ export default function ProductDetailScreen() {
                 icon="sunny-outline"
                 iconColor="#CA8A04"
                 iconBg="#FEF9C3"
-                label={t('productDetail.light')}
+                label={t('productDetail.placement')}
                 value={getLightLabel()}
               />
-              <AttributeCard
-                icon="water-outline"
-                iconColor="#2563EB"
-                iconBg="#DBEAFE"
-                label={t('productDetail.water')}
-                value={product.waterFrequency}
-              />
-              <AttributeCard
-                icon="water"
-                iconColor="#0891B2"
-                iconBg="#CFFAFE"
-                label={t('productDetail.humidity')}
-                value={t('productDetail.humidityHigh')}
-              />
-              <AttributeCard
-                icon="paw-outline"
-                iconColor="#E11D48"
-                iconBg="#FFE4E6"
-                label={t('productDetail.petSafety')}
-                value={t('productDetail.petToxicMild')}
-              />
+              {product.waterFrequency && (
+                <AttributeCard
+                  icon="water-outline"
+                  iconColor="#2563EB"
+                  iconBg="#DBEAFE"
+                  label={t('productDetail.water')}
+                  value={product.waterFrequency}
+                />
+              )}
+              {product.growthRate && (
+                <AttributeCard
+                  icon="trending-up-outline"
+                  iconColor="#059669"
+                  iconBg="#D1FAE5"
+                  label={t('productDetail.growthRate')}
+                  value={product.growthRate}
+                />
+              )}
+              {product.airPurifying !== undefined && (
+                <AttributeCard
+                  icon="leaf"
+                  iconColor="#0891B2"
+                  iconBg="#CFFAFE"
+                  label={t('productDetail.airPurifying')}
+                  value={product.airPurifying ? t('common.yes') : t('common.no')}
+                />
+              )}
+              {product.petSafe !== undefined && (
+                <AttributeCard
+                  icon="paw-outline"
+                  iconColor="#E11D48"
+                  iconBg="#FFE4E6"
+                  label={t('productDetail.petSafety')}
+                  value={product.petSafe ? t('common.safe') : t('common.toxic')}
+                />
+              )}
+              {product.childSafe !== undefined && (
+                <AttributeCard
+                  icon="happy-outline"
+                  iconColor="#7C3AED"
+                  iconBg="#EDE9FE"
+                  label={t('productDetail.childSafety')}
+                  value={product.childSafe ? t('common.safe') : t('common.caution')}
+                />
+              )}
             </View>
           </View>
+
+          {/* ===== Feng Shui Section (if available) ===== */}
+          {(product.fengShuiElement || product.fengShuiMeaning) && (
+            <View style={styles.sectionWrap}>
+              <Text style={styles.sectionTitle}>
+                {t('productDetail.fengShui')}
+              </Text>
+              <View style={styles.fengShuiCard}>
+                {product.fengShuiElement && (
+                  <View style={styles.fengShuiRow}>
+                    <Ionicons name="planet-outline" size={20} color="#CA8A04" />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.fengShuiLabel}>
+                        {t('productDetail.fengShuiElement')}
+                      </Text>
+                      <Text style={styles.fengShuiValue}>
+                        {product.fengShuiElement}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+                {product.fengShuiMeaning && (
+                  <View style={styles.fengShuiRow}>
+                    <Ionicons name="sparkles-outline" size={20} color="#7C3AED" />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.fengShuiLabel}>
+                        {t('productDetail.fengShuiMeaning')}
+                      </Text>
+                      <Text style={styles.fengShuiValue}>
+                        {product.fengShuiMeaning}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+            </View>
+          )}
+
+          {/* ===== Pot Information (if included) ===== */}
+          {product.potIncluded && product.potSize && (
+            <View style={styles.sectionWrap}>
+              <Text style={styles.sectionTitle}>
+                {t('productDetail.potInfo')}
+              </Text>
+              <View style={styles.potCard}>
+                <Ionicons name="cube-outline" size={20} color="#15803D" />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.potLabel}>
+                    {t('productDetail.potIncluded')}
+                  </Text>
+                  <Text style={styles.potValue}>{product.potSize}</Text>
+                </View>
+              </View>
+            </View>
+          )}
 
           {/* ===== Reviews ===== */}
           <View style={styles.sectionWrap}>
@@ -365,14 +493,14 @@ export default function ProductDetailScreen() {
           data={relatedPlants}
           horizontal
           showsHorizontalScrollIndicator={false}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) => String(item.id)}
           contentContainerStyle={styles.relatedList}
           scrollEnabled={false}
           renderItem={({ item }) => (
             <TouchableOpacity
               style={styles.relatedCard}
               onPress={() =>
-                navigation.push('ProductDetail', { productId: item.id })
+                navigation.push('ProductDetail', { productId: String(item.id) })
               }
             >
               <View style={styles.relatedImageWrap}>
@@ -400,7 +528,7 @@ export default function ProductDetailScreen() {
               <Text style={styles.relatedSub}>{item.subtitle}</Text>
               <View style={styles.relatedPriceRow}>
                 <Text style={styles.relatedPrice}>
-                  {item.price.toLocaleString(locale)}₫
+                  {(item.price || 0).toLocaleString(locale)}₫
                 </Text>
                 <View style={styles.relatedPlusBtn}>
                   <Ionicons name="add" size={14} color={COLORS.black} />
@@ -515,11 +643,17 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   productName: {
-    flex: 1,
     fontSize: 24,
     fontWeight: '700',
     color: '#0D1B12',
     lineHeight: 30,
+  },
+  specificName: {
+    fontSize: 14,
+    fontWeight: '400',
+    fontStyle: 'italic',
+    color: '#6B7280',
+    marginTop: 2,
   },
   ratingBadge: {
     flexDirection: 'row',
@@ -535,6 +669,45 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#0D1B12',
+  },
+
+  // ---- Meta row (origin + tags) ----
+  metaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12,
+  },
+  originBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#E7F3EB',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  originText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#4C9A66',
+  },
+  tagsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  tagBadge: {
+    backgroundColor: '#DBEAFE',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  tagText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#2563EB',
   },
 
   // ---- Price ----
@@ -669,6 +842,60 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     color: '#4B5563',
     lineHeight: 20,
+  },
+
+  // ---- Feng Shui Card ----
+  fengShuiCard: {
+    marginTop: SPACING.lg,
+    padding: 16,
+    backgroundColor: COLORS.white,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#F5F5F5',
+    gap: 16,
+    ...SHADOWS.sm,
+  },
+  fengShuiRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  fengShuiLabel: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: '#6B7280',
+    marginBottom: 2,
+  },
+  fengShuiValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0D1B12',
+    lineHeight: 20,
+  },
+
+  // ---- Pot Card ----
+  potCard: {
+    marginTop: SPACING.lg,
+    padding: 16,
+    backgroundColor: COLORS.white,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#F5F5F5',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    ...SHADOWS.sm,
+  },
+  potLabel: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: '#6B7280',
+    marginBottom: 2,
+  },
+  potValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0D1B12',
   },
 
   // ---- Related / You may also like ----

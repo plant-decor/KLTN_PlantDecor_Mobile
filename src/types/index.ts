@@ -118,32 +118,124 @@ export interface AuthJwtClaims {
 
 // ==================== Product ====================
 export interface Product {
-  id: string;
+  id: string | number;
   name: string;
-  slug: string;
-  description: string;
+  slug?: string;
+  specificName?: string;
+  origin?: string;
+  description?: string;
+  basePrice: number;
   price: number;
   salePrice?: number;
+  size: string | number;
+  sizeName?: string;
   images: string[];
-  category: Category;
-  tags: string[];
+  primaryImageUrl?: string | null;
+  category?: Category;
+  categories?: Category[];
+  categoryNames?: string[];
+  tags?: Tag[];
+  tagNames?: string[];
   stock: number;
-  rating: number;
-  reviewCount: number;
-  careLevel: 'easy' | 'medium' | 'hard';
-  lightRequirement: 'low' | 'medium' | 'high';
-  waterFrequency: string;
-  size: 'small' | 'medium' | 'large' | 'extra-large';
-  isAvailable: boolean;
-  createdAt: string;
+  totalAvailableStock?: number;
+  availableCommonQuantity?: number;
+  availableInstances?: number;
+  totalInstances?: number;
+  rating?: number;
+  reviewCount?: number;
+  careLevel: string;
+  careLevelType?: number;
+  careLevelTypeName?: string;
+  lightRequirement?: 'low' | 'medium' | 'high';
+  waterFrequency?: string;
+  growthRate?: string;
+  placementType?: number;
+  placementTypeName?: string;
+  toxicity?: boolean;
+  airPurifying?: boolean;
+  hasFlower?: boolean;
+  petSafe?: boolean;
+  childSafe?: boolean;
+  fengShuiElement?: string;
+  fengShuiMeaning?: string;
+  potIncluded?: boolean;
+  potSize?: string;
+  isAvailable?: boolean;
+  isActive: boolean;
+  isUniqueInstance?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface Tag {
+  id: number;
+  tagName: string;
+  tagType: number;
+  tagTypeName?: string | null;
 }
 
 export interface Category {
-  id: string;
+  id: string | number;
   name: string;
-  slug: string;
+  slug?: string;
   icon?: string;
   image?: string;
+  parentCategoryId?: number | null;
+  parentCategoryName?: string | null;
+  isActive?: boolean;
+  categoryType?: number;
+  categoryTypeName?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  subCategories?: Category[];
+}
+
+// ==================== Product Search ====================
+export interface SearchProductsRequest {
+  pagination?: {
+    pageNumber: number;
+    pageSize: number;
+  };
+  keyword?: string;
+  isActive?: boolean;
+  placementType?: number;
+  careLevelType?: number;
+  careLevel?: string;
+  toxicity?: boolean;
+  airPurifying?: boolean;
+  hasFlower?: boolean;
+  petSafe?: boolean;
+  childSafe?: boolean;
+  isUniqueInstance?: boolean;
+  minBasePrice?: number;
+  maxBasePrice?: number;
+  categoryIds?: number[];
+  tagIds?: number[];
+  nurseryId?: number;
+  sortBy?: string;
+  sortDirection?: string;
+}
+
+export interface SearchProductsResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: {
+    items: Product[];
+    totalCount: number;
+    pageNumber: number;
+    pageSize: number;
+    totalPages: number;
+    hasPrevious: boolean;
+    hasNext: boolean;
+  };
+}
+
+export interface PlantDetailResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: Product;
 }
 
 // ==================== Cart ====================
@@ -248,6 +340,7 @@ export type RootStackParamList = {
   Login: undefined;
   Register: undefined;
   Search: undefined;
+  Catalog: undefined;
   CategoryProducts: { categoryId: string; categoryName: string };
   EditProfile: undefined;
   OrderHistory: undefined;

@@ -95,10 +95,10 @@ export default function HomeScreen() {
     }
 
     return products.slice(0, 4).map((item: Product) => ({
-      id: item.id,
+      id: String(item.id),
       name: item.name,
       subtitle: t('home.defaultSubtitle'),
-      price: item.salePrice ?? item.price,
+      price: item.salePrice ?? item.price ?? 0,
       image: item.images?.[0] || MOCK_PLANTS[0].image,
     }));
   }, [products, t]);
@@ -130,7 +130,7 @@ export default function HomeScreen() {
         <Text style={styles.productName}>{item.name}</Text>
         <Text style={styles.productSub}>{item.subtitle}</Text>
         <View style={styles.priceRow}>
-          <Text style={styles.productPrice}>{item.price.toLocaleString(locale)}đ</Text>
+          <Text style={styles.productPrice}>{(item.price || 0).toLocaleString(locale)}đ</Text>
           <TouchableOpacity style={styles.plusBtn}>
             <Ionicons name="add" size={15} color={COLORS.black} />
           </TouchableOpacity>
