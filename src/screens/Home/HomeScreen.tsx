@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -17,8 +17,8 @@ import { CompositeNavigationProp, useNavigation } from '@react-navigation/native
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, SPACING, RADIUS, SHADOWS } from '../../constants';
-import { useProductStore, useCartStore } from '../../stores';
-import { MainTabParamList, RootStackParamList, Product } from '../../types';
+import { usePlantStore, useCartStore } from '../../stores';
+import { MainTabParamList, RootStackParamList, Plant } from '../../types';
 
 type NavigationProp = CompositeNavigationProp<
   BottomTabNavigationProp<MainTabParamList, 'Home'>,
@@ -32,6 +32,8 @@ type HomePlant = {
   price: number;
   image: string;
 };
+
+type HomeSortKey = 'newest' | 'priceAsc' | 'priceDesc';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - SPACING.lg * 3) / 2 - 2;
@@ -74,43 +76,53 @@ const MOCK_PLANTS: HomePlant[] = [
 export default function HomeScreen() {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
-  const { products, fetchProducts } = useProductStore();
+  const { plants, fetchPlants } = usePlantStore();
   const totalItems = useCartStore((state) => state.totalItems);
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
+  const [selectedSort, setSelectedSort] = useState<HomeSortKey>('newest');
 
-  const filters = [
-    t('home.filterAll'),
-    t('home.filterIndoor'),
-    t('home.filterOutdoor'),
-    t('home.filterTableTop'),
+  const sortOptions: Array<{ key: HomeSortKey; label: string }> = [
+    { key: 'newest', label: 'Newest' },
+    { key: 'priceAsc', label: 'Price Low-High' },
+    { key: 'priceDesc', label: 'Price High-Low' },
   ];
 
   useEffect(() => {
-    fetchProducts();
-  }, [fetchProducts]);
+    if (selectedSort === 'priceAsc') {
+      fetchPlants({ sortBy: 'basePrice', sortDirection: 'asc' });
+      return;
+    }
+
+    if (selectedSort === 'priceDesc') {
+      fetchPlants({ sortBy: 'basePrice', sortDirection: 'desc' });
+      return;
+    }
+
+    fetchPlants({ sortBy: 'createdAt', sortDirection: 'desc' });
+  }, [fetchPlants, selectedSort]);
 
   const homePlants = useMemo<HomePlant[]>(() => {
-    if (products.length === 0) {
+    if (plants.length === 0) {
       return MOCK_PLANTS;
     }
 
-    return products.slice(0, 4).map((item: Product) => ({
+    return plants.slice(0, 4).map((item: Plant) => ({
       id: String(item.id),
       name: item.name,
       subtitle: t('home.defaultSubtitle'),
-      price: item.salePrice ?? item.price ?? 0,
+      price: item.basePrice ?? 0,
       image: item.images?.[0] || MOCK_PLANTS[0].image,
     }));
-  }, [products, t]);
+  }, [plants, t]);
 
   const renderPlantCard = ({ item }: { item: HomePlant }) => (
     <TouchableOpacity
-      style={styles.productCard}
-      onPress={() => navigation.navigate('ProductDetail', { productId: item.id })}
+      style={styles.plantCard}
+      onPress={() => navigation.navigate('PlantDetail', { plantId: item.id })}
       activeOpacity={0.7}
     >
       <View style={styles.imageWrap}>
-        <Image source={{ uri: item.image }} style={styles.productImage} resizeMode="cover" />
+        <Image source={{ uri: item.image }} style={styles.plantImage} resizeMode="cover" />
 
         <View style={styles.hotBadge}>
           <Text style={styles.hotBadgeText}>{t('home.hot')}</Text>
@@ -126,11 +138,11 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      <View style={styles.productInfo}>
-        <Text style={styles.productName}>{item.name}</Text>
-        <Text style={styles.productSub}>{item.subtitle}</Text>
+      <View style={styles.plantInfo}>
+        <Text style={styles.plantName}>{item.name}</Text>
+        <Text style={styles.plantSub}>{item.subtitle}</Text>
         <View style={styles.priceRow}>
-          <Text style={styles.productPrice}>{(item.price || 0).toLocaleString(locale)}đ</Text>
+          <Text style={styles.plantPrice}>{(item.price || 0).toLocaleString(locale)}đ</Text>
           <TouchableOpacity style={styles.plusBtn}>
             <Ionicons name="add" size={15} color={COLORS.black} />
           </TouchableOpacity>
@@ -170,19 +182,32 @@ export default function HomeScreen() {
             <Text style={styles.searchText}>{t('home.searchPlaceholder')}</Text>
           </View>
           <TouchableOpacity style={styles.filterBtn}>
-            <Ionicons name="options-outline" size={20} color={COLORS.primary} />
+            <Ionicons name="swap-vertical-outline" size={20} color={COLORS.primary} />
           </TouchableOpacity>
         </View>
 
         <FlatList
-          data={filters}
+          data={sortOptions}
           horizontal
-          keyExtractor={(item) => item}
-          contentContainerStyle={styles.filterList}
+          keyExtractor={(item) => item.key}
+          contentContainerStyle={styles.sortList}
           showsHorizontalScrollIndicator={false}
-          renderItem={({ item, index }) => (
-            <TouchableOpacity style={[styles.filterChip, index === 0 && styles.filterChipActive]}>
-              <Text style={[styles.filterText, index === 0 && styles.filterTextActive]}>{item}</Text>
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={[
+                styles.sortChip,
+                item.key === selectedSort && styles.sortChipActive,
+              ]}
+              onPress={() => setSelectedSort(item.key)}
+            >
+              <Text
+                style={[
+                  styles.sortText,
+                  item.key === selectedSort && styles.sortTextActive,
+                ]}
+              >
+                {item.label}
+              </Text>
             </TouchableOpacity>
           )}
         />
@@ -197,7 +222,7 @@ export default function HomeScreen() {
           renderItem={renderPlantCard}
           keyExtractor={(item) => item.id}
           numColumns={2}
-          columnWrapperStyle={styles.productRow}
+          columnWrapperStyle={styles.plantRow}
           scrollEnabled={false}
         />
 
@@ -228,7 +253,7 @@ export default function HomeScreen() {
           renderItem={renderPlantCard}
           keyExtractor={(item) => `best-${item.id}`}
           numColumns={2}
-          columnWrapperStyle={styles.productRow}
+          columnWrapperStyle={styles.plantRow}
           scrollEnabled={false}
           contentContainerStyle={styles.bestList}
         />
@@ -311,26 +336,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  filterList: {
+  sortList: {
     paddingVertical: SPACING.sm,
     gap: SPACING.sm,
   },
-  filterChip: {
+  sortChip: {
     backgroundColor: COLORS.gray200,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm + 2,
     borderRadius: RADIUS.full,
   },
-  filterChipActive: {
+  sortChipActive: {
     backgroundColor: COLORS.primaryLight,
     ...SHADOWS.md,
   },
-  filterText: {
+  sortText: {
     fontSize: FONTS.sizes.lg,
     color: COLORS.textSecondary,
     fontWeight: '600',
   },
-  filterTextActive: {
+  sortTextActive: {
     color: COLORS.white,
   },
   sectionHeader: {
@@ -345,11 +370,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.textPrimary,
   },
-  productRow: {
+  plantRow: {
     justifyContent: 'space-between',
     marginBottom: SPACING.md,
   },
-  productCard: {
+  plantCard: {
     width: CARD_WIDTH,
     backgroundColor: COLORS.gray50,
     borderRadius: RADIUS.xl,
@@ -362,7 +387,7 @@ const styles = StyleSheet.create({
     height: CARD_WIDTH,
     position: 'relative',
   },
-  productImage: {
+  plantImage: {
     width: '100%',
     height: '100%',
   },
@@ -408,16 +433,16 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.md,
     fontWeight: '600',
   },
-  productInfo: {
+  plantInfo: {
     paddingTop: SPACING.sm,
     gap: 2,
   },
-  productName: {
+  plantName: {
     fontSize: FONTS.sizes['2xl'],
     fontWeight: '700',
     color: COLORS.textPrimary,
   },
-  productSub: {
+  plantSub: {
     fontSize: FONTS.sizes.md,
     color: COLORS.primary,
   },
@@ -427,7 +452,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  productPrice: {
+  plantPrice: {
     fontSize: FONTS.sizes.xl,
     fontWeight: '700',
     color: COLORS.primaryLight,

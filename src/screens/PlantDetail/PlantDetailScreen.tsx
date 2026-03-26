@@ -15,11 +15,11 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, SPACING, RADIUS, SHADOWS } from '../../constants';
-import { useProductStore, useCartStore } from '../../stores';
-import { RootStackParamList, Product } from '../../types';
+import { usePlantStore, useCartStore } from '../../stores';
+import { RootStackParamList, Plant } from '../../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
-type ScreenRouteProp = RouteProp<RootStackParamList, 'ProductDetail'>;
+type ScreenRouteProp = RouteProp<RootStackParamList, 'PlantDetail'>;
 
 const { width } = Dimensions.get('window');
 const IMAGE_HEIGHT = 396;
@@ -60,7 +60,7 @@ const MOCK_REVIEW = {
     'The plant is very healthy and beautiful, carefully packed. Delivery was faster than expected!',
 };
 
-// ---------- Mock related products ----------
+// ---------- Mock related plants ----------
 const MOCK_RELATED: {
   id: string;
   name: string;
@@ -102,118 +102,114 @@ const MOCK_RELATED: {
   },
 ];
 
-// ---------- Mock product (used when API data is unavailable) ----------
-const MOCK_PRODUCT: Product = {
+// ---------- Mock plant (used when API data is unavailable) ----------
+const MOCK_PLANT: Plant = {
   id: 'mock-1',
   name: 'Monstera Deliciosa',
-  slug: 'monstera-deliciosa',
+  specificName: 'Monstera deliciosa',
+  origin: 'Trung My',
   description:
     'Monstera Deliciosa là loại cây lá lớn nhiệt đới nổi tiếng với những chiếc lá xẻ tự nhiên. Thích hợp trồng trong nhà, dễ chăm sóc, mang đến không gian xanh mát và hiện đại.',
   basePrice: 450000,
-  price: 450000,
-  salePrice: 390000,
+  placementType: 1,
+  placementTypeName: 'Indoor',
+  growthRate: 'Trung binh',
+  toxicity: true,
+  airPurifying: true,
+  hasFlower: false,
+  petSafe: false,
+  childSafe: false,
+  fengShuiElement: 'Moc',
+  fengShuiMeaning: 'Tang truong va can bang',
+  potIncluded: true,
+  potSize: '20x20 cm',
+  careLevelType: 1,
   images: [
     'https://images.unsplash.com/photo-1604762524889-3e2fcc145683?auto=format&fit=crop&w=900&q=80',
     'https://images.unsplash.com/photo-1614594975525-e45190c55d0b?auto=format&fit=crop&w=900&q=80',
   ],
-  category: { id: 'c1', name: 'Indoor', slug: 'indoor' },
+  categories: [{ id: 'c1', name: 'Indoor', slug: 'indoor' }],
   tags: [
     { id: 1, tagName: 'Popular', tagType: 1 },
     { id: 2, tagName: 'Indoor', tagType: 1 },
   ],
-  stock: 25,
-  rating: 4.8,
-  reviewCount: 124,
   careLevel: 'Easy',
   careLevelTypeName: 'Easy',
-  lightRequirement: 'medium',
-  waterFrequency: '1 lần / tuần',
   size: 2,
   sizeName: 'Medium',
-  isAvailable: true,
   isActive: true,
+  isUniqueInstance: false,
+  totalInstances: 0,
+  availableInstances: 0,
   createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
 };
 
 // ============================================================
-export default function ProductDetailScreen() {
+export default function PlantDetailScreen() {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<ScreenRouteProp>();
-  const { productId } = route.params;
+  const { plantId: plantId } = route.params;
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
 
-  const { selectedProduct, isLoading, fetchProductDetail, products } =
-    useProductStore();
+  const { selectedPlant, isLoading, fetchPlantDetail, plants } =
+    usePlantStore();
   const { addToCart } = useCartStore();
 
   useEffect(() => {
-    fetchProductDetail(productId);
-  }, [productId]);
+    fetchPlantDetail(plantId);
+  }, [plantId]);
 
-  // Use store product if available, otherwise fall back to mock
-  const product: Product = selectedProduct ?? MOCK_PRODUCT;
+  // Use store plant if available, otherwise fall back to mock
+  const plant: Plant = selectedPlant ?? MOCK_PLANT;
 
-  // Related products from store (exclude current), fall back to mock
+  // Related plants from store (exclude current), fall back to mock
   const relatedPlants = useMemo(() => {
-    const pool = products.filter((p) => p.id !== productId).slice(0, 4);
+    const pool = plants.filter((p) => p.id !== plantId).slice(0, 4);
     if (pool.length > 0) {
-      return pool.map((p: Product) => ({
+      return pool.map((p: Plant) => ({
         id: p.id,
         name: p.name,
-        subtitle: t('productDetail.defaultSubtitle'),
-        price: p.salePrice ?? p.price ?? 0,
+        subtitle: t('plantDetail.defaultSubtitle'),
+        price: p.basePrice ?? 0,
         image: p.images?.[0] || MOCK_RELATED[0].image,
       }));
     }
     return MOCK_RELATED;
-  }, [products, productId, t]);
+  }, [plants, plantId, t]);
 
   // ---------- helpers ----------
   const getCareLabel = () => {
-    if (product.careLevelTypeName) {
-      return product.careLevelTypeName;
+    if (plant.careLevelTypeName) {
+      return plant.careLevelTypeName;
     }
     // Fallback to care level string
-    switch (product.careLevel?.toLowerCase()) {
+    switch (plant.careLevel?.toLowerCase()) {
       case 'easy':
-        return t('productDetail.careEasy');
+        return t('plantDetail.careEasy');
       case 'medium':
-        return t('productDetail.careMedium');
+        return t('plantDetail.careMedium');
       case 'hard':
-        return t('productDetail.careHard');
+        return t('plantDetail.careHard');
       default:
-        return product.careLevel;
+        return plant.careLevel;
     }
   };
 
   const getLightLabel = () => {
-    // Use placement type if available
-    if (product.placementTypeName) {
-      return product.placementTypeName;
-    }
-    // Fallback to light requirement
-    switch (product.lightRequirement) {
-      case 'low':
-        return t('productDetail.lightLow');
-      case 'medium':
-        return t('productDetail.lightIndirect');
-      case 'high':
-        return t('productDetail.lightBright');
-      default:
-        return product.lightRequirement || '';
-    }
+    return plant.placementTypeName || '';
   };
 
   const getSizeLabel = () => {
-    if (product.sizeName) {
-      return product.sizeName;
+    if (plant.sizeName) {
+      return plant.sizeName;
     }
-    return typeof product.size === 'string' ? product.size : String(product.size);
+    return typeof plant.size === 'string' ? plant.size : String(plant.size);
   };
 
   // ---------- loading / empty state ----------
-  // if (isLoading || !product) {
+  // if (isLoading || !plant) {
   //   return (
   //     <View style={styles.loaderContainer}>
   //       <ActivityIndicator size="large" color={COLORS.primary} />
@@ -221,7 +217,7 @@ export default function ProductDetailScreen() {
   //   );
   // }
 
-  const price = product.salePrice ?? product.price ?? 0;
+  const price = plant.basePrice ?? 0;
 
   // ============ RENDER ============
   return (
@@ -233,7 +229,7 @@ export default function ProductDetailScreen() {
         {/* ===== Hero image ===== */}
         <View style={styles.heroWrap}>
           <Image
-            source={{ uri: product.images[0] }}
+            source={{ uri: plant.images[0] }}
             style={styles.heroImage}
             resizeMode="cover"
           />
@@ -263,34 +259,32 @@ export default function ProductDetailScreen() {
           {/* Name + rating */}
           <View style={styles.nameRow}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.productName}>{product.name}</Text>
-              {product.specificName && (
-                <Text style={styles.specificName}>{product.specificName}</Text>
+              <Text style={styles.plantName}>{plant.name}</Text>
+              {plant.specificName && (
+                <Text style={styles.specificName}>{plant.specificName}</Text>
               )}
             </View>
-            {product.rating && (
-              <View style={styles.ratingBadge}>
-                <Ionicons name="star" size={16} color="#EAB308" />
-                <Text style={styles.ratingText}>{product.rating}</Text>
-              </View>
-            )}
+            <View style={styles.ratingBadge}>
+              <Ionicons name="star" size={16} color="#EAB308" />
+              <Text style={styles.ratingText}>4.8</Text>
+            </View>
           </View>
 
           {/* Price */}
           <Text style={styles.price}>{price.toLocaleString(locale)} ₫</Text>
 
           {/* Origin & Tags */}
-          {(product.origin || (product.tags && product.tags.length > 0)) && (
+          {(plant.origin || (plant.tags && plant.tags.length > 0)) && (
             <View style={styles.metaRow}>
-              {product.origin && (
+              {plant.origin && (
                 <View style={styles.originBadge}>
                   <Ionicons name="location" size={14} color="#4C9A66" />
-                  <Text style={styles.originText}>{product.origin}</Text>
+                  <Text style={styles.originText}>{plant.origin}</Text>
                 </View>
               )}
-              {product.tags && product.tags.length > 0 && (
+              {plant.tags && plant.tags.length > 0 && (
                 <View style={styles.tagsContainer}>
-                  {product.tags.slice(0, 3).map((tag) => (
+                  {plant.tags.slice(0, 3).map((tag) => (
                     <View key={tag.id} style={styles.tagBadge}>
                       <Text style={styles.tagText}>{tag.tagName}</Text>
                     </View>
@@ -301,112 +295,103 @@ export default function ProductDetailScreen() {
           )}
 
           {/* Description */}
-          <Text style={styles.description}>{product.description}</Text>
+          <Text style={styles.description}>{plant.description}</Text>
 
           {/* ===== Biological Properties ===== */}
           <View style={styles.sectionWrap}>
             <Text style={styles.sectionTitle}>
-              {t('productDetail.biologicalProperties')}
+              {t('plantDetail.biologicalProperties')}
             </Text>
             <View style={styles.attrGrid}>
               <AttributeCard
                 icon="leaf-outline"
                 iconColor="#15803D"
                 iconBg="#DBEAFE"
-                label={t('productDetail.size')}
+                label={t('plantDetail.size')}
                 value={getSizeLabel()}
               />
               <AttributeCard
                 icon="flower-outline"
                 iconColor="#EA580C"
                 iconBg="#FFEDD5"
-                label={t('productDetail.care')}
+                label={t('plantDetail.care')}
                 value={getCareLabel()}
               />
               <AttributeCard
                 icon="sunny-outline"
                 iconColor="#CA8A04"
                 iconBg="#FEF9C3"
-                label={t('productDetail.placement')}
+                label={t('plantDetail.placement')}
                 value={getLightLabel()}
               />
-              {product.waterFrequency && (
-                <AttributeCard
-                  icon="water-outline"
-                  iconColor="#2563EB"
-                  iconBg="#DBEAFE"
-                  label={t('productDetail.water')}
-                  value={product.waterFrequency}
-                />
-              )}
-              {product.growthRate && (
+              {plant.growthRate && (
                 <AttributeCard
                   icon="trending-up-outline"
                   iconColor="#059669"
                   iconBg="#D1FAE5"
-                  label={t('productDetail.growthRate')}
-                  value={product.growthRate}
+                  label={t('plantDetail.growthRate')}
+                  value={plant.growthRate}
                 />
               )}
-              {product.airPurifying !== undefined && (
+              {plant.airPurifying !== undefined && (
                 <AttributeCard
                   icon="leaf"
                   iconColor="#0891B2"
                   iconBg="#CFFAFE"
-                  label={t('productDetail.airPurifying')}
-                  value={product.airPurifying ? t('common.yes') : t('common.no')}
+                  label={t('plantDetail.airPurifying')}
+                  value={plant.airPurifying ? t('common.yes') : t('common.no')}
                 />
               )}
-              {product.petSafe !== undefined && (
+              {plant.petSafe !== undefined && (
                 <AttributeCard
                   icon="paw-outline"
                   iconColor="#E11D48"
                   iconBg="#FFE4E6"
-                  label={t('productDetail.petSafety')}
-                  value={product.petSafe ? t('common.safe') : t('common.toxic')}
+                  label={t('plantDetail.petSafety')}
+                  value={plant.petSafe ? t('common.safe') : t('common.toxic')}
                 />
               )}
-              {product.childSafe !== undefined && (
+              {plant.childSafe !== undefined && (
                 <AttributeCard
                   icon="happy-outline"
                   iconColor="#7C3AED"
                   iconBg="#EDE9FE"
-                  label={t('productDetail.childSafety')}
-                  value={product.childSafe ? t('common.safe') : t('common.caution')}
+                  label={t('plantDetail.childSafety')}
+                  value={plant.childSafe ? t('common.safe') : t('common.caution')}
                 />
               )}
             </View>
           </View>
 
           {/* ===== Feng Shui Section (if available) ===== */}
-          {(product.fengShuiElement || product.fengShuiMeaning) && (
+          {(plant.fengShuiElement || plant.fengShuiMeaning) && (
             <View style={styles.sectionWrap}>
               <Text style={styles.sectionTitle}>
-                {t('productDetail.fengShui')}
+                {t('plantDetail.fengShui')}
               </Text>
               <View style={styles.fengShuiCard}>
-                {product.fengShuiElement && (
+                {plant.fengShuiElement && (
                   <View style={styles.fengShuiRow}>
                     <Ionicons name="planet-outline" size={20} color="#CA8A04" />
                     <View style={{ flex: 1 }}>
                       <Text style={styles.fengShuiLabel}>
-                        {t('productDetail.fengShuiElement')}
+                        {t('plantDetail.fengShuiElement')}
                       </Text>
                       <Text style={styles.fengShuiValue}>
-                        {product.fengShuiElement}
+                        {plant.fengShuiElement}
                       </Text>
                     </View>
                   </View>
                 )}
-                {product.fengShuiMeaning && (
+                {plant.fengShuiMeaning && (
                   <View style={styles.fengShuiRow}>
                     <Ionicons name="sparkles-outline" size={20} color="#7C3AED" />
                     <View style={{ flex: 1 }}>
                       <Text style={styles.fengShuiLabel}>
-                        {t('productDetail.fengShuiMeaning')}
+                        {t('plantDetail.fengShuiMeaning')}
                       </Text>
                       <Text style={styles.fengShuiValue}>
-                        {product.fengShuiMeaning}
+                        {plant.fengShuiMeaning}
                       </Text>
                     </View>
                   </View>
@@ -416,18 +401,18 @@ export default function ProductDetailScreen() {
           )}
 
           {/* ===== Pot Information (if included) ===== */}
-          {product.potIncluded && product.potSize && (
+          {plant.potIncluded && plant.potSize && (
             <View style={styles.sectionWrap}>
               <Text style={styles.sectionTitle}>
-                {t('productDetail.potInfo')}
+                {t('plantDetail.potInfo')}
               </Text>
               <View style={styles.potCard}>
                 <Ionicons name="cube-outline" size={20} color="#15803D" />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.potLabel}>
-                    {t('productDetail.potIncluded')}
+                    {t('plantDetail.potIncluded')}
                   </Text>
-                  <Text style={styles.potValue}>{product.potSize}</Text>
+                  <Text style={styles.potValue}>{plant.potSize}</Text>
                 </View>
               </View>
             </View>
@@ -437,11 +422,11 @@ export default function ProductDetailScreen() {
           <View style={styles.sectionWrap}>
             <View style={styles.sectionHeaderRow}>
               <Text style={styles.sectionTitle}>
-                {t('productDetail.reviews')}
+                {t('plantDetail.reviews')}
               </Text>
               <TouchableOpacity>
                 <Text style={styles.viewAllText}>
-                  {t('productDetail.viewAll')}
+                  {t('plantDetail.viewAll')}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -469,7 +454,7 @@ export default function ProductDetailScreen() {
                   </View>
                 </View>
                 <Text style={styles.reviewDate}>
-                  {t('productDetail.daysAgo', { count: MOCK_REVIEW.daysAgo })}
+                  {t('plantDetail.daysAgo', { count: MOCK_REVIEW.daysAgo })}
                 </Text>
               </View>
               <Text style={styles.reviewComment}>
@@ -483,12 +468,12 @@ export default function ProductDetailScreen() {
           {/* ===== You may also like ===== */}
           <View style={styles.sectionWrap}>
             <Text style={styles.sectionTitle}>
-              {t('productDetail.youMayAlsoLike')}
+              {t('plantDetail.youMayAlsoLike')}
             </Text>
           </View>
         </View>
 
-        {/* Horizontal related products (outside card padding for full bleed) */}
+        {/* Horizontal related plants (outside card padding for full bleed) */}
         <FlatList
           data={relatedPlants}
           horizontal
@@ -500,7 +485,7 @@ export default function ProductDetailScreen() {
             <TouchableOpacity
               style={styles.relatedCard}
               onPress={() =>
-                navigation.push('ProductDetail', { productId: String(item.id) })
+                navigation.push('PlantDetail', { plantId: String(item.id) })
               }
             >
               <View style={styles.relatedImageWrap}>
@@ -546,11 +531,11 @@ export default function ProductDetailScreen() {
       <View style={styles.bottomBar}>
         <TouchableOpacity
           style={styles.addToCartBtn}
-          onPress={() => addToCart(product)}
+          onPress={() => addToCart(plant)}
         >
           <Ionicons name="cart-outline" size={22} color="#102216" />
           <Text style={styles.addToCartText}>
-            {t('productDetail.addToCart')}
+            {t('plantDetail.addToCart')}
           </Text>
         </TouchableOpacity>
       </View>
@@ -642,7 +627,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
   },
-  productName: {
+  plantName: {
     fontSize: 24,
     fontWeight: '700',
     color: '#0D1B12',

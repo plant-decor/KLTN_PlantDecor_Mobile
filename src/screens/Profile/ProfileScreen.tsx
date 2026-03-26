@@ -92,7 +92,7 @@ export default function ProfileScreen() {
     },
     {
       icon: 'heart-outline' as const,
-      label: t('profile.favoriteProducts'),
+      label: t('profile.favoritePlants'),
       onPress: () => {},
     },
     {

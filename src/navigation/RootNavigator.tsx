@@ -3,7 +3,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
 import BottomTabNavigator from './BottomTabNavigator';
 import {
-  ProductDetailScreen,
+  PlantDetailScreen,
   CartScreen,
   CheckoutScreen,
   VerifyCodeScreen,
@@ -24,7 +24,7 @@ export default function RootNavigator() {
       }}
     >
       <Stack.Screen name="MainTabs" component={BottomTabNavigator} />
-      <Stack.Screen name="ProductDetail" component={ProductDetailScreen} />
+      <Stack.Screen name="PlantDetail" component={PlantDetailScreen} />
       <Stack.Screen name="Cart" component={CartScreen} />
       <Stack.Screen name="Checkout" component={CheckoutScreen} />
       <Stack.Screen name="VerifyCode" component={VerifyCodeScreen} options={{ animation: 'fade_from_bottom' }} />
@@ -38,7 +38,7 @@ export default function RootNavigator() {
         <Stack.Screen name="OrderDetail" component={OrderDetailScreen} />
         <Stack.Screen name="OrderHistory" component={OrderHistoryScreen} />
         <Stack.Screen name="EditProfile" component={EditProfileScreen} />
-        <Stack.Screen name="CategoryProducts" component={CategoryProductsScreen} />
+        <Stack.Screen name="CategoryPlants" component={CategoryPlantsScreen} />
         <Stack.Screen name="AIDesignResult" component={AIDesignResultScreen} />
       */}
     </Stack.Navigator>

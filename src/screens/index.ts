@@ -1,5 +1,5 @@
 export { default as HomeScreen } from './Home/HomeScreen';
-export { default as ProductDetailScreen } from './ProductDetail/ProductDetailScreen';
+export { default as PlantDetailScreen } from './PlantDetail/PlantDetailScreen';
 export { default as CartScreen } from './Cart/CartScreen';
 export { default as ProfileScreen } from './Profile/ProfileScreen';
 export { default as AIDesignScreen } from './AIDesign/AIDesignScreen';

@@ -1,4 +1,4 @@
 export { useAuthStore } from './useAuthStore';
 export { useCartStore } from './useCartStore';
-export { useProductStore } from './useProductStore';
+export { usePlantStore } from './usePlantStore';
 export { useAIDesignStore } from './useAIDesignStore';

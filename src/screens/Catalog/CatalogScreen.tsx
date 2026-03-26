@@ -18,15 +18,13 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, SPACING, RADIUS, SHADOWS } from '../../constants';
-import { RootStackParamList, Product } from '../../types';
-import { useProductStore } from '../../stores';
+import { RootStackParamList, Plant } from '../../types';
+import { usePlantStore } from '../../stores';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - SPACING.lg * 3) / 2;
-
-type LightRequirement = 'full_sun' | 'partial' | 'shade' | 'indoor';
 
 // Enum types matching API
 type PlacementTypeEnum = 1 | 2 | 3; // 1=Indoor, 2=Outdoor, 3=SemiShade
@@ -35,16 +33,15 @@ type CareLevelTypeEnum = 1 | 2 | 3 | 4; // 1=Easy, 2=Medium, 3=Hard, 4=Expert
 export default function CatalogScreen() {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
-  const { products, isLoading, error, searchShopProducts } = useProductStore();
+  const { plants, isLoading, error, searchShopPlants } = usePlantStore();
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
 
   // Filter states
   const [keyword, setKeyword] = useState('');
-  const [priceRange, setPriceRange] = useState({ min: 0, max: 2000000 });
+  const [priceRange, setPriceRange] = useState({ min: 0, max: 200000000 });
   const [minPriceInput, setMinPriceInput] = useState('0');
   const [maxPriceInput, setMaxPriceInput] = useState('200000000');
   const [selectedCareLevel, setSelectedCareLevel] = useState<CareLevelTypeEnum | null>(null);
-  const [selectedLight, setSelectedLight] = useState<LightRequirement | null>(null);
   const [selectedPlacement, setSelectedPlacement] = useState<PlacementTypeEnum | null>(null);
   const [showFilters, setShowFilters] = useState(false);
 
@@ -63,9 +60,9 @@ export default function CatalogScreen() {
   const filterHeight = useRef(new Animated.Value(0)).current;
   const filterOpacity = useRef(new Animated.Value(0)).current;
 
-  // Load initial products
+  // Load initial plants
   useEffect(() => {
-    loadProducts();
+    loadPlants();
   }, []);
 
   // Animate filter panel
@@ -105,24 +102,23 @@ export default function CatalogScreen() {
     return value.toLocaleString(locale);
   };
 
-  const loadProducts = useCallback(() => {
-    console.log('CatalogScreen: Loading products...');
-    searchShopProducts({
+  const loadPlants = useCallback(() => {
+    console.log('CatalogScreen: Loading plants...');
+    searchShopPlants({
       pagination: {
         pageNumber: 1,
         pageSize: 20,
       },
       isActive: true,
     });
-  }, [searchShopProducts]);
+  }, [searchShopPlants]);
 
   const resetFilters = useCallback(() => {
     setKeyword('');
-    setPriceRange({ min: 0, max: 2000000 });
+    setPriceRange({ min: 0, max: 200000000 });
     setMinPriceInput('0');
     setMaxPriceInput('200000000');
     setSelectedCareLevel(null);
-    setSelectedLight(null);
     setSelectedPlacement(null);
 
     // Reset additional filters
@@ -136,14 +132,15 @@ export default function CatalogScreen() {
     setTagIds([]);
     setNurseryId(undefined);
 
-    loadProducts();
-  }, [loadProducts]);
+    loadPlants();
+  }, [loadPlants]);
 
   const applyFilters = useCallback(() => {
     setShowFilters(false);
 
     // Build the request based on selected filters
-    searchShopProducts({
+    // Only send boolean filters when they are true
+    searchShopPlants({
       pagination: {
         pageNumber: 1,
         pageSize: 20,
@@ -152,14 +149,14 @@ export default function CatalogScreen() {
       isActive: true,
       placementType: selectedPlacement || undefined,
       careLevelType: selectedCareLevel || undefined,
-      toxicity: toxicity || undefined,
-      airPurifying: airPurifying || undefined,
-      hasFlower: hasFlower || undefined,
-      petSafe: petSafe || undefined,
-      childSafe: childSafe || undefined,
-      isUniqueInstance: isUniqueInstance || undefined,
-      minBasePrice: priceRange.min,
-      maxBasePrice: priceRange.max,
+      toxicity: toxicity ? true : undefined,
+      airPurifying: airPurifying ? true : undefined,
+      hasFlower: hasFlower ? true : undefined,
+      petSafe: petSafe ? true : undefined,
+      childSafe: childSafe ? true : undefined,
+      isUniqueInstance: isUniqueInstance ? true : undefined,
+      minBasePrice: priceRange.min > 0 ? priceRange.min : undefined,
+      maxBasePrice: priceRange.max < 200000000 ? priceRange.max : undefined,
       categoryIds: categoryIds.length > 0 ? categoryIds : undefined,
       tagIds: tagIds.length > 0 ? tagIds : undefined,
       nurseryId,
@@ -180,11 +177,11 @@ export default function CatalogScreen() {
     categoryIds,
     tagIds,
     nurseryId,
-    searchShopProducts,
+    searchShopPlants,
   ]);
 
   const handleSearch = useCallback(() => {
-    searchShopProducts({
+    searchShopPlants({
       pagination: {
         pageNumber: 1,
         pageSize: 20,
@@ -192,7 +189,7 @@ export default function CatalogScreen() {
       keyword: keyword,
       isActive: true,
     });
-  }, [keyword, searchShopProducts]);
+  }, [keyword, searchShopPlants]);
 
   const renderFilterSection = () => (
     <ScrollView
@@ -360,32 +357,30 @@ export default function CatalogScreen() {
     </ScrollView>
   );
 
-  const renderProductCard = ({ item }: { item: Product }) => {
+  const renderPlantCard = ({ item }: { item: Plant }) => {
     const imageUrl = item.images && item.images.length > 0
       ? item.images[0]
       : 'https://via.placeholder.com/200';
 
     return (
       <TouchableOpacity
-        style={styles.productCard}
-        onPress={() => navigation.navigate('ProductDetail', { productId: String(item.id) })}
+        style={styles.plantCard}
+        onPress={() => navigation.navigate('PlantDetail', { plantId: String(item.id) })}
       >
-        <View style={styles.productImageContainer}>
+        <View style={styles.plantImageContainer}>
           <Image
             source={{ uri: imageUrl }}
-            style={styles.productImage}
+            style={styles.plantImage}
             resizeMode="cover"
           />
           <TouchableOpacity style={styles.favoriteButton}>
             <Ionicons name="heart-outline" size={20} color={COLORS.white} />
           </TouchableOpacity>
-          {item.rating && (
-            <View style={styles.ratingBadge}>
-              <Ionicons name="star" size={12} color="#FACC15" />
-              <Text style={styles.ratingText}>{item.rating}</Text>
-            </View>
-          )}
-          {item.stock === 0 && (
+          <View style={styles.ratingBadge}>
+            <Ionicons name="star" size={12} color="#FACC15" />
+            <Text style={styles.ratingText}>4.8</Text>
+          </View>
+          {item.availableInstances === 0 && (
             <View style={styles.soldOutOverlay}>
               <View style={styles.soldOutBadge}>
                 <Text style={styles.soldOutText}>{t('cart.soldOut')}</Text>
@@ -393,16 +388,16 @@ export default function CatalogScreen() {
             </View>
           )}
         </View>
-        <View style={styles.productInfo}>
-          <Text style={styles.productName} numberOfLines={1}>
+        <View style={styles.plantInfo}>
+          <Text style={styles.plantName} numberOfLines={1}>
             {item.name}
           </Text>
-          <Text style={styles.productMeta}>
-            {item.careLevel} • {item.size}
+          <Text style={styles.plantMeta}>
+            {item.careLevelTypeName || item.careLevel} • {item.sizeName}
           </Text>
-          <View style={styles.productFooter}>
-            <Text style={styles.productPrice}>
-              {(item.price || 0).toLocaleString(locale)}₫
+          <View style={styles.plantFooter}>
+            <Text style={styles.plantPrice}>
+              {(item.basePrice || 0).toLocaleString(locale)}₫
             </Text>
             <TouchableOpacity style={styles.addButton}>
               <Ionicons name="add" size={12} color={COLORS.black} />
@@ -413,7 +408,7 @@ export default function CatalogScreen() {
     );
   };
 
-  if (isLoading && products.length === 0) {
+  if (isLoading && plants.length === 0) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.header}>
@@ -438,7 +433,7 @@ export default function CatalogScreen() {
   }
 
   // Show error state if there's an error
-  if (error && products.length === 0) {
+  if (error && plants.length === 0) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.header}>
@@ -458,7 +453,7 @@ export default function CatalogScreen() {
         <View style={styles.loaderContainer}>
           <Ionicons name="alert-circle" size={64} color={COLORS.error} />
           <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={loadProducts}>
+          <TouchableOpacity style={styles.retryButton} onPress={loadPlants}>
             <Text style={styles.retryButtonText}>{t('common.retry')}</Text>
           </TouchableOpacity>
         </View>
@@ -527,7 +522,7 @@ export default function CatalogScreen() {
         <View style={styles.resultsContainer}>
           <View style={styles.resultsHeader}>
             <Text style={styles.resultsTitle}>
-              {t('catalog.results', { count: products.length })}
+              {t('catalog.results', { count: plants.length })}
             </Text>
             <TouchableOpacity style={styles.sortButton}>
               <Text style={styles.sortLabel}>{t('catalog.sortBy')}</Text>
@@ -537,12 +532,12 @@ export default function CatalogScreen() {
           </View>
 
           <FlatList
-            data={products}
-            renderItem={renderProductCard}
+            data={plants}
+            renderItem={renderPlantCard}
             keyExtractor={(item) => String(item.id)}
             numColumns={2}
-            columnWrapperStyle={styles.productRow}
-            contentContainerStyle={styles.productList}
+            columnWrapperStyle={styles.plantRow}
+            contentContainerStyle={styles.plantList}
             showsVerticalScrollIndicator={false}
           />
         </View>
@@ -920,21 +915,21 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.textPrimary,
   },
-  productList: {
+  plantList: {
     paddingHorizontal: SPACING.lg,
     paddingBottom: SPACING['3xl'],
   },
-  productRow: {
+  plantRow: {
     justifyContent: 'space-between',
     marginBottom: SPACING.lg,
   },
-  productCard: {
+  plantCard: {
     width: CARD_WIDTH,
     backgroundColor: COLORS.white,
     borderRadius: RADIUS.lg,
     padding: SPACING.sm,
   },
-  productImageContainer: {
+  plantImageContainer: {
     width: '100%',
     height: CARD_WIDTH * 1.25,
     backgroundColor: '#F5F5F5',
@@ -943,7 +938,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
     position: 'relative',
   },
-  productImage: {
+  plantImage: {
     width: '100%',
     height: '100%',
   },
@@ -994,25 +989,25 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.6,
   },
-  productInfo: {
+  plantInfo: {
     gap: 2,
   },
-  productName: {
+  plantName: {
     fontSize: FONTS.sizes.lg,
     fontWeight: '700',
     color: COLORS.textPrimary,
   },
-  productMeta: {
+  plantMeta: {
     fontSize: FONTS.sizes.sm,
     color: '#4C9A66',
   },
-  productFooter: {
+  plantFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginTop: 4,
   },
-  productPrice: {
+  plantPrice: {
     fontSize: FONTS.sizes.lg,
     fontWeight: '700',
     color: '#13EC5B',

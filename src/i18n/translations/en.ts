@@ -70,7 +70,7 @@ const en = {
     passwordMismatch: 'Passwords do not match.',
     success: 'Registration successful! Please verify your email.',
   },
-  products: {
+  plants: {
     headerTitle: 'Plants',
     careEasy: 'Easy care',
     careMedium: 'Medium',
@@ -83,7 +83,7 @@ const en = {
     delete: 'Remove',
     soldOut: 'SOLD OUT',
     size: 'Size: {{size}}',
-    unavailableMessage: 'This product is currently unavailable',
+    unavailableMessage: 'This plant is currently unavailable',
     emptyTitle: 'Your cart is empty',
     emptySubtitle: 'Add your favorite plants to cart',
     subtotal: 'Subtotal:',
@@ -144,7 +144,7 @@ const en = {
     styleZen: 'Zen',
     styleClassic: 'Classic',
   },
-  productDetail: {
+  plantDetail: {
     biologicalProperties: 'Biological properties',
     size: 'Size',
     location: 'Location',
@@ -192,7 +192,7 @@ const en = {
     orderHistory: 'Order history',
     cartWithCount: 'Cart ({{count}})',
     myAIDesign: 'My AI designs',
-    favoriteProducts: 'Favorite products',
+    favoritePlants: 'Favorite plants',
     settings: 'Settings',
     logoutConfirmTitle: 'Logout',
     logoutConfirmMessage: 'Are you sure you want to logout?',

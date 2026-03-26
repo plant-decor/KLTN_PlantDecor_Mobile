@@ -34,10 +34,10 @@ export default function BottomTabNavigator() {
         }}
       />
       <Tab.Screen
-        name="Products"
+        name="Plants"
         component={CatalogScreen}
         options={{
-          tabBarIcon: () => <ICONS.products width={25} height={28} />,
+          tabBarIcon: () => <ICONS.plants width={25} height={28} />,
         }}
       />
       <Tab.Screen

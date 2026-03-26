@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { CartItem, Product } from '../types';
+import { CartItem, Plant } from '../types';
 
 interface CartState {
   // State
@@ -11,13 +11,13 @@ interface CartState {
   totalPrice: () => number;
 
   // Actions
-  addToCart: (product: Product, quantity?: number) => void;
-  removeFromCart: (productId: string) => void;
-  updateQuantity: (productId: string, quantity: number) => void;
-  incrementQuantity: (productId: string) => void;
-  decrementQuantity: (productId: string) => void;
+  addToCart: (plant: Plant, quantity?: number) => void;
+  removeFromCart: (plantId: string) => void;
+  updateQuantity: (plantId: string, quantity: number) => void;
+  incrementQuantity: (plantId: string) => void;
+  decrementQuantity: (plantId: string) => void;
   clearCart: () => void;
-  getItemQuantity: (productId: string) => number;
+  getItemQuantity: (plantId: string) => number;
 }
 
 export const useCartStore = create<CartState>((set, get) => ({
@@ -32,22 +32,22 @@ export const useCartStore = create<CartState>((set, get) => ({
 
   totalPrice: () => {
     return get().items.reduce((sum, item) => {
-      const price = item.product.salePrice ?? item.product.price;
+      const price = item.plant.basePrice;
       return sum + price * item.quantity;
     }, 0);
   },
 
   // Actions
-  addToCart: (product, quantity = 1) => {
+  addToCart: (plant, quantity = 1) => {
     set((state) => {
       const existingItem = state.items.find(
-        (item) => item.product.id === product.id
+        (item) => item.plant.id === plant.id
       );
 
       if (existingItem) {
         return {
           items: state.items.map((item) =>
-            item.product.id === product.id
+            item.plant.id === plant.id
               ? { ...item, quantity: item.quantity + quantity }
               : item
           ),
@@ -58,8 +58,8 @@ export const useCartStore = create<CartState>((set, get) => ({
         items: [
           ...state.items,
           {
-            id: `cart_${product.id}_${Date.now()}`,
-            product,
+            id: `cart_${plant.id}_${Date.now()}`,
+            plant,
             quantity,
           },
         ],
@@ -67,43 +67,43 @@ export const useCartStore = create<CartState>((set, get) => ({
     });
   },
 
-  removeFromCart: (productId) => {
+  removeFromCart: (plantId) => {
     set((state) => ({
-      items: state.items.filter((item) => item.product.id !== productId),
+      items: state.items.filter((item) => item.plant.id !== plantId),
     }));
   },
 
-  updateQuantity: (productId, quantity) => {
+  updateQuantity: (plantId, quantity) => {
     if (quantity <= 0) {
-      get().removeFromCart(productId);
+      get().removeFromCart(plantId);
       return;
     }
 
     set((state) => ({
       items: state.items.map((item) =>
-        item.product.id === productId ? { ...item, quantity } : item
+        item.plant.id === plantId ? { ...item, quantity } : item
       ),
     }));
   },
 
-  incrementQuantity: (productId) => {
+  incrementQuantity: (plantId) => {
     set((state) => ({
       items: state.items.map((item) =>
-        item.product.id === productId
+        item.plant.id === plantId
           ? { ...item, quantity: item.quantity + 1 }
           : item
       ),
     }));
   },
 
-  decrementQuantity: (productId) => {
-    const item = get().items.find((i) => i.product.id === productId);
+  decrementQuantity: (plantId) => {
+    const item = get().items.find((i) => i.plant.id === plantId);
     if (item && item.quantity <= 1) {
-      get().removeFromCart(productId);
+      get().removeFromCart(plantId);
     } else {
       set((state) => ({
         items: state.items.map((i) =>
-          i.product.id === productId
+          i.plant.id === plantId
             ? { ...i, quantity: i.quantity - 1 }
             : i
         ),
@@ -113,8 +113,8 @@ export const useCartStore = create<CartState>((set, get) => ({
 
   clearCart: () => set({ items: [] }),
 
-  getItemQuantity: (productId) => {
-    const item = get().items.find((i) => i.product.id === productId);
+  getItemQuantity: (plantId) => {
+    const item = get().items.find((i) => i.plant.id === plantId);
     return item?.quantity ?? 0;
   },
 }));

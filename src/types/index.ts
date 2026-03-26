@@ -116,55 +116,40 @@ export interface AuthJwtClaims {
   nbf?: number;
 }
 
-// ==================== Product ====================
-export interface Product {
+// ==================== Plant ====================
+export interface Plant {
   id: string | number;
   name: string;
-  slug?: string;
-  specificName?: string;
-  origin?: string;
-  description?: string;
+  specificName: string;
+  origin: string;
+  description: string;
   basePrice: number;
-  price: number;
-  salePrice?: number;
-  size: string | number;
-  sizeName?: string;
-  images: string[];
-  primaryImageUrl?: string | null;
-  category?: Category;
-  categories?: Category[];
-  categoryNames?: string[];
-  tags?: Tag[];
-  tagNames?: string[];
-  stock: number;
-  totalAvailableStock?: number;
-  availableCommonQuantity?: number;
-  availableInstances?: number;
-  totalInstances?: number;
-  rating?: number;
-  reviewCount?: number;
+  placementType: number;
+  placementTypeName: string;
+  size: number;
+  sizeName: string;
+  growthRate: string;
+  toxicity: boolean;
+  airPurifying: boolean;
+  hasFlower: boolean;
+  petSafe: boolean;
+  childSafe: boolean;
+  fengShuiElement: string;
+  fengShuiMeaning: string;
+  potIncluded: boolean;
+  potSize: string;
+  careLevelType: number;
+  careLevelTypeName: string;
   careLevel: string;
-  careLevelType?: number;
-  careLevelTypeName?: string;
-  lightRequirement?: 'low' | 'medium' | 'high';
-  waterFrequency?: string;
-  growthRate?: string;
-  placementType?: number;
-  placementTypeName?: string;
-  toxicity?: boolean;
-  airPurifying?: boolean;
-  hasFlower?: boolean;
-  petSafe?: boolean;
-  childSafe?: boolean;
-  fengShuiElement?: string;
-  fengShuiMeaning?: string;
-  potIncluded?: boolean;
-  potSize?: string;
-  isAvailable?: boolean;
   isActive: boolean;
-  isUniqueInstance?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
+  isUniqueInstance: boolean;
+  createdAt: string;
+  updatedAt: string;
+  categories: Category[];
+  tags: Tag[];
+  images: string[];
+  totalInstances: number;
+  availableInstances: number;
 }
 
 export interface Tag {
@@ -190,8 +175,8 @@ export interface Category {
   subCategories?: Category[];
 }
 
-// ==================== Product Search ====================
-export interface SearchProductsRequest {
+// ==================== Plant Search ====================
+export interface SearchPlantsRequest {
   pagination?: {
     pageNumber: number;
     pageSize: number;
@@ -211,17 +196,19 @@ export interface SearchProductsRequest {
   maxBasePrice?: number;
   categoryIds?: number[];
   tagIds?: number[];
+  sizes?: number[];
+  fengShuiElement?: string;
   nurseryId?: number;
   sortBy?: string;
   sortDirection?: string;
 }
 
-export interface SearchProductsResponse {
+export interface SearchPlantsResponse {
   success: boolean;
   statusCode: number;
   message: string;
   payload: {
-    items: Product[];
+    items: Plant[];
     totalCount: number;
     pageNumber: number;
     pageSize: number;
@@ -235,79 +222,79 @@ export interface PlantDetailResponse {
   success: boolean;
   statusCode: number;
   message: string;
-  payload: Product;
+  payload: Plant;
 }
 
 // ==================== Cart ====================
 export interface CartItem {
   id: string;
-  product: Product;
+  plant: Plant;
   quantity: number;
 }
 
-// ==================== Order ====================
-export interface Order {
-  id: string;
-  items: OrderItem[];
-  totalAmount: number;
-  shippingFee: number;
-  discount: number;
-  finalAmount: number;
-  status: OrderStatus;
-  shippingAddress: Address;
-  paymentMethod: PaymentMethod;
-  note?: string;
-  createdAt: string;
-  updatedAt: string;
-}
+// // ==================== Order ====================
+// export interface Order {
+//   id: string;
+//   items: OrderItem[];
+//   totalAmount: number;
+//   shippingFee: number;
+//   discount: number;
+//   finalAmount: number;
+//   status: OrderStatus;
+//   shippingAddress: Address;
+//   paymentMethod: PaymentMethod;
+//   note?: string;
+//   createdAt: string;
+//   updatedAt: string;
+// }
 
-export interface OrderItem {
-  product: Product;
-  quantity: number;
-  price: number;
-}
+// export interface OrderItem {
+//   plant: Plant;
+//   quantity: number;
+//   price: number;
+// }
 
-export type OrderStatus =
-  | 'pending'
-  | 'confirmed'
-  | 'processing'
-  | 'shipping'
-  | 'delivered'
-  | 'cancelled';
+// export type OrderStatus =
+//   | 'pending'
+//   | 'confirmed'
+//   | 'processing'
+//   | 'shipping'
+//   | 'delivered'
+//   | 'cancelled';
 
-export type PaymentMethod = 'cod' | 'bank_transfer' | 'momo' | 'vnpay';
+// export type PaymentMethod = 'cod' | 'bank_transfer' | 'momo' | 'vnpay';
 
-// ==================== AI Design ====================
-export interface AIDesignRequest {
-  roomImage: string;
-  roomType: 'living_room' | 'bedroom' | 'office' | 'balcony' | 'garden';
-  style: 'modern' | 'minimalist' | 'tropical' | 'zen' | 'classic';
-  budget?: 'low' | 'medium' | 'high';
-  preferences?: string;
-}
+// // ==================== AI Design ====================
+// export interface AIDesignRequest {
+//   roomImage: string;
+//   roomType: 'living_room' | 'bedroom' | 'office' | 'balcony' | 'garden';
+//   style: 'modern' | 'minimalist' | 'tropical' | 'zen' | 'classic';
+//   budget?: 'low' | 'medium' | 'high';
+//   preferences?: string;
+// }
 
-export interface AIDesignResult {
-  id: string;
-  originalImage: string;
-  designedImage: string;
-  suggestedProducts: Product[];
-  description: string;
-  estimatedCost: number;
-  createdAt: string;
-}
+// export interface AIDesignResult {
+//   id: string;
+//   originalImage: string;
+//   designedImage: string;
+//   suggestedPlants: Plant[];
+//   description: string;
+//   estimatedCost: number;
+//   createdAt: string;
+// }
 
-// ==================== Review ====================
-export interface Review {
-  id: string;
-  userId: string;
-  userName: string;
-  userAvatar?: string;
-  productId: string;
-  rating: number;
-  comment: string;
-  images?: string[];
-  createdAt: string;
-}
+// // ==================== Review ====================
+// export interface Review {
+//   id: string;
+//   userId: string;
+//   userName: string;
+//   userAvatar?: string;
+//   plantId: string;
+//   rating: number;
+//   comment: string;
+//   images?: string[];
+//   createdAt: string;
+// }
 
 // ==================== API Response ====================
 // Generic envelope used by most endpoints (data or payload field)
@@ -330,7 +317,7 @@ export interface PaginatedResponse<T> {
 // ==================== Navigation ====================
 export type RootStackParamList = {
   MainTabs: undefined;
-  ProductDetail: { productId: string };
+  PlantDetail: { plantId: string };
   AIDesign: undefined;
   AIDesignResult: { resultId: string };
   Cart: undefined;
@@ -341,14 +328,14 @@ export type RootStackParamList = {
   Register: undefined;
   Search: undefined;
   Catalog: undefined;
-  CategoryProducts: { categoryId: string; categoryName: string };
+  CategoryPlants: { categoryId: string; categoryName: string };
   EditProfile: undefined;
   OrderHistory: undefined;
 };
 
 export type MainTabParamList = {
   Home: undefined;
-  Products: undefined;
+  Plants: undefined;
   AIDesignTab: undefined;
   CartTab: undefined;
   Profile: undefined;

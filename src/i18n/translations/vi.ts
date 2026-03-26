@@ -70,7 +70,7 @@ const vi = {
     passwordMismatch: 'Mật khẩu không khớp.',
     success: 'Đăng ký thành công! Vui lòng xác minh email của bạn.',
   },
-  products: {
+  plants: {
     headerTitle: 'Cây cảnh',
     careEasy: 'Dễ chăm',
     careMedium: 'Trung bình',
@@ -144,7 +144,7 @@ const vi = {
     styleZen: 'Zen',
     styleClassic: 'Cổ điển',
   },
-  productDetail: {
+  plantDetail: {
     biologicalProperties: 'Thuộc tính sinh học',
     size: 'Kích thước',
     location: 'Vị trí',
@@ -192,7 +192,7 @@ const vi = {
     orderHistory: 'Lịch sử đơn hàng',
     cartWithCount: 'Giỏ hàng ({{count}})',
     myAIDesign: 'Thiết kế AI của tôi',
-    favoriteProducts: 'Sản phẩm yêu thích',
+    favoritePlants: 'Sản phẩm yêu thích',
     settings: 'Cài đặt',
     logoutConfirmTitle: 'Đăng xuất',
     logoutConfirmMessage: 'Bạn có chắc chắn muốn đăng xuất?',

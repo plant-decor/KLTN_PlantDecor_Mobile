@@ -53,8 +53,8 @@ src/
 │   └── index.ts
 ├── screens/             # Các màn hình chính
 │   ├── Home/            # Trang chủ
-│   ├── Products/        # Danh sách sản phẩm
-│   ├── ProductDetail/   # Chi tiết sản phẩm
+│   ├── Plants/        # Danh sách sản phẩm
+│   ├── PlantDetail/   # Chi tiết sản phẩm
 │   ├── Cart/            # Giỏ hàng
 │   ├── Profile/         # Tài khoản
 │   ├── AIDesign/        # Thiết kế AI
@@ -62,12 +62,12 @@ src/
 ├── services/            # API service layer
 │   ├── api.ts           # Axios instance + interceptors
 │   ├── authService.ts   # Auth API calls
-│   ├── productService.ts
+│   ├── plantService.ts
 │   └── index.ts
 ├── stores/              # Zustand state management
 │   ├── useAuthStore.ts
 │   ├── useCartStore.ts
-│   ├── useProductStore.ts
+│   ├── usePlantStore.ts
 │   ├── useAIDesignStore.ts
 │   └── index.ts
 ├── types/               # TypeScript type definitions
@@ -124,7 +124,7 @@ Quản lý xác thực người dùng: đăng nhập, đăng ký, đăng xuất,
 ### `useCartStore`
 Quản lý giỏ hàng: thêm/xóa sản phẩm, tăng/giảm số lượng, tính tổng tiền.
 
-### `useProductStore`
+### `usePlantStore`
 Quản lý sản phẩm: fetch danh sách, tìm kiếm, phân trang, lọc theo danh mục.
 
 ### `useAIDesignStore`
@@ -142,7 +142,7 @@ Chỉnh sửa trong [src/constants/index.ts](src/constants/index.ts):
 export const API = {
   BASE_URL: __DEV__
     ? 'http://10.0.2.2:3000/api'       // Android Emulator
-    : 'https://api.plantdecor.vn/api',  // Production
+    : 'https://api.plantdecor.vn/api',  // Plantion
 };
 ```
 
@@ -164,8 +164,8 @@ export const API = {
 | Màn hình | Mô tả |
 |---|---|
 | **Home** | Trang chủ với banner AI, danh mục, sản phẩm nổi bật |
-| **Products** | Danh sách cây cảnh với infinite scroll |
-| **ProductDetail** | Chi tiết sản phẩm, thông tin chăm sóc, thêm giỏ hàng |
+| **Plants** | Danh sách cây cảnh với infinite scroll |
+| **PlantDetail** | Chi tiết sản phẩm, thông tin chăm sóc, thêm giỏ hàng |
 | **Cart** | Quản lý giỏ hàng, tăng/giảm số lượng, thanh toán |
 | **AIDesign** | Chọn ảnh → chọn loại không gian & phong cách → AI sinh thiết kế |
 | **Profile** | Thông tin tài khoản, lịch sử đơn hàng, cài đặt |
