@@ -6,7 +6,7 @@ import {
   ScrollView,
   Image,
   TouchableOpacity,
-  // ActivityIndicator,
+  ActivityIndicator,
   Dimensions,
   FlatList,
 } from 'react-native';
@@ -16,7 +16,7 @@ import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, SPACING, RADIUS, SHADOWS } from '../../constants';
 import { usePlantStore, useCartStore } from '../../stores';
-import { RootStackParamList, Plant } from '../../types';
+import { RootStackParamList } from '../../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type ScreenRouteProp = RouteProp<RootStackParamList, 'PlantDetail'>;
@@ -48,103 +48,6 @@ function AttributeCard({ icon, iconColor, iconBg, label, value }: AttributeProps
   );
 }
 
-// ---------- Mock review (matches Figma) ----------
-const MOCK_REVIEW = {
-  id: 'r1',
-  userName: 'Linh Nguyễn',
-  rating: 5,
-  daysAgo: 2,
-  comment:
-    'Cây rất khỏe và đẹp, đóng gói cẩn thận. Giao hàng nhanh hơn dự kiến!',
-  commentEn:
-    'The plant is very healthy and beautiful, carefully packed. Delivery was faster than expected!',
-};
-
-// ---------- Mock related plants ----------
-const MOCK_RELATED: {
-  id: string;
-  name: string;
-  subtitle: string;
-  price: number;
-  image: string;
-}[] = [
-  {
-    id: 'rel1',
-    name: 'Cây gà',
-    subtitle: 'Dễ chăm sóc • Trong nhà',
-    price: 250000,
-    image:
-      'https://images.unsplash.com/photo-1614594975525-e45190c55d0b?auto=format&fit=crop&w=900&q=80',
-  },
-  {
-    id: 'rel2',
-    name: 'Cây gà',
-    subtitle: 'Dễ chăm sóc • Trong nhà',
-    price: 250000,
-    image:
-      'https://images.unsplash.com/photo-1614594975525-e45190c55d0b?auto=format&fit=crop&w=900&q=80',
-  },
-  {
-    id: 'rel3',
-    name: 'Monstera',
-    subtitle: 'Dễ chăm sóc • Trong nhà',
-    price: 390000,
-    image:
-      'https://images.unsplash.com/photo-1604762524889-3e2fcc145683?auto=format&fit=crop&w=900&q=80',
-  },
-  {
-    id: 'rel4',
-    name: 'Kim tiền',
-    subtitle: 'Dễ chăm sóc • Trong nhà',
-    price: 290000,
-    image:
-      'https://images.unsplash.com/photo-1463320898484-cdee8141c787?auto=format&fit=crop&w=900&q=80',
-  },
-];
-
-// ---------- Mock plant (used when API data is unavailable) ----------
-const MOCK_PLANT: Plant = {
-  id: 'mock-1',
-  name: 'Monstera Deliciosa',
-  specificName: 'Monstera deliciosa',
-  origin: 'Trung My',
-  description:
-    'Monstera Deliciosa là loại cây lá lớn nhiệt đới nổi tiếng với những chiếc lá xẻ tự nhiên. Thích hợp trồng trong nhà, dễ chăm sóc, mang đến không gian xanh mát và hiện đại.',
-  basePrice: 450000,
-  placementType: 1,
-  placementTypeName: 'Indoor',
-  growthRate: 'Trung binh',
-  toxicity: true,
-  airPurifying: true,
-  hasFlower: false,
-  petSafe: false,
-  childSafe: false,
-  fengShuiElement: 'Moc',
-  fengShuiMeaning: 'Tang truong va can bang',
-  potIncluded: true,
-  potSize: '20x20 cm',
-  careLevelType: 1,
-  images: [
-    'https://images.unsplash.com/photo-1604762524889-3e2fcc145683?auto=format&fit=crop&w=900&q=80',
-    'https://images.unsplash.com/photo-1614594975525-e45190c55d0b?auto=format&fit=crop&w=900&q=80',
-  ],
-  categories: [{ id: 'c1', name: 'Indoor', slug: 'indoor' }],
-  tags: [
-    { id: 1, tagName: 'Popular', tagType: 1 },
-    { id: 2, tagName: 'Indoor', tagType: 1 },
-  ],
-  careLevel: 'Easy',
-  careLevelTypeName: 'Easy',
-  size: 2,
-  sizeName: 'Medium',
-  isActive: true,
-  isUniqueInstance: false,
-  totalInstances: 0,
-  availableInstances: 0,
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
-};
-
 // ============================================================
 export default function PlantDetailScreen() {
   const { t, i18n } = useTranslation();
@@ -153,34 +56,43 @@ export default function PlantDetailScreen() {
   const { plantId: plantId } = route.params;
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
 
-  const { selectedPlant, isLoading, fetchPlantDetail, plants } =
+  const { selectedPlant, isLoading, fetchPlantDetail, fetchPlants, plants } =
     usePlantStore();
   const { addToCart } = useCartStore();
 
   useEffect(() => {
     fetchPlantDetail(plantId);
-  }, [plantId]);
+  }, [fetchPlantDetail, plantId]);
 
-  // Use store plant if available, otherwise fall back to mock
-  const plant: Plant = selectedPlant ?? MOCK_PLANT;
+  useEffect(() => {
+    if (plants.length === 0) {
+      fetchPlants({ page: 1, sortBy: 'createdAt', sortDirection: 'desc' });
+    }
+  }, [fetchPlants, plants.length]);
 
-  // Related plants from store (exclude current), fall back to mock
+  const plant = selectedPlant;
+
+  // Related plants from store (exclude current)
   const relatedPlants = useMemo(() => {
-    const pool = plants.filter((p) => p.id !== plantId).slice(0, 4);
-    if (pool.length > 0) {
-      return pool.map((p: Plant) => ({
+    return plants
+      .filter((p) => String(p.id) !== String(plantId))
+      .slice(0, 4)
+      .map((p) => ({
         id: p.id,
         name: p.name,
         subtitle: t('plantDetail.defaultSubtitle'),
         price: p.basePrice ?? 0,
-        image: p.images?.[0] || MOCK_RELATED[0].image,
+        image: p.images?.[0] ?? '',
       }));
-    }
-    return MOCK_RELATED;
   }, [plants, plantId, t]);
+
+  const plantImage = plant?.images?.[0] ?? '';
 
   // ---------- helpers ----------
   const getCareLabel = () => {
+    if (!plant) {
+      return '';
+    }
     if (plant.careLevelTypeName) {
       return plant.careLevelTypeName;
     }
@@ -198,10 +110,16 @@ export default function PlantDetailScreen() {
   };
 
   const getLightLabel = () => {
+    if (!plant) {
+      return '';
+    }
     return plant.placementTypeName || '';
   };
 
   const getSizeLabel = () => {
+    if (!plant) {
+      return '';
+    }
     if (plant.sizeName) {
       return plant.sizeName;
     }
@@ -209,13 +127,33 @@ export default function PlantDetailScreen() {
   };
 
   // ---------- loading / empty state ----------
-  // if (isLoading || !plant) {
-  //   return (
-  //     <View style={styles.loaderContainer}>
-  //       <ActivityIndicator size="large" color={COLORS.primary} />
-  //     </View>
-  //   );
-  // }
+  if (isLoading && !plant) {
+    return (
+      <View style={styles.loaderContainer}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
+
+  if (!plant) {
+    return (
+      <View style={styles.loaderContainer}>
+        <Text style={styles.emptyTitle}>
+          {t('plantDetail.notFoundTitle', { defaultValue: 'Plant not found' })}
+        </Text>
+        <Text style={styles.emptySubtitle}>
+          {t('plantDetail.notFoundMessage', {
+            defaultValue: 'This plant is unavailable or has been removed.',
+          })}
+        </Text>
+        <TouchableOpacity style={styles.backToListBtn} onPress={() => navigation.goBack()}>
+          <Text style={styles.backToListText}>
+            {t('common.goBack', { defaultValue: 'Go back' })}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   const price = plant.basePrice ?? 0;
 
@@ -228,11 +166,17 @@ export default function PlantDetailScreen() {
       >
         {/* ===== Hero image ===== */}
         <View style={styles.heroWrap}>
-          <Image
-            source={{ uri: plant.images[0] }}
-            style={styles.heroImage}
-            resizeMode="cover"
-          />
+          {plantImage ? (
+            <Image
+              source={{ uri: plantImage }}
+              style={styles.heroImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={styles.heroPlaceholder}>
+              <Ionicons name="leaf-outline" size={52} color={COLORS.gray500} />
+            </View>
+          )}
 
           {/* Overlay nav buttons */}
           <View style={styles.heroOverlay}>
@@ -418,110 +362,66 @@ export default function PlantDetailScreen() {
             </View>
           )}
 
-          {/* ===== Reviews ===== */}
-          <View style={styles.sectionWrap}>
-            <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionTitle}>
-                {t('plantDetail.reviews')}
-              </Text>
-              <TouchableOpacity>
-                <Text style={styles.viewAllText}>
-                  {t('plantDetail.viewAll')}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.reviewCard}>
-              <View style={styles.reviewHeader}>
-                <View style={styles.reviewAvatarPlaceholder}>
-                  <Text style={styles.reviewAvatarText}>
-                    {MOCK_REVIEW.userName.charAt(0)}
-                  </Text>
-                </View>
-                <View style={styles.reviewMeta}>
-                  <Text style={styles.reviewName}>{MOCK_REVIEW.userName}</Text>
-                  <View style={styles.reviewStars}>
-                    {[1, 2, 3, 4, 5].map((s) => (
-                      <Ionicons
-                        key={s}
-                        name="star"
-                        size={12}
-                        color={
-                          s <= MOCK_REVIEW.rating ? '#EAB308' : COLORS.gray300
-                        }
-                      />
-                    ))}
-                  </View>
-                </View>
-                <Text style={styles.reviewDate}>
-                  {t('plantDetail.daysAgo', { count: MOCK_REVIEW.daysAgo })}
-                </Text>
-              </View>
-              <Text style={styles.reviewComment}>
-                {i18n.language === 'vi'
-                  ? MOCK_REVIEW.comment
-                  : MOCK_REVIEW.commentEn}
-              </Text>
-            </View>
-          </View>
-
           {/* ===== You may also like ===== */}
-          <View style={styles.sectionWrap}>
+          {relatedPlants.length > 0 && (
+            <View style={styles.sectionWrap}>
             <Text style={styles.sectionTitle}>
               {t('plantDetail.youMayAlsoLike')}
             </Text>
-          </View>
+            </View>
+          )}
         </View>
 
         {/* Horizontal related plants (outside card padding for full bleed) */}
-        <FlatList
-          data={relatedPlants}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          keyExtractor={(item) => String(item.id)}
-          contentContainerStyle={styles.relatedList}
-          scrollEnabled={false}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={styles.relatedCard}
-              onPress={() =>
-                navigation.push('PlantDetail', { plantId: String(item.id) })
-              }
-            >
-              <View style={styles.relatedImageWrap}>
-                <Image
-                  source={{ uri: item.image }}
-                  style={styles.relatedImage}
-                  resizeMode="cover"
-                />
-                <TouchableOpacity style={styles.relatedHeartBtn}>
-                  <Ionicons
-                    name="heart-outline"
-                    size={16}
-                    color={COLORS.white}
-                  />
-                </TouchableOpacity>
-                <View style={styles.relatedRatingBadge}>
-                  <Ionicons name="star" size={10} color="#FACC15" />
-                  <Text style={styles.relatedRatingText}>4.8</Text>
+        {relatedPlants.length > 0 && (
+          <FlatList
+            data={relatedPlants}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={(item) => String(item.id)}
+            contentContainerStyle={styles.relatedList}
+            scrollEnabled={false}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={styles.relatedCard}
+                onPress={() =>
+                  navigation.push('PlantDetail', { plantId: String(item.id) })
+                }
+              >
+                <View style={styles.relatedImageWrap}>
+                  {item.image ? (
+                    <Image
+                      source={{ uri: item.image }}
+                      style={styles.relatedImage}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={styles.relatedImagePlaceholder}>
+                      <Ionicons name="leaf-outline" size={28} color={COLORS.gray500} />
+                    </View>
+                  )}
+                  <TouchableOpacity style={styles.relatedHeartBtn}>
+                    <Ionicons
+                      name="heart-outline"
+                      size={16}
+                      color={COLORS.white}
+                    />
+                  </TouchableOpacity>
                 </View>
-                <View style={styles.relatedHotBadge}>
-                  <Text style={styles.relatedHotText}>{t('home.hot')}</Text>
+                <Text style={styles.relatedName}>{item.name}</Text>
+                <Text style={styles.relatedSub}>{item.subtitle}</Text>
+                <View style={styles.relatedPriceRow}>
+                  <Text style={styles.relatedPrice}>
+                    {(item.price || 0).toLocaleString(locale)}₫
+                  </Text>
+                  <View style={styles.relatedPlusBtn}>
+                    <Ionicons name="add" size={14} color={COLORS.black} />
+                  </View>
                 </View>
-              </View>
-              <Text style={styles.relatedName}>{item.name}</Text>
-              <Text style={styles.relatedSub}>{item.subtitle}</Text>
-              <View style={styles.relatedPriceRow}>
-                <Text style={styles.relatedPrice}>
-                  {(item.price || 0).toLocaleString(locale)}₫
-                </Text>
-                <View style={styles.relatedPlusBtn}>
-                  <Ionicons name="add" size={14} color={COLORS.black} />
-                </View>
-              </View>
-            </TouchableOpacity>
-          )}
-        />
+              </TouchableOpacity>
+            )}
+          />
+        )}
 
         {/* Bottom spacer for sticky bar */}
         <View style={{ height: 84 }} />
@@ -557,6 +457,33 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#F6F8F6',
+    paddingHorizontal: SPACING.xl,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#0D1B12',
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    marginTop: 8,
+    fontSize: 14,
+    fontWeight: '400',
+    color: '#6B7280',
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  backToListBtn: {
+    marginTop: 16,
+    backgroundColor: '#13EC5B',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  backToListText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#102216',
   },
 
   // ---- Hero ----
@@ -568,6 +495,13 @@ const styles = StyleSheet.create({
   heroImage: {
     width,
     height: IMAGE_HEIGHT,
+  },
+  heroPlaceholder: {
+    width,
+    height: IMAGE_HEIGHT,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.gray200,
   },
   heroOverlay: {
     position: 'absolute',
@@ -906,6 +840,13 @@ const styles = StyleSheet.create({
   relatedImage: {
     width: '100%',
     height: '100%',
+  },
+  relatedImagePlaceholder: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.gray200,
   },
   relatedHeartBtn: {
     position: 'absolute',

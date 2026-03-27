@@ -44,8 +44,6 @@ export default function CatalogScreen() {
   const [selectedCareLevel, setSelectedCareLevel] = useState<CareLevelTypeEnum | null>(null);
   const [selectedPlacement, setSelectedPlacement] = useState<PlacementTypeEnum | null>(null);
   const [showFilters, setShowFilters] = useState(false);
-
-  // Additional filter states
   const [toxicity, setToxicity] = useState<boolean>(false);
   const [airPurifying, setAirPurifying] = useState<boolean>(false);
   const [hasFlower, setHasFlower] = useState<boolean>(false);
@@ -120,8 +118,6 @@ export default function CatalogScreen() {
     setMaxPriceInput('200000000');
     setSelectedCareLevel(null);
     setSelectedPlacement(null);
-
-    // Reset additional filters
     setToxicity(false);
     setAirPurifying(false);
     setHasFlower(false);
@@ -380,13 +376,13 @@ export default function CatalogScreen() {
             <Ionicons name="star" size={12} color="#FACC15" />
             <Text style={styles.ratingText}>4.8</Text>
           </View>
-          {item.availableInstances === 0 && (
+          {/* {item.availableInstances === 0 && (
             <View style={styles.soldOutOverlay}>
               <View style={styles.soldOutBadge}>
                 <Text style={styles.soldOutText}>{t('cart.soldOut')}</Text>
               </View>
             </View>
-          )}
+          )} */}
         </View>
         <View style={styles.plantInfo}>
           <Text style={styles.plantName} numberOfLines={1}>

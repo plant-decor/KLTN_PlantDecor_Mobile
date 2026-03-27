@@ -99,9 +99,7 @@ export const usePlantStore = create<PlantState>((set) => ({
   searchShopPlants: async (request) => {
     set({ isLoading: true, error: null });
     try {
-      console.log('Searching plants with request:', request);
       const result = await plantService.searchShopPlants(request);
-      console.log('Search result:', result);
       if (result && result.items) {
         const normalizedPlants = result.items.map(normalizePlant);
 

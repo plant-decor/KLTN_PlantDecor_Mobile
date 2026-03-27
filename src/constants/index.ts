@@ -142,7 +142,8 @@ export const SHADOWS = {
 
 // ==================== API ====================
 export const API = {
-  BASE_URL: __DEV__ ? ENV.DEV_API_URL : ENV.PROD_API_URL,
+  // BASE_URL: __DEV__ ? ENV.DEV_API_URL : ENV.PROD_API_URL,
+  BASE_URL: ENV.PROD_API_URL,
   TIMEOUT: ENV.API_TIMEOUT,
   ENDPOINTS: {
     // Auth

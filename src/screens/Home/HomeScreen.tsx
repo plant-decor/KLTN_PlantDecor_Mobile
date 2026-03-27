@@ -38,41 +38,6 @@ type HomeSortKey = 'newest' | 'priceAsc' | 'priceDesc';
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - SPACING.lg * 3) / 2 - 2;
 
-const MOCK_PLANTS: HomePlant[] = [
-  {
-    id: 'm1',
-    name: 'Cây gà',
-    subtitle: 'Dễ chăm sóc • Trong nhà',
-    price: 250000,
-    image:
-      'https://images.unsplash.com/photo-1614594975525-e45190c55d0b?auto=format&fit=crop&w=900&q=80',
-  },
-  {
-    id: 'm2',
-    name: 'Cây gà',
-    subtitle: 'Dễ chăm sóc • Trong nhà',
-    price: 250000,
-    image:
-      'https://images.unsplash.com/photo-1614594975525-e45190c55d0b?auto=format&fit=crop&w=900&q=80',
-  },
-  {
-    id: 'm3',
-    name: 'Monstera',
-    subtitle: 'Dễ chăm sóc • Trong nhà',
-    price: 390000,
-    image:
-      'https://images.unsplash.com/photo-1604762524889-3e2fcc145683?auto=format&fit=crop&w=900&q=80',
-  },
-  {
-    id: 'm4',
-    name: 'Kim tiền',
-    subtitle: 'Dễ chăm sóc • Trong nhà',
-    price: 290000,
-    image:
-      'https://images.unsplash.com/photo-1463320898484-cdee8141c787?auto=format&fit=crop&w=900&q=80',
-  },
-];
-
 export default function HomeScreen() {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
@@ -103,7 +68,7 @@ export default function HomeScreen() {
 
   const homePlants = useMemo<HomePlant[]>(() => {
     if (plants.length === 0) {
-      return MOCK_PLANTS;
+      return [];
     }
 
     return plants.slice(0, 4).map((item: Plant) => ({
@@ -111,7 +76,7 @@ export default function HomeScreen() {
       name: item.name,
       subtitle: t('home.defaultSubtitle'),
       price: item.basePrice ?? 0,
-      image: item.images?.[0] || MOCK_PLANTS[0].image,
+      image: item.images?.[0] || '',
     }));
   }, [plants, t]);
 
