@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Image,
   FlatList,
+  TextInput,
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -30,7 +31,7 @@ type HomePlant = {
   name: string;
   subtitle: string;
   price: number;
-  image: string;
+  image?: string;
 };
 
 type HomeSortKey = 'newest' | 'priceAsc' | 'priceDesc';
@@ -45,6 +46,10 @@ export default function HomeScreen() {
   const totalItems = useCartStore((state) => state.totalItems);
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
   const [selectedSort, setSelectedSort] = useState<HomeSortKey>('newest');
+  const [keyword, setKeyword] = useState('');
+  const [aiListWidth, setAiListWidth] = useState(0);
+  const [aiContentWidth, setAiContentWidth] = useState(0);
+  const [aiScrollX, setAiScrollX] = useState(0);
 
   const sortOptions: Array<{ key: HomeSortKey; label: string }> = [
     { key: 'newest', label: 'Newest' },
@@ -76,45 +81,61 @@ export default function HomeScreen() {
       name: item.name,
       subtitle: t('home.defaultSubtitle'),
       price: item.basePrice ?? 0,
-      image: item.images?.[0] || '',
+      image: item.images?.find((image) => typeof image === 'string' && image.trim().length > 0),
     }));
   }, [plants, t]);
 
-  const renderPlantCard = ({ item }: { item: HomePlant }) => (
-    <TouchableOpacity
-      style={styles.plantCard}
-      onPress={() => navigation.navigate('PlantDetail', { plantId: item.id })}
-      activeOpacity={0.7}
-    >
-      <View style={styles.imageWrap}>
-        <Image source={{ uri: item.image }} style={styles.plantImage} resizeMode="cover" />
+  const renderPlantCard = ({ item }: { item: HomePlant }) => {
+    const imageUri = item.image?.trim();
 
-        <View style={styles.hotBadge}>
-          <Text style={styles.hotBadgeText}>{t('home.hot')}</Text>
-        </View>
+    return (
+      <TouchableOpacity
+        style={styles.plantCard}
+        onPress={() => navigation.navigate('PlantDetail', { plantId: item.id })}
+        activeOpacity={0.7}
+      >
+        <View style={styles.imageWrap}>
+          {imageUri ? (
+            <Image source={{ uri: imageUri }} style={styles.plantImage} resizeMode="cover" />
+          ) : (
+            <View style={styles.imagePlaceholder}>
+              <Ionicons name="leaf-outline" size={32} color={COLORS.gray500} />
+            </View>
+          )}
 
-        <TouchableOpacity style={styles.favoriteBtn}>
-          <Ionicons name="heart-outline" size={16} color={COLORS.white} />
-        </TouchableOpacity>
+          <View style={styles.hotBadge}>
+            <Text style={styles.hotBadgeText}>{t('home.hot')}</Text>
+          </View>
 
-        <View style={styles.ratingBadge}>
-          <Ionicons name="star" size={10} color={COLORS.warning} />
-          <Text style={styles.ratingBadgeText}>4.8</Text>
-        </View>
-      </View>
-
-      <View style={styles.plantInfo}>
-        <Text style={styles.plantName}>{item.name}</Text>
-        <Text style={styles.plantSub}>{item.subtitle}</Text>
-        <View style={styles.priceRow}>
-          <Text style={styles.plantPrice}>{(item.price || 0).toLocaleString(locale)}đ</Text>
-          <TouchableOpacity style={styles.plusBtn}>
-            <Ionicons name="add" size={15} color={COLORS.black} />
+          <TouchableOpacity style={styles.favoriteBtn}>
+            <Ionicons name="heart-outline" size={16} color={COLORS.white} />
           </TouchableOpacity>
+
+          <View style={styles.ratingBadge}>
+            <Ionicons name="star" size={10} color={COLORS.warning} />
+            <Text style={styles.ratingBadgeText}>4.8</Text>
+          </View>
         </View>
-      </View>
-    </TouchableOpacity>
-  );
+
+        <View style={styles.plantInfo}>
+          <Text style={styles.plantName}>{item.name}</Text>
+          <Text style={styles.plantSub}>{item.subtitle}</Text>
+          <View style={styles.priceRow}>
+            <Text style={styles.plantPrice}>{(item.price || 0).toLocaleString(locale)}đ</Text>
+            <TouchableOpacity style={styles.plusBtn}>
+              <Ionicons name="add" size={15} color={COLORS.black} />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const hasMoreAiItems = homePlants.length > 1;
+  const showAiArrowLeft = aiScrollX > 4;
+  const showAiArrowRight = hasMoreAiItems
+    ? aiContentWidth === 0 || aiContentWidth - aiListWidth - aiScrollX > 4
+    : false;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -139,57 +160,57 @@ export default function HomeScreen() {
               {totalItems() > 0 && <View style={styles.cartDot} />}
             </TouchableOpacity>
           </View>
-        </View>
-
-        <View style={styles.searchWrap}>
-          <View style={styles.searchInputWrap}>
-            <Ionicons name="search" size={20} color={COLORS.primary} />
-            <Text style={styles.searchText}>{t('home.searchPlaceholder')}</Text>
+          <View style={styles.searchContainer}>
+            <View style={styles.searchBar}>
+              <Ionicons name="search" size={20} color={COLORS.primary} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder={t('home.searchPlaceholder')}
+                placeholderTextColor="#0DA84D"
+                value={keyword}
+                onChangeText={setKeyword}
+              />
+            </View>
           </View>
-          <TouchableOpacity style={styles.filterBtn}>
-            <Ionicons name="swap-vertical-outline" size={20} color={COLORS.primary} />
-          </TouchableOpacity>
         </View>
-
-        <FlatList
-          data={sortOptions}
-          horizontal
-          keyExtractor={(item) => item.key}
-          contentContainerStyle={styles.sortList}
-          showsHorizontalScrollIndicator={false}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={[
-                styles.sortChip,
-                item.key === selectedSort && styles.sortChipActive,
-              ]}
-              onPress={() => setSelectedSort(item.key)}
-            >
-              <Text
-                style={[
-                  styles.sortText,
-                  item.key === selectedSort && styles.sortTextActive,
-                ]}
-              >
-                {item.label}
-              </Text>
-            </TouchableOpacity>
-          )}
-        />
 
         <View style={styles.sectionHeader}>
           <Ionicons name="sparkles" size={16} color={COLORS.primaryLight} />
           <Text style={styles.sectionTitle}>{t('home.aiSuggestions')}</Text>
         </View>
 
-        <FlatList
-          data={homePlants.slice(0, 2)}
-          renderItem={renderPlantCard}
-          keyExtractor={(item) => item.id}
-          numColumns={2}
-          columnWrapperStyle={styles.plantRow}
-          scrollEnabled={false}
-        />
+        <View
+          style={styles.aiSliderWrap}
+          onLayout={(event) => setAiListWidth(event.nativeEvent.layout.width)}
+        >
+          <FlatList
+            data={homePlants}
+            renderItem={renderPlantCard}
+            keyExtractor={(item) => `ai-${item.id}`}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.aiList}
+            ItemSeparatorComponent={() => <View style={styles.aiSeparator} />}
+            snapToInterval={CARD_WIDTH + SPACING.md}
+            snapToAlignment="start"
+            decelerationRate="fast"
+            onContentSizeChange={(width) => setAiContentWidth(width)}
+            onScroll={(event) => setAiScrollX(event.nativeEvent.contentOffset.x)}
+            scrollEventThrottle={16}
+          />
+          <View style={styles.aiArrowOverlay} pointerEvents="none">
+            {showAiArrowLeft && (
+              <View style={[styles.aiArrow, styles.aiArrowLeft]}>
+                <Ionicons name="chevron-back" size={18} color={COLORS.primary} />
+              </View>
+            )}
+            {showAiArrowRight && (
+              <View style={[styles.aiArrow, styles.aiArrowRight]}>
+                <Ionicons name="chevron-forward" size={18} color={COLORS.primary} />
+              </View>
+            )}
+          </View>
+        </View>
 
         <LinearGradient
           colors={[COLORS.primaryDark, COLORS.primary]}
@@ -238,15 +259,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
   },
   stickyHeader: {
-    backgroundColor: COLORS.gray100,
+    backgroundColor: COLORS.background,
     zIndex: 10,
   },
   header: {
-    marginTop: SPACING.sm,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: SPACING.lg,
+    paddingVertical: SPACING.md,
   },
   iconBtn: {
     width: 34,
@@ -273,33 +293,38 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.full,
     backgroundColor: COLORS.primaryLight,
   },
-  searchWrap: {
-    backgroundColor: COLORS.white,
-    borderRadius: RADIUS['2xl'],
+  searchContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
-    overflow: 'hidden',
-    marginBottom: SPACING.md,
-  },
-  searchInputWrap: {
-    flex: 1,
-    height: 46,
-    paddingHorizontal: SPACING.md,
-    flexDirection: 'row',
-    alignItems: 'center',
+    paddingBottom: SPACING.md,
     gap: SPACING.sm,
   },
-  searchText: {
-    fontSize: FONTS.sizes.xl,
-    color: COLORS.primary,
+  searchBar: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E7FDF0',
+    borderRadius: 24,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    gap: SPACING.sm,
+    borderWidth: 0.5,
+    borderColor: '#0DA84D',
   },
-  filterBtn: {
-    height: 46,
-    width: 46,
-    borderLeftWidth: 1,
-    borderLeftColor: COLORS.gray200,
+  searchInput: {
+    flex: 1,
+    fontSize: FONTS.sizes.md,
+    color: '#0DA84D',
+    padding: 0,
+  },
+  filterToggle: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#E7FDF0',
+    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 0.5,
+    borderColor: '#0DA84D',
   },
   sortList: {
     paddingVertical: SPACING.sm,
@@ -330,6 +355,45 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
     marginBottom: SPACING.md,
   },
+  aiSliderWrap: {
+    position: 'relative',
+  },
+  aiList: {
+    paddingRight: SPACING.lg,
+  },
+  aiSeparator: {
+    width: SPACING.md,
+  },
+  aiArrowOverlay: {
+    position: 'absolute',
+    top: 0,
+    height: CARD_WIDTH,
+    left: -10,
+    right: 0,
+    alignItems: 'center',
+  },
+  aiArrow: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderWidth: 1,
+    borderColor: COLORS.gray200,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  aiArrowLeft: {
+    position: 'absolute',
+    left: 4,
+    top: '50%',
+    marginTop: -8,
+  },
+  aiArrowRight: {
+    position: 'absolute',
+    right: 4,
+    top: '50%',
+    marginTop: -8,
+  },
   sectionTitle: {
     fontSize: FONTS.sizes['2xl'],
     fontWeight: '700',
@@ -351,6 +415,11 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.gray200,
     height: CARD_WIDTH,
     position: 'relative',
+  },
+  imagePlaceholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   plantImage: {
     width: '100%',

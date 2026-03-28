@@ -408,11 +408,11 @@ export default function CatalogScreen() {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
+          <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>{t('catalog.headerTitle')}</Text>
-          <TouchableOpacity onPress={() => navigation.navigate('Cart')}>
+          <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.navigate('Cart')}>
             <View>
               <Ionicons name="cart" size={24} color={COLORS.textPrimary} />
               <View style={styles.cartBadge}>
@@ -433,11 +433,11 @@ export default function CatalogScreen() {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
+          <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>{t('catalog.headerTitle')}</Text>
-          <TouchableOpacity onPress={() => navigation.navigate('Cart')}>
+          <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.navigate('Cart')}>
             <View>
               <Ionicons name="cart" size={24} color={COLORS.textPrimary} />
               <View style={styles.cartBadge}>
@@ -461,11 +461,11 @@ export default function CatalogScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
+        <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('catalog.headerTitle')}</Text>
-        <TouchableOpacity onPress={() => navigation.navigate('Cart')}>
+        <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.navigate('Cart')}>
           <View>
             <Ionicons name="cart" size={24} color={COLORS.textPrimary} />
             <View style={styles.cartBadge}>
@@ -578,6 +578,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
+  },
+  iconBtn: {
+    width: 34,
+    height: 34,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   headerTitle: {
     fontSize: FONTS.sizes.xl,

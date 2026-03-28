@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,8 @@ import {
   ActivityIndicator,
   Dimensions,
   FlatList,
+  Animated,
+  Easing,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -24,6 +26,9 @@ type ScreenRouteProp = RouteProp<RootStackParamList, 'PlantDetail'>;
 const { width } = Dimensions.get('window');
 const IMAGE_HEIGHT = 396;
 const ATTR_CARD_WIDTH = (width - SPACING.xl * 2 - 12) / 2;
+const RELATED_CARD_WIDTH = 196;
+const RELATED_CARD_GAP = 16;
+const RELATED_IMAGE_HEIGHT = 215;
 
 // ---------- Attribute card helper ----------
 type AttributeProps = {
@@ -56,9 +61,25 @@ export default function PlantDetailScreen() {
   const { plantId: plantId } = route.params;
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
 
-  const { selectedPlant, isLoading, fetchPlantDetail, fetchPlants, plants } =
-    usePlantStore();
+  const {
+    selectedPlant,
+    isLoading,
+    fetchPlantDetail,
+    fetchPlants,
+    plants,
+    nurseriesGotPlantInstances,
+    nurseriesGotCommonPlants,
+    fetchNurseriesGotPlantInstances,
+    fetchNurseriesGotCommonPlantByPlantId,
+  } = usePlantStore();
   const { addToCart } = useCartStore();
+  const [relatedListWidth, setRelatedListWidth] = useState(0);
+  const [relatedContentWidth, setRelatedContentWidth] = useState(0);
+  const [relatedScrollX, setRelatedScrollX] = useState(0);
+  const [showAllNurseries, setShowAllNurseries] = useState(false);
+  const [renderExtraNurseries, setRenderExtraNurseries] = useState(false);
+  const [extraNurseryHeight, setExtraNurseryHeight] = useState(0);
+  const nurseryExtraAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     fetchPlantDetail(plantId);
@@ -87,6 +108,75 @@ export default function PlantDetailScreen() {
   }, [plants, plantId, t]);
 
   const plantImage = plant?.images?.[0] ?? '';
+  const isInstancePlant = Boolean(plant?.isUniqueInstance);
+  const nurseriesForPlant = isInstancePlant
+    ? nurseriesGotPlantInstances
+    : nurseriesGotCommonPlants;
+  const baseNurseries = nurseriesForPlant.slice(0, 3);
+  const extraNurseries = nurseriesForPlant.slice(3);
+  const hasExtraNurseries = extraNurseries.length > 0;
+
+  useEffect(() => {
+    if (!plant) {
+      return;
+    }
+
+    const targetPlantId = plant.id ?? plantId;
+    if (plant.isUniqueInstance) {
+      fetchNurseriesGotPlantInstances(targetPlantId);
+      return;
+    }
+
+    fetchNurseriesGotCommonPlantByPlantId(targetPlantId);
+  }, [
+    plant,
+    plantId,
+    fetchNurseriesGotPlantInstances,
+    fetchNurseriesGotCommonPlantByPlantId,
+  ]);
+  const hasMoreRelatedItems = relatedPlants.length > 1;
+  const showRelatedArrowLeft = relatedScrollX > 4;
+  const showRelatedArrowRight = hasMoreRelatedItems
+    ? relatedContentWidth === 0 || relatedContentWidth - relatedListWidth - relatedScrollX > 4
+    : false;
+
+  useEffect(() => {
+    if (!hasExtraNurseries) {
+      setShowAllNurseries(false);
+      setRenderExtraNurseries(false);
+      nurseryExtraAnim.setValue(0);
+      return;
+    }
+
+    if (showAllNurseries) {
+      setRenderExtraNurseries(true);
+    }
+  }, [hasExtraNurseries, showAllNurseries, nurseryExtraAnim]);
+
+  useEffect(() => {
+    if (!renderExtraNurseries || (showAllNurseries && extraNurseryHeight === 0)) {
+      return;
+    }
+
+    Animated.timing(nurseryExtraAnim, {
+      toValue: showAllNurseries ? 1 : 0,
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start(({ finished }) => {
+      if (finished && !showAllNurseries) {
+        setRenderExtraNurseries(false);
+      }
+    });
+  }, [renderExtraNurseries, showAllNurseries, extraNurseryHeight, nurseryExtraAnim]);
+
+  const extraNurseryAnimatedStyle = {
+    height: nurseryExtraAnim.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0, extraNurseryHeight],
+    }),
+    opacity: nurseryExtraAnim,
+  };
 
   // ---------- helpers ----------
   const getCareLabel = () => {
@@ -126,6 +216,46 @@ export default function PlantDetailScreen() {
     return typeof plant.size === 'string' ? plant.size : String(plant.size);
   };
 
+  const formatNurseryPrice = (minPrice: number, maxPrice: number) => {
+    if (!minPrice && !maxPrice) {
+      return t('plantDetail.priceContact', { defaultValue: 'Contact' });
+    }
+
+    if (minPrice === maxPrice) {
+      return `${minPrice.toLocaleString(locale)}₫`;
+    }
+
+    return `${minPrice.toLocaleString(locale)}₫ - ${maxPrice.toLocaleString(locale)}₫`;
+  };
+
+  const renderNurseryCard = (nursery: (typeof nurseriesForPlant)[number]) => (
+    <View
+      key={`${nursery.nurseryId}-${nursery.commonPlantId ?? 'i'}`}
+      style={styles.nurseryCard}
+    >
+      <View style={styles.nurseryHeader}>
+        <Ionicons name="business-outline" size={18} color="#15803D" />
+        <Text style={styles.nurseryName}>{nursery.nurseryName}</Text>
+      </View>
+      <Text style={styles.nurseryAddress}>{nursery.address}</Text>
+      <View style={styles.nurseryMetaRow}>
+        <Ionicons name="call-outline" size={14} color={COLORS.textSecondary} />
+        <Text style={styles.nurseryMetaText}>
+          {nursery.phone || t('common.updating', { defaultValue: 'Updating' })}
+        </Text>
+      </View>
+      <View style={styles.nurseryFooter}>
+        <Text style={styles.nurseryAvailability}>
+          {t('plantDetail.availableCount', { defaultValue: 'Available' })}:{' '}
+          {nursery.availableInstanceCount}
+        </Text>
+        <Text style={styles.nurseryPrice}>
+          {formatNurseryPrice(nursery.minPrice, nursery.maxPrice)}
+        </Text>
+      </View>
+    </View>
+  );
+
   // ---------- loading / empty state ----------
   if (isLoading && !plant) {
     return (
@@ -160,39 +290,40 @@ export default function PlantDetailScreen() {
   // ============ RENDER ============
   return (
     <View style={styles.container}>
+      {/* ===== Hero image ===== */}
+      <View style={styles.heroWrap}>
+        {plantImage ? (
+          <Image
+            source={{ uri: plantImage }}
+            style={styles.heroImage}
+            resizeMode="cover"
+          />
+        ) : (
+          <View style={styles.heroPlaceholder}>
+            <Ionicons name="leaf-outline" size={52} color={COLORS.gray500} />
+          </View>
+        )}
+      </View>
+
+      {/* Overlay nav buttons */}
+      <View style={styles.heroOverlay} pointerEvents="box-none">
+        <TouchableOpacity
+          style={styles.backBtn}
+          onPress={() => navigation.goBack()}
+        >
+          <Ionicons name="chevron-back" size={22} color="#0D1B12" />
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.heartBtn}>
+          <Ionicons name="heart-outline" size={20} color={COLORS.white} />
+        </TouchableOpacity>
+      </View>
+
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        style={styles.scrollView}
       >
-        {/* ===== Hero image ===== */}
-        <View style={styles.heroWrap}>
-          {plantImage ? (
-            <Image
-              source={{ uri: plantImage }}
-              style={styles.heroImage}
-              resizeMode="cover"
-            />
-          ) : (
-            <View style={styles.heroPlaceholder}>
-              <Ionicons name="leaf-outline" size={52} color={COLORS.gray500} />
-            </View>
-          )}
-
-          {/* Overlay nav buttons */}
-          <View style={styles.heroOverlay}>
-            <TouchableOpacity
-              style={styles.backBtn}
-              onPress={() => navigation.goBack()}
-            >
-              <Ionicons name="chevron-back" size={22} color="#0D1B12" />
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.heartBtn}>
-              <Ionicons name="heart-outline" size={20} color={COLORS.white} />
-            </TouchableOpacity>
-          </View>
-        </View>
-
         {/* ===== Content card (overlaps image) ===== */}
         <View style={styles.contentCard}>
           {/* Drag handle */}
@@ -362,6 +493,57 @@ export default function PlantDetailScreen() {
             </View>
           )}
 
+          {nurseriesForPlant.length > 0 && (
+            <View style={styles.sectionWrap}>
+              <Text style={styles.sectionTitle}>
+                {t('plantDetail.availableNurseries', {
+                  defaultValue: 'Available nurseries',
+                })}
+              </Text>
+              <View style={styles.nurseryList}>
+                {baseNurseries.map(renderNurseryCard)}
+                {renderExtraNurseries && (
+                  <Animated.View
+                    style={[styles.nurseryExtraWrap, extraNurseryAnimatedStyle]}
+                    pointerEvents={showAllNurseries ? 'auto' : 'none'}
+                  >
+                    {extraNurseries.map(renderNurseryCard)}
+                  </Animated.View>
+                )}
+                {hasExtraNurseries && (
+                  <TouchableOpacity
+                    style={styles.loadMoreBtn}
+                    onPress={() => setShowAllNurseries((prev) => !prev)}
+                  >
+                    <Text style={styles.loadMoreText}>
+                      {showAllNurseries
+                        ? t('plantDetail.collapseNurseries', {
+                            defaultValue: 'Show less',
+                          })
+                        : t('plantDetail.loadMoreNurseries', {
+                            defaultValue: 'Load more',
+                          })}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+              {hasExtraNurseries && (
+                <View
+                  pointerEvents="none"
+                  style={styles.nurseryMeasure}
+                  onLayout={(event) => {
+                    const height = event.nativeEvent.layout.height;
+                    if (height !== extraNurseryHeight) {
+                      setExtraNurseryHeight(height);
+                    }
+                  }}
+                >
+                  {extraNurseries.map(renderNurseryCard)}
+                </View>
+              )}
+            </View>
+          )}
+
           {/* ===== You may also like ===== */}
           {relatedPlants.length > 0 && (
             <View style={styles.sectionWrap}>
@@ -374,53 +556,76 @@ export default function PlantDetailScreen() {
 
         {/* Horizontal related plants (outside card padding for full bleed) */}
         {relatedPlants.length > 0 && (
-          <FlatList
-            data={relatedPlants}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            keyExtractor={(item) => String(item.id)}
-            contentContainerStyle={styles.relatedList}
-            scrollEnabled={false}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={styles.relatedCard}
-                onPress={() =>
-                  navigation.push('PlantDetail', { plantId: String(item.id) })
-                }
-              >
-                <View style={styles.relatedImageWrap}>
-                  {item.image ? (
-                    <Image
-                      source={{ uri: item.image }}
-                      style={styles.relatedImage}
-                      resizeMode="cover"
-                    />
-                  ) : (
-                    <View style={styles.relatedImagePlaceholder}>
-                      <Ionicons name="leaf-outline" size={28} color={COLORS.gray500} />
-                    </View>
-                  )}
-                  <TouchableOpacity style={styles.relatedHeartBtn}>
-                    <Ionicons
-                      name="heart-outline"
-                      size={16}
-                      color={COLORS.white}
-                    />
-                  </TouchableOpacity>
-                </View>
-                <Text style={styles.relatedName}>{item.name}</Text>
-                <Text style={styles.relatedSub}>{item.subtitle}</Text>
-                <View style={styles.relatedPriceRow}>
-                  <Text style={styles.relatedPrice}>
-                    {(item.price || 0).toLocaleString(locale)}₫
-                  </Text>
-                  <View style={styles.relatedPlusBtn}>
-                    <Ionicons name="add" size={14} color={COLORS.black} />
+          <View
+            style={styles.relatedSliderWrap}
+            onLayout={(event) => setRelatedListWidth(event.nativeEvent.layout.width)}
+          >
+            <FlatList
+              data={relatedPlants}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyExtractor={(item) => `related-${item.id}`}
+              contentContainerStyle={styles.relatedList}
+              ItemSeparatorComponent={() => <View style={styles.relatedSeparator} />}
+              snapToInterval={RELATED_CARD_WIDTH + RELATED_CARD_GAP}
+              snapToAlignment="start"
+              decelerationRate="fast"
+              onContentSizeChange={(contentWidth) => setRelatedContentWidth(contentWidth)}
+              onScroll={(event) => setRelatedScrollX(event.nativeEvent.contentOffset.x)}
+              scrollEventThrottle={16}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.relatedCard}
+                  onPress={() =>
+                    navigation.push('PlantDetail', { plantId: String(item.id) })
+                  }
+                >
+                  <View style={styles.relatedImageWrap}>
+                    {item.image ? (
+                      <Image
+                        source={{ uri: item.image }}
+                        style={styles.relatedImage}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View style={styles.relatedImagePlaceholder}>
+                        <Ionicons name="leaf-outline" size={28} color={COLORS.gray500} />
+                      </View>
+                    )}
+                    <TouchableOpacity style={styles.relatedHeartBtn}>
+                      <Ionicons
+                        name="heart-outline"
+                        size={16}
+                        color={COLORS.white}
+                      />
+                    </TouchableOpacity>
                   </View>
+                  <Text style={styles.relatedName}>{item.name}</Text>
+                  <Text style={styles.relatedSub}>{item.subtitle}</Text>
+                  <View style={styles.relatedPriceRow}>
+                    <Text style={styles.relatedPrice}>
+                      {(item.price || 0).toLocaleString(locale)}₫
+                    </Text>
+                    <View style={styles.relatedPlusBtn}>
+                      <Ionicons name="add" size={14} color={COLORS.black} />
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              )}
+            />
+            <View style={styles.relatedArrowOverlay} pointerEvents="none">
+              {showRelatedArrowLeft && (
+                <View style={[styles.relatedArrow, styles.relatedArrowLeft]}>
+                  <Ionicons name="chevron-back" size={18} color={COLORS.primary} />
                 </View>
-              </TouchableOpacity>
-            )}
-          />
+              )}
+              {showRelatedArrowRight && (
+                <View style={[styles.relatedArrow, styles.relatedArrowRight]}>
+                  <Ionicons name="chevron-forward" size={18} color={COLORS.primary} />
+                </View>
+              )}
+            </View>
+          </View>
         )}
 
         {/* Bottom spacer for sticky bar */}
@@ -429,15 +634,36 @@ export default function PlantDetailScreen() {
 
       {/* ===== Sticky bottom bar ===== */}
       <View style={styles.bottomBar}>
-        <TouchableOpacity
-          style={styles.addToCartBtn}
-          onPress={() => addToCart(plant)}
-        >
-          <Ionicons name="cart-outline" size={22} color="#102216" />
-          <Text style={styles.addToCartText}>
-            {t('plantDetail.addToCart')}
-          </Text>
-        </TouchableOpacity>
+        {isInstancePlant ? (
+          <TouchableOpacity
+            style={[styles.buyNowBtn, styles.buyNowBtnPrimary]}
+            onPress={() => navigation.navigate('Checkout')}
+          >
+            <Text style={[styles.buyNowText, styles.buyNowTextPrimary]}>
+              {t('plantDetail.buyNow', { defaultValue: 'Buy now' })}
+            </Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.bottomActionRow}>
+            <TouchableOpacity
+              style={[styles.buyNowBtn, styles.buyNowBtnCompact]}
+              onPress={() => navigation.navigate('Checkout')}
+            >
+              <Text style={styles.buyNowText}>
+                {t('plantDetail.buyNow', { defaultValue: 'Buy now' })}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.addToCartBtn, styles.addToCartBtnWide]}
+              onPress={() => addToCart(plant)}
+            >
+              <Ionicons name="cart-outline" size={20} color="#102216" />
+              <Text style={styles.addToCartText}>
+                {t('plantDetail.addToCart')}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     </View>
   );
@@ -450,7 +676,11 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
   scrollContent: {
+    paddingTop: IMAGE_HEIGHT - 24,
     paddingBottom: 0,
+  },
+  scrollView: {
+    flex: 1,
   },
   loaderContainer: {
     flex: 1,
@@ -488,6 +718,10 @@ const styles = StyleSheet.create({
 
   // ---- Hero ----
   heroWrap: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
     width,
     height: IMAGE_HEIGHT,
     backgroundColor: COLORS.gray200,
@@ -513,6 +747,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
+    zIndex: 2,
+    elevation: 2,
   },
   backBtn: {
     width: 36,
@@ -533,7 +769,7 @@ const styles = StyleSheet.create({
 
   // ---- Content card ----
   contentCard: {
-    marginTop: -24,
+    marginTop: 0,
     backgroundColor: '#F6F8F6',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
@@ -817,25 +1053,146 @@ const styles = StyleSheet.create({
     color: '#0D1B12',
   },
 
+  // ---- Nurseries ----
+  nurseryList: {
+    marginTop: SPACING.lg,
+    gap: 12,
+  },
+  nurseryExtraWrap: {
+    gap: 12,
+    overflow: 'hidden',
+  },
+  nurseryMeasure: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    opacity: 0,
+    zIndex: -1,
+    gap: 12,
+  },
+  nurseryCard: {
+    padding: 14,
+    backgroundColor: COLORS.white,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#F5F5F5',
+    gap: 6,
+    ...SHADOWS.sm,
+  },
+  nurseryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  nurseryName: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0D1B12',
+  },
+  nurseryAddress: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: '#6B7280',
+    lineHeight: 16,
+  },
+  nurseryMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  nurseryMetaText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: COLORS.textSecondary,
+  },
+  nurseryFooter: {
+    marginTop: 4,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  nurseryAvailability: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#4C9A66',
+  },
+  nurseryPrice: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#13EC5B',
+  },
+  loadMoreBtn: {
+    marginTop: 4,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: '#E7FDF0',
+    borderWidth: 1,
+    borderColor: '#13EC5B',
+  },
+  loadMoreText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#13EC5B',
+  },
+
   // ---- Related / You may also like ----
+  relatedSliderWrap: {
+    position: 'relative',
+  },
   relatedList: {
     paddingHorizontal: SPACING.xl,
-    gap: 16,
     paddingBottom: SPACING.lg,
   },
+  relatedSeparator: {
+    width: RELATED_CARD_GAP,
+  },
   relatedCard: {
-    width: 196,
+    width: RELATED_CARD_WIDTH,
     padding: 12,
     backgroundColor: COLORS.white,
     borderRadius: 16,
   },
   relatedImageWrap: {
-    width: 172,
-    height: 215,
+    width: RELATED_CARD_WIDTH - 24,
+    height: RELATED_IMAGE_HEIGHT,
     borderRadius: 16,
     backgroundColor: '#F5F5F5',
     overflow: 'hidden',
     position: 'relative',
+  },
+  relatedArrowOverlay: {
+    position: 'absolute',
+    top: 0,
+    height: RELATED_IMAGE_HEIGHT,
+    left: SPACING.xl,
+    right: SPACING.xl,
+    alignItems: 'center',
+  },
+  relatedArrow: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderWidth: 1,
+    borderColor: COLORS.gray200,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  relatedArrowLeft: {
+    position: 'absolute',
+    left: 4,
+    top: '50%',
+    marginTop: -14,
+  },
+  relatedArrowRight: {
+    position: 'absolute',
+    right: 4,
+    top: '50%',
+    marginTop: -14,
   },
   relatedImage: {
     width: '100%',
@@ -940,11 +1297,45 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.xl,
     paddingVertical: SPACING.sm,
     paddingBottom: SPACING.lg,
+    alignItems: 'stretch',
+    zIndex: 3,
+    elevation: 3,
+  },
+  bottomActionRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  buyNowBtn: {
+    flex: 1,
+    height: 42,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#13EC5B',
+    backgroundColor: '#F0FDF4',
+    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
+    gap: 10,
+  },
+  buyNowBtnCompact: {
+    flex: 3,
+  },
+  buyNowBtnPrimary: {
+    borderWidth: 0,
+    backgroundColor: '#13EC5B',
+  },
+  buyNowText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#13EC5B',
+    lineHeight: 24,
+  },
+  buyNowTextPrimary: {
+    color: '#102216',
   },
   addToCartBtn: {
-    width: '100%',
-    height: 56,
+    flex: 1,
+    height: 42,
     backgroundColor: '#13EC5B',
     borderRadius: 24,
     flexDirection: 'row',
@@ -956,6 +1347,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 12,
     elevation: 6,
+  },
+  addToCartBtnWide: {
+    flex: 7,
   },
   addToCartText: {
     fontSize: 16,

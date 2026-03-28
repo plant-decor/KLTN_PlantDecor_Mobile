@@ -1,5 +1,15 @@
 import { create } from 'zustand';
-import { Category, Plant, SearchPlantsRequest } from '../types';
+import {
+  Category,
+  Nursery,
+  NurseryCommonPlant,
+  NurseryPlantInstanceAvailability,
+  Plant,
+  SearchCommonPlantsNurseryRequest,
+  SearchCommonPlantsRequest,
+  SearchNurseriesRequest,
+  SearchPlantsRequest,
+} from '../types';
 import { plantService } from '../services/plantService';
 
 interface PlantState {
@@ -8,11 +18,22 @@ interface PlantState {
   featuredPlants: Plant[];
   categories: Category[];
   selectedPlant: Plant | null;
+  nurseries: Nursery[];
+  commonPlants: NurseryCommonPlant[];
+  commonPlantsByNursery: NurseryCommonPlant[];
+  nurseriesGotPlantInstances: NurseryPlantInstanceAvailability[];
+  nurseriesGotCommonPlants: NurseryPlantInstanceAvailability[];
   isLoading: boolean;
   isLoadingMore: boolean;
   error: string | null;
   pageNumber: number;
   totalPages: number;
+  nurseriesPageNumber: number;
+  nurseriesTotalPages: number;
+  commonPlantsPageNumber: number;
+  commonPlantsTotalPages: number;
+  commonPlantsByNurseryPageNumber: number;
+  commonPlantsByNurseryTotalPages: number;
   searchQuery: string;
   selectedCategory: string | null;
 
@@ -24,6 +45,14 @@ interface PlantState {
   }) => Promise<void>;
   fetchPlantDetail: (id: string) => Promise<void>;
   searchShopPlants: (request: SearchPlantsRequest) => Promise<void>;
+  searchNurseries: (request: SearchNurseriesRequest) => Promise<void>;
+  searchCommonPlants: (request: SearchCommonPlantsRequest) => Promise<void>;
+  searchCommonPlantsNursery: (
+    nurseryId: string | number,
+    request: SearchCommonPlantsNurseryRequest
+  ) => Promise<void>;
+  fetchNurseriesGotPlantInstances: (plantId: string | number) => Promise<void>;
+  fetchNurseriesGotCommonPlantByPlantId: (plantId: string | number) => Promise<void>;
   setSelectedCategory: (categoryId: string | null) => void;
   clearPlants: () => void;
   clearError: () => void;
@@ -42,11 +71,22 @@ export const usePlantStore = create<PlantState>((set) => ({
   featuredPlants: [],
   categories: [],
   selectedPlant: null,
+  nurseries: [],
+  commonPlants: [],
+  commonPlantsByNursery: [],
+  nurseriesGotPlantInstances: [],
+  nurseriesGotCommonPlants: [],
   isLoading: false,
   isLoadingMore: false,
   error: null,
   pageNumber: 1,
   totalPages: 1,
+  nurseriesPageNumber: 1,
+  nurseriesTotalPages: 1,
+  commonPlantsPageNumber: 1,
+  commonPlantsTotalPages: 1,
+  commonPlantsByNurseryPageNumber: 1,
+  commonPlantsByNurseryTotalPages: 1,
   searchQuery: '',
   selectedCategory: null,
 
@@ -131,6 +171,118 @@ export const usePlantStore = create<PlantState>((set) => ({
     }
   },
 
+  searchNurseries: async (request) => {
+    set({ isLoading: true, error: null });
+    try {
+      const result = await plantService.searchNurseries(request);
+      if (result && result.items) {
+        set({
+          nurseries: result.items,
+          nurseriesPageNumber: result.pageNumber,
+          nurseriesTotalPages: result.totalPages,
+          isLoading: false,
+        });
+      } else {
+        set({
+          nurseries: [],
+          nurseriesPageNumber: 1,
+          nurseriesTotalPages: 1,
+          isLoading: false,
+        });
+      }
+    } catch (error: any) {
+      set({
+        error: error.response?.data?.message || 'Không thể tải danh sách vựa',
+        isLoading: false,
+        nurseries: [],
+      });
+    }
+  },
+
+  searchCommonPlants: async (request) => {
+    set({ isLoading: true, error: null });
+    try {
+      const result = await plantService.searchCommonPlants(request);
+      if (result && result.items) {
+        set({
+          commonPlants: result.items,
+          commonPlantsPageNumber: result.pageNumber,
+          commonPlantsTotalPages: result.totalPages,
+          isLoading: false,
+        });
+      } else {
+        set({
+          commonPlants: [],
+          commonPlantsPageNumber: 1,
+          commonPlantsTotalPages: 1,
+          isLoading: false,
+        });
+      }
+    } catch (error: any) {
+      set({
+        error: error.response?.data?.message || 'Không thể tải cây đại trà',
+        isLoading: false,
+        commonPlants: [],
+      });
+    }
+  },
+
+  searchCommonPlantsNursery: async (nurseryId, request) => {
+    set({ isLoading: true, error: null });
+    try {
+      const result = await plantService.searchCommonPlantsNursery(nurseryId, request);
+      if (result && result.items) {
+        set({
+          commonPlantsByNursery: result.items,
+          commonPlantsByNurseryPageNumber: result.pageNumber,
+          commonPlantsByNurseryTotalPages: result.totalPages,
+          isLoading: false,
+        });
+      } else {
+        set({
+          commonPlantsByNursery: [],
+          commonPlantsByNurseryPageNumber: 1,
+          commonPlantsByNurseryTotalPages: 1,
+          isLoading: false,
+        });
+      }
+    } catch (error: any) {
+      set({
+        error: error.response?.data?.message || 'Không thể tải cây đại trà tại vựa',
+        isLoading: false,
+        commonPlantsByNursery: [],
+      });
+    }
+  },
+
+  fetchNurseriesGotPlantInstances: async (plantId) => {
+    set({ isLoading: true, error: null });
+    try {
+      const result = await plantService.getNurseriesGotPlantInstances(plantId);
+      set({ nurseriesGotPlantInstances: result ?? [], isLoading: false });
+    } catch (error: any) {
+      set({
+        error: error.response?.data?.message || 'Không thể tải vựa có cây',
+        isLoading: false,
+        nurseriesGotPlantInstances: [],
+      });
+    }
+  },
+
+  fetchNurseriesGotCommonPlantByPlantId: async (plantId) => {
+    set({ isLoading: true, error: null });
+    try {
+      const result = await plantService.getNurseriesGotCommonPlantByPlantId(plantId);
+      set({ nurseriesGotCommonPlants: result ?? [], isLoading: false });
+    } catch (error: any) {
+      set({
+        error: error.response?.data?.message || 'Không thể tải vựa có cây đại trà',
+        isLoading: false,
+        nurseriesGotCommonPlants: [],
+      });
+    }
+  },
+
   setSelectedCategory: (categoryId) => {
     set({ selectedCategory: categoryId });
   },
@@ -140,8 +292,19 @@ export const usePlantStore = create<PlantState>((set) => ({
       plants: [],
       featuredPlants: [],
       selectedPlant: null,
+      nurseries: [],
+      commonPlants: [],
+      commonPlantsByNursery: [],
+      nurseriesGotPlantInstances: [],
+      nurseriesGotCommonPlants: [],
       pageNumber: 1,
       totalPages: 1,
+      nurseriesPageNumber: 1,
+      nurseriesTotalPages: 1,
+      commonPlantsPageNumber: 1,
+      commonPlantsTotalPages: 1,
+      commonPlantsByNurseryPageNumber: 1,
+      commonPlantsByNurseryTotalPages: 1,
       searchQuery: '',
       selectedCategory: null,
     });

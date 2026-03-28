@@ -158,7 +158,16 @@ export const API = {
 
     // Plants
     PLANTS: "/shop/plants/search",
+    COMMON_PLANTS: "/shop/common-plants/search",
     PLANT_DETAIL: (id: string) => `/shop/plants/${id}`,
+    NURSERIES_GOT_COMMON_PLANT_BY_PLANT_ID: (plantId: string | number) => `/shop/plants/${plantId}/common-nurseries`,
+    COMMON_PLANTS_BY_NURSERY: (nurseryId: string) => `/shop/nurseries/${nurseryId}/common-plants/search`,
+    INSTANCE_PLANTS_BY_NURSERY: (nurseryId: string) => `/shop/nurseries/${nurseryId}/plant-instances/search`,
+    NURSERIES_GOT_PLANT_INSTANCES: (plantId: string) => `/plants/${plantId}/nurseries`,
+    INSTANCE_DETAIL: (id: string) => `/shop/plant-instances/${id}`,
+    COMMON_DETAIL: (id: string) => `/shop/common-plants/${id}`,
+    
+    NURSERIES: "/shop/nurseries/search",
 
     // Cart
     CART: "/Cart",

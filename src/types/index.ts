@@ -218,6 +218,137 @@ export interface SearchPlantsResponse {
   };
 }
 
+// ==================== Nursery Search ====================
+export interface Nursery {
+  id: number;
+  nurseryMaterialId?: number | null;
+  nurseryPlantComboId?: number | null;
+  commonPlantId?: number | null;
+  managerId?: number | null;
+  managerName?: string | null;
+  name: string;
+  address: string;
+  phone?: string | null;
+  isActive?: boolean;
+  createdAt?: string;
+}
+
+export interface SearchNurseriesRequest {
+  pagination?: {
+    pageNumber: number;
+    pageSize: number;
+  };
+}
+
+export interface SearchNurseriesResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: {
+    items: Nursery[];
+    totalCount: number;
+    pageNumber: number;
+    pageSize: number;
+    totalPages: number;
+    hasPrevious: boolean;
+    hasNext: boolean;
+  };
+}
+
+// ==================== Common Plants By Nursery ====================
+export interface NurseryCommonPlant {
+  id: number;
+  plantId: number;
+  plantName: string;
+  nurseryId: number;
+  nurseryName: string;
+  quantity: number;
+  reservedQuantity: number;
+  isActive: boolean;
+  availableQuantity: number;
+}
+
+export interface SearchCommonPlantsNurseryRequest {
+  pagination?: {
+    pageNumber: number;
+    pageSize: number;
+  };
+}
+
+export interface SearchCommonPlantsNurseryResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: {
+    items: NurseryCommonPlant[];
+    totalCount: number;
+    pageNumber: number;
+    pageSize: number;
+    totalPages: number;
+    hasPrevious: boolean;
+    hasNext: boolean;
+  };
+}
+
+// ==================== Common Plants Search ====================
+export interface SearchCommonPlantsRequest {
+  pagination?: {
+    pageNumber: number;
+    pageSize: number;
+  };
+  searchTerm?: string;
+  categoryIds?: number[];
+  tagIds?: number[];
+  sizes?: number[];
+  minPrice?: number;
+  maxPrice?: number;
+  sortBy?: string;
+  isAscending?: boolean;
+}
+
+export interface SearchCommonPlantsResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: {
+    items: NurseryCommonPlant[];
+    totalCount: number;
+    pageNumber: number;
+    pageSize: number;
+    totalPages: number;
+    hasPrevious: boolean;
+    hasNext: boolean;
+  };
+}
+
+// ==================== Nurseries By Plant Instances ====================
+export interface NurseryPlantInstanceAvailability {
+  commonPlantId?: number | null;
+  nurseryId: number;
+  nurseryName: string;
+  address: string;
+  phone?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  availableInstanceCount: number;
+  minPrice: number;
+  maxPrice: number;
+}
+
+export interface NurseriesGotPlantInstancesResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: NurseryPlantInstanceAvailability[];
+}
+
+export interface NurseriesGotCommonPlantResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: NurseryPlantInstanceAvailability[];
+}
+
 export interface PlantDetailResponse {
   success: boolean;
   statusCode: number;
