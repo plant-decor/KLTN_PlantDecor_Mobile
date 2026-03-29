@@ -33,8 +33,19 @@ export interface LoginRequest {
   deviceId: string;
 }
 
+export interface RefreshTokenRequest {
+  refreshToken: string;
+}
+
 // Matches the exact API envelope: { success, statusCode, message, payload: { accessToken, refreshToken } }
 export interface LoginResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: AuthTokens;
+}
+
+export interface RefreshTokenResponse {
   success: boolean;
   statusCode: number;
   message: string;
@@ -119,6 +130,9 @@ export interface AuthJwtClaims {
 // ==================== Plant ====================
 export interface Plant {
   id: string | number;
+  commonPlantId?: number | null;
+  nurseryPlantComboId?: number | null;
+  nurseryMaterialId?: number | null;
   name: string;
   specificName: string;
   origin: string;
@@ -357,10 +371,149 @@ export interface PlantDetailResponse {
 }
 
 // ==================== Cart ====================
+export interface CartApiItem {
+  id: number;
+  cartId: number;
+  commonPlantId: number | null;
+  nurseryPlantComboId: number | null;
+  nurseryMaterialId: number | null;
+  productName: string;
+  quantity: number;
+  price: number;
+  subTotal: number;
+  createdAt: string;
+}
+
+export interface AddCartItemRequest {
+  commonPlantId: number | null;
+  nurseryPlantComboId: number | null;
+  nurseryMaterialId: number | null;
+  quantity: number;
+}
+
+export type AddCartItemPayload = CartApiItem;
+
+export interface AddCartItemResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: CartApiItem;
+}
+
+export interface GetCartRequest {
+  pageNumber?: number;
+  pageSize?: number;
+  skip?: number;
+  take?: number;
+}
+
+export interface GetCartPayload {
+  items: CartApiItem[];
+  totalCount: number;
+  pageNumber: number;
+  pageSize: number;
+  totalPages: number;
+  hasPrevious: boolean;
+  hasNext: boolean;
+}
+
+export interface GetCartResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: GetCartPayload;
+}
+
+export interface UpdateCartItemRequest {
+  quantity: number;
+}
+
+export interface UpdateCartItemResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: CartApiItem;
+}
+
+export interface RemoveCartItemResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+}
+
+export interface ClearCartResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+}
+
 export interface CartItem {
   id: string;
   plant: Plant;
   quantity: number;
+}
+
+// ==================== Wishlist ====================
+export type WishlistItemType =
+  | 'CommonPlant'
+  | 'PlantInstance'
+  | 'NurseryPlantCombo'
+  | 'NurseryMaterial';
+
+export interface WishlistItem {
+  id: number;
+  itemType: WishlistItemType;
+  itemId: number;
+  itemName: string;
+  itemImageUrl: string | null;
+  price: number;
+  quantity: number | null;
+  additionalInfo: string | null;
+  createdAt: string;
+}
+
+export interface GetWishlistRequest {
+  pageNumber?: number;
+  pageSize?: number;
+  skip?: number;
+  take?: number;
+}
+
+export interface GetWishlistPayload {
+  items: WishlistItem[];
+  totalCount: number;
+  pageNumber: number;
+  pageSize: number;
+  totalPages: number;
+  hasPrevious: boolean;
+  hasNext: boolean;
+}
+
+export interface GetWishlistResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: GetWishlistPayload;
+}
+
+export interface AddWishlistItemResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: WishlistItem;
+}
+
+export interface RemoveWishlistItemResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+}
+
+export interface CheckWishlistResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: boolean;
 }
 
 // // ==================== Order ====================
@@ -452,6 +605,7 @@ export type RootStackParamList = {
   AIDesign: undefined;
   AIDesignResult: { resultId: string };
   Cart: undefined;
+  Wishlist: undefined;
   Checkout: undefined;
   VerifyCode: { email: string; password: string };
   OrderDetail: { orderId: string };

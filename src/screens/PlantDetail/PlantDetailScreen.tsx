@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -11,14 +11,16 @@ import {
   FlatList,
   Animated,
   Easing,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, SPACING, RADIUS, SHADOWS } from '../../constants';
-import { usePlantStore, useCartStore } from '../../stores';
-import { RootStackParamList } from '../../types';
+import { usePlantStore, useCartStore, useAuthStore, useWishlistStore } from '../../stores';
+import { RootStackParamList, Plant } from '../../types';
+import { getWishlistKey, notify, resolveWishlistTarget } from '../../utils';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type ScreenRouteProp = RouteProp<RootStackParamList, 'PlantDetail'>;
@@ -73,12 +75,18 @@ export default function PlantDetailScreen() {
     fetchNurseriesGotCommonPlantByPlantId,
   } = usePlantStore();
   const { addToCart } = useCartStore();
+  const { isAuthenticated } = useAuthStore();
   const [relatedListWidth, setRelatedListWidth] = useState(0);
   const [relatedContentWidth, setRelatedContentWidth] = useState(0);
   const [relatedScrollX, setRelatedScrollX] = useState(0);
   const [showAllNurseries, setShowAllNurseries] = useState(false);
   const [renderExtraNurseries, setRenderExtraNurseries] = useState(false);
   const [extraNurseryHeight, setExtraNurseryHeight] = useState(0);
+  const [selectedNurseryId, setSelectedNurseryId] = useState<number | null>(null);
+  const wishlistStatus = useWishlistStore((state) => state.statusByKey);
+  const ensureWishlistStatus = useWishlistStore((state) => state.ensureStatus);
+  const toggleWishlist = useWishlistStore((state) => state.toggleWishlist);
+  const clearWishlistStatus = useWishlistStore((state) => state.clearStatus);
   const nurseryExtraAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -90,6 +98,12 @@ export default function PlantDetailScreen() {
       fetchPlants({ page: 1, sortBy: 'createdAt', sortDirection: 'desc' });
     }
   }, [fetchPlants, plants.length]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      clearWishlistStatus();
+    }
+  }, [clearWishlistStatus, isAuthenticated]);
 
   const plant = selectedPlant;
 
@@ -103,9 +117,43 @@ export default function PlantDetailScreen() {
         name: p.name,
         subtitle: t('plantDetail.defaultSubtitle'),
         price: p.basePrice ?? 0,
+        isUniqueInstance: p.isUniqueInstance,
         image: p.images?.[0] ?? '',
       }));
   }, [plants, plantId, t]);
+
+  const relatedPlantEntities = useMemo(() => {
+    return relatedPlants
+      .map((item) => plants.find((plantItem) => String(plantItem.id) === String(item.id)))
+      .filter((item): item is Plant => Boolean(item));
+  }, [plants, relatedPlants]);
+
+  const wishlistCheckPlants = useMemo(() => {
+    const nextPlants: Plant[] = [];
+    if (plant) {
+      nextPlants.push(plant);
+    }
+    nextPlants.push(...relatedPlantEntities);
+    return nextPlants;
+  }, [plant, relatedPlantEntities]);
+
+  const wishlistTargets = useMemo(
+    () =>
+      wishlistCheckPlants
+        .map(resolveWishlistTarget)
+        .filter(
+          (target): target is NonNullable<ReturnType<typeof resolveWishlistTarget>> =>
+            target !== null
+        ),
+    [wishlistCheckPlants]
+  );
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+    void ensureWishlistStatus(wishlistTargets);
+  }, [ensureWishlistStatus, isAuthenticated, wishlistTargets]);
 
   const plantImage = plant?.images?.[0] ?? '';
   const isInstancePlant = Boolean(plant?.isUniqueInstance);
@@ -115,6 +163,10 @@ export default function PlantDetailScreen() {
   const baseNurseries = nurseriesForPlant.slice(0, 3);
   const extraNurseries = nurseriesForPlant.slice(3);
   const hasExtraNurseries = extraNurseries.length > 0;
+
+  const selectedNursery = !isInstancePlant
+    ? nurseriesForPlant.find((nursery) => nursery.nurseryId === selectedNurseryId) ?? null
+    : null;
 
   useEffect(() => {
     if (!plant) {
@@ -134,6 +186,25 @@ export default function PlantDetailScreen() {
     fetchNurseriesGotPlantInstances,
     fetchNurseriesGotCommonPlantByPlantId,
   ]);
+
+  useEffect(() => {
+    if (isInstancePlant) {
+      setSelectedNurseryId(null);
+      return;
+    }
+
+    if (nurseriesForPlant.length === 0) {
+      setSelectedNurseryId(null);
+      return;
+    }
+
+    setSelectedNurseryId((current) => {
+      if (current && nurseriesForPlant.some((nursery) => nursery.nurseryId === current)) {
+        return current;
+      }
+      return nurseriesForPlant[0].nurseryId;
+    });
+  }, [isInstancePlant, nurseriesForPlant]);
   const hasMoreRelatedItems = relatedPlants.length > 1;
   const showRelatedArrowLeft = relatedScrollX > 4;
   const showRelatedArrowRight = hasMoreRelatedItems
@@ -177,6 +248,126 @@ export default function PlantDetailScreen() {
     }),
     opacity: nurseryExtraAnim,
   };
+
+  const requireAuth = (onSuccess?: () => void) => {
+    if (isAuthenticated) {
+      onSuccess?.();
+      return true;
+    }
+
+    Alert.alert(
+      t('common.loginRequiredTitle', { defaultValue: 'Login required' }),
+      t('common.loginRequiredMessage', { defaultValue: 'Please login to continue.' }),
+      [
+        { text: t('common.cancel', { defaultValue: 'Cancel' }), style: 'cancel' },
+        {
+          text: t('common.login', { defaultValue: 'Login' }),
+          onPress: () => navigation.navigate('Login'),
+        },
+      ],
+    );
+    return false;
+  };
+
+  const handleBuyNow = () => {
+    requireAuth(() => navigation.navigate('Checkout'));
+  };
+
+  const handleAddToCart = (targetPlant: Plant, overrideCommonPlantId?: number) => {
+    if (!requireAuth()) {
+      return;
+    }
+
+    if (targetPlant.isUniqueInstance) {
+      return;
+    }
+
+    addToCart(targetPlant, 1, {
+      commonPlantId: overrideCommonPlantId,
+    });
+    notify({ message: t('cart.addedMessage', { defaultValue: 'Added to cart.' }) });
+  };
+
+  const handleToggleWishlist = async (targetPlant: Plant) => {
+    if (!requireAuth()) {
+      return;
+    }
+
+    const wishlistTarget = resolveWishlistTarget(targetPlant);
+    if (!wishlistTarget) {
+      notify({
+        message: t('wishlist.invalidItem', {
+          defaultValue: 'Unable to add this item to wishlist.',
+        }),
+      });
+      return;
+    }
+
+    const wishlistKey = getWishlistKey(wishlistTarget.itemType, wishlistTarget.itemId);
+    const wasInWishlist = wishlistStatus[wishlistKey] ?? false;
+
+    try {
+      await toggleWishlist(wishlistTarget.itemType, wishlistTarget.itemId);
+      notify({
+        message: wasInWishlist
+          ? t('wishlist.removeSuccess', { defaultValue: 'Removed from wishlist.' })
+          : t('wishlist.addedMessage', { defaultValue: 'Added to wishlist.' }),
+      });
+    } catch (error) {
+      const apiMessage = (error as { response?: { data?: { message?: string } } })?.response
+        ?.data?.message;
+      notify({
+        message:
+          apiMessage ||
+          (wasInWishlist
+            ? t('wishlist.removeFailed', {
+                defaultValue: 'Unable to remove from wishlist.',
+              })
+            : t('wishlist.addFailed', {
+                defaultValue: 'Unable to add to wishlist.',
+              })),
+      });
+    }
+  };
+
+  const handleAddRelatedToCart = (plantId: string | number) => {
+    const targetPlant = plants.find((item) => String(item.id) === String(plantId));
+    if (!targetPlant) {
+      return;
+    }
+    handleAddToCart(targetPlant);
+  };
+
+  const handleAddRelatedToWishlist = (plantId: string | number) => {
+    const targetPlant = plants.find((item) => String(item.id) === String(plantId));
+    if (!targetPlant) {
+      return;
+    }
+    handleToggleWishlist(targetPlant);
+  };
+
+  const isWishlisted = useCallback(
+    (targetPlant: Plant) => {
+      const wishlistTarget = resolveWishlistTarget(targetPlant);
+      if (!wishlistTarget) {
+        return false;
+      }
+      const wishlistKey = getWishlistKey(wishlistTarget.itemType, wishlistTarget.itemId);
+      return wishlistStatus[wishlistKey] ?? false;
+    },
+    [wishlistStatus]
+  );
+
+  const isWishlistedById = useCallback(
+    (plantIdValue: string | number) => {
+      const targetPlant = plants.find((item) => String(item.id) === String(plantIdValue));
+      if (!targetPlant) {
+        return false;
+      }
+      return isWishlisted(targetPlant);
+    },
+    [isWishlisted, plants]
+  );
 
   // ---------- helpers ----------
   const getCareLabel = () => {
@@ -228,14 +419,27 @@ export default function PlantDetailScreen() {
     return `${minPrice.toLocaleString(locale)}₫ - ${maxPrice.toLocaleString(locale)}₫`;
   };
 
-  const renderNurseryCard = (nursery: (typeof nurseriesForPlant)[number]) => (
-    <View
-      key={`${nursery.nurseryId}-${nursery.commonPlantId ?? 'i'}`}
-      style={styles.nurseryCard}
-    >
+  const renderNurseryCard = (nursery: (typeof nurseriesForPlant)[number]) => {
+    const isSelected = !isInstancePlant && nursery.nurseryId === selectedNurseryId;
+
+    return (
+      <TouchableOpacity
+        key={`${nursery.nurseryId}-${nursery.commonPlantId ?? 'i'}`}
+        style={[styles.nurseryCard, isSelected && styles.nurseryCardSelected]}
+        onPress={() => {
+          if (!isInstancePlant) {
+            setSelectedNurseryId(nursery.nurseryId);
+          }
+        }}
+        activeOpacity={0.8}
+        disabled={isInstancePlant}
+      >
       <View style={styles.nurseryHeader}>
         <Ionicons name="business-outline" size={18} color="#15803D" />
         <Text style={styles.nurseryName}>{nursery.nurseryName}</Text>
+        {isSelected && (
+          <Ionicons name="checkmark-circle" size={16} color="#13EC5B" />
+        )}
       </View>
       <Text style={styles.nurseryAddress}>{nursery.address}</Text>
       <View style={styles.nurseryMetaRow}>
@@ -253,8 +457,9 @@ export default function PlantDetailScreen() {
           {formatNurseryPrice(nursery.minPrice, nursery.maxPrice)}
         </Text>
       </View>
-    </View>
-  );
+      </TouchableOpacity>
+    );
+  };
 
   // ---------- loading / empty state ----------
   if (isLoading && !plant) {
@@ -314,8 +519,19 @@ export default function PlantDetailScreen() {
           <Ionicons name="chevron-back" size={22} color="#0D1B12" />
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.heartBtn}>
-          <Ionicons name="heart-outline" size={20} color={COLORS.white} />
+        <TouchableOpacity
+          style={styles.heartBtn}
+          onPress={() => {
+            if (plant) {
+              handleToggleWishlist(plant);
+            }
+          }}
+        >
+          <Ionicons
+            name={plant && isWishlisted(plant) ? 'heart' : 'heart-outline'}
+            size={20}
+            color={plant && isWishlisted(plant) ? COLORS.error : COLORS.white}
+          />
         </TouchableOpacity>
       </View>
 
@@ -592,11 +808,14 @@ export default function PlantDetailScreen() {
                         <Ionicons name="leaf-outline" size={28} color={COLORS.gray500} />
                       </View>
                     )}
-                    <TouchableOpacity style={styles.relatedHeartBtn}>
+                    <TouchableOpacity
+                      style={styles.relatedHeartBtn}
+                      onPress={() => handleAddRelatedToWishlist(item.id)}
+                    >
                       <Ionicons
-                        name="heart-outline"
+                        name={isWishlistedById(item.id) ? 'heart' : 'heart-outline'}
                         size={16}
-                        color={COLORS.white}
+                        color={isWishlistedById(item.id) ? COLORS.error : COLORS.white}
                       />
                     </TouchableOpacity>
                   </View>
@@ -606,9 +825,14 @@ export default function PlantDetailScreen() {
                     <Text style={styles.relatedPrice}>
                       {(item.price || 0).toLocaleString(locale)}₫
                     </Text>
-                    <View style={styles.relatedPlusBtn}>
-                      <Ionicons name="add" size={14} color={COLORS.black} />
-                    </View>
+                    {!item.isUniqueInstance && (
+                      <TouchableOpacity
+                        style={styles.relatedPlusBtn}
+                        onPress={() => handleAddRelatedToCart(item.id)}
+                      >
+                        <Ionicons name="add" size={14} color={COLORS.black} />
+                      </TouchableOpacity>
+                    )}
                   </View>
                 </TouchableOpacity>
               )}
@@ -637,7 +861,7 @@ export default function PlantDetailScreen() {
         {isInstancePlant ? (
           <TouchableOpacity
             style={[styles.buyNowBtn, styles.buyNowBtnPrimary]}
-            onPress={() => navigation.navigate('Checkout')}
+            onPress={handleBuyNow}
           >
             <Text style={[styles.buyNowText, styles.buyNowTextPrimary]}>
               {t('plantDetail.buyNow', { defaultValue: 'Buy now' })}
@@ -647,7 +871,7 @@ export default function PlantDetailScreen() {
           <View style={styles.bottomActionRow}>
             <TouchableOpacity
               style={[styles.buyNowBtn, styles.buyNowBtnCompact]}
-              onPress={() => navigation.navigate('Checkout')}
+              onPress={handleBuyNow}
             >
               <Text style={styles.buyNowText}>
                 {t('plantDetail.buyNow', { defaultValue: 'Buy now' })}
@@ -655,7 +879,7 @@ export default function PlantDetailScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.addToCartBtn, styles.addToCartBtnWide]}
-              onPress={() => addToCart(plant)}
+              onPress={() => handleAddToCart(plant)}
             >
               <Ionicons name="cart-outline" size={20} color="#102216" />
               <Text style={styles.addToCartText}>
@@ -1080,6 +1304,10 @@ const styles = StyleSheet.create({
     gap: 6,
     ...SHADOWS.sm,
   },
+  nurseryCardSelected: {
+    borderColor: '#13EC5B',
+    backgroundColor: '#F0FDF4',
+  },
   nurseryHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1283,6 +1511,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#13EC5B',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  relatedPlusBtnDisabled: {
+    opacity: 0.35,
   },
 
   // ---- Bottom bar ----

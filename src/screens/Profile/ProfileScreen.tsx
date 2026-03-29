@@ -93,7 +93,7 @@ export default function ProfileScreen() {
     {
       icon: 'heart-outline' as const,
       label: t('profile.favoritePlants'),
-      onPress: () => {},
+      onPress: () => navigation.navigate('Wishlist'),
     },
     {
       icon: 'settings-outline' as const,

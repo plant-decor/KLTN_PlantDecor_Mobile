@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   FlatList,
   TextInput,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,8 +19,9 @@ import { CompositeNavigationProp, useNavigation } from '@react-navigation/native
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, SPACING, RADIUS, SHADOWS } from '../../constants';
-import { usePlantStore, useCartStore } from '../../stores';
+import { usePlantStore, useCartStore, useAuthStore, useWishlistStore } from '../../stores';
 import { MainTabParamList, RootStackParamList, Plant } from '../../types';
+import { getWishlistKey, notify, resolveWishlistTarget } from '../../utils';
 
 type NavigationProp = CompositeNavigationProp<
   BottomTabNavigationProp<MainTabParamList, 'Home'>,
@@ -31,6 +33,7 @@ type HomePlant = {
   name: string;
   subtitle: string;
   price: number;
+  isUniqueInstance: boolean;
   image?: string;
 };
 
@@ -44,12 +47,18 @@ export default function HomeScreen() {
   const navigation = useNavigation<NavigationProp>();
   const { plants, fetchPlants } = usePlantStore();
   const totalItems = useCartStore((state) => state.totalItems);
+  const addToCart = useCartStore((state) => state.addToCart);
+  const { isAuthenticated } = useAuthStore();
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
   const [selectedSort, setSelectedSort] = useState<HomeSortKey>('newest');
   const [keyword, setKeyword] = useState('');
   const [aiListWidth, setAiListWidth] = useState(0);
   const [aiContentWidth, setAiContentWidth] = useState(0);
   const [aiScrollX, setAiScrollX] = useState(0);
+  const wishlistStatus = useWishlistStore((state) => state.statusByKey);
+  const ensureWishlistStatus = useWishlistStore((state) => state.ensureStatus);
+  const toggleWishlist = useWishlistStore((state) => state.toggleWishlist);
+  const clearWishlistStatus = useWishlistStore((state) => state.clearStatus);
 
   const sortOptions: Array<{ key: HomeSortKey; label: string }> = [
     { key: 'newest', label: 'Newest' },
@@ -81,9 +90,137 @@ export default function HomeScreen() {
       name: item.name,
       subtitle: t('home.defaultSubtitle'),
       price: item.basePrice ?? 0,
+      isUniqueInstance: item.isUniqueInstance,
       image: item.images?.find((image) => typeof image === 'string' && image.trim().length > 0),
     }));
   }, [plants, t]);
+
+  const homePlantEntities = useMemo(() => plants.slice(0, 4), [plants]);
+
+  const wishlistTargets = useMemo(
+    () =>
+      homePlantEntities
+        .map(resolveWishlistTarget)
+        .filter(
+          (target): target is NonNullable<ReturnType<typeof resolveWishlistTarget>> =>
+            target !== null
+        ),
+    [homePlantEntities]
+  );
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      clearWishlistStatus();
+    }
+  }, [clearWishlistStatus, isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+    void ensureWishlistStatus(wishlistTargets);
+  }, [ensureWishlistStatus, isAuthenticated, wishlistTargets]);
+
+  const requireAuth = (onSuccess?: () => void) => {
+    if (isAuthenticated) {
+      onSuccess?.();
+      return true;
+    }
+
+    Alert.alert(
+      t('common.loginRequiredTitle', { defaultValue: 'Login required' }),
+      t('common.loginRequiredMessage', { defaultValue: 'Please login to continue.' }),
+      [
+        { text: t('common.cancel', { defaultValue: 'Cancel' }), style: 'cancel' },
+        {
+          text: t('common.login', { defaultValue: 'Login' }),
+          onPress: () => navigation.navigate('Login'),
+        },
+      ],
+    );
+    return false;
+  };
+
+  const handleAddToCart = (plantId: string) => {
+    const targetPlant = plants.find((plant) => String(plant.id) === plantId);
+    if (!targetPlant) {
+      return;
+    }
+
+    if (!requireAuth()) {
+      return;
+    }
+
+    if (targetPlant.isUniqueInstance) {
+      return;
+    }
+
+    addToCart(targetPlant);
+    notify({ message: t('cart.addedMessage', { defaultValue: 'Added to cart.' }) });
+  };
+
+  const handleToggleWishlist = async (plantId: string) => {
+    const targetPlant = plants.find((plant) => String(plant.id) === plantId);
+    if (!targetPlant) {
+      return;
+    }
+
+    if (!requireAuth()) {
+      return;
+    }
+
+    const wishlistTarget = resolveWishlistTarget(targetPlant);
+    if (!wishlistTarget) {
+      notify({
+        message: t('wishlist.invalidItem', {
+          defaultValue: 'Unable to add this item to wishlist.',
+        }),
+      });
+      return;
+    }
+
+    const wishlistKey = getWishlistKey(wishlistTarget.itemType, wishlistTarget.itemId);
+    const wasInWishlist = wishlistStatus[wishlistKey] ?? false;
+
+    try {
+      await toggleWishlist(wishlistTarget.itemType, wishlistTarget.itemId);
+      notify({
+        message: wasInWishlist
+          ? t('wishlist.removeSuccess', { defaultValue: 'Removed from wishlist.' })
+          : t('wishlist.addedMessage', { defaultValue: 'Added to wishlist.' }),
+      });
+    } catch (error) {
+      const apiMessage = (error as { response?: { data?: { message?: string } } })?.response
+        ?.data?.message;
+      notify({
+        message:
+          apiMessage ||
+          (wasInWishlist
+            ? t('wishlist.removeFailed', {
+                defaultValue: 'Unable to remove from wishlist.',
+              })
+            : t('wishlist.addFailed', {
+                defaultValue: 'Unable to add to wishlist.',
+              })),
+      });
+    }
+  };
+
+  const isWishlisted = useCallback(
+    (plantId: string) => {
+      const targetPlant = plants.find((plant) => String(plant.id) === plantId);
+      if (!targetPlant) {
+        return false;
+      }
+      const wishlistTarget = resolveWishlistTarget(targetPlant);
+      if (!wishlistTarget) {
+        return false;
+      }
+      const wishlistKey = getWishlistKey(wishlistTarget.itemType, wishlistTarget.itemId);
+      return wishlistStatus[wishlistKey] ?? false;
+    },
+    [plants, wishlistStatus]
+  );
 
   const renderPlantCard = ({ item }: { item: HomePlant }) => {
     const imageUri = item.image?.trim();
@@ -107,8 +244,15 @@ export default function HomeScreen() {
             <Text style={styles.hotBadgeText}>{t('home.hot')}</Text>
           </View>
 
-          <TouchableOpacity style={styles.favoriteBtn}>
-            <Ionicons name="heart-outline" size={16} color={COLORS.white} />
+          <TouchableOpacity
+            style={styles.favoriteBtn}
+            onPress={() => handleToggleWishlist(item.id)}
+          >
+            <Ionicons
+              name={isWishlisted(item.id) ? 'heart' : 'heart-outline'}
+              size={16}
+              color={isWishlisted(item.id) ? COLORS.error : COLORS.white}
+            />
           </TouchableOpacity>
 
           <View style={styles.ratingBadge}>
@@ -122,9 +266,14 @@ export default function HomeScreen() {
           <Text style={styles.plantSub}>{item.subtitle}</Text>
           <View style={styles.priceRow}>
             <Text style={styles.plantPrice}>{(item.price || 0).toLocaleString(locale)}đ</Text>
-            <TouchableOpacity style={styles.plusBtn}>
-              <Ionicons name="add" size={15} color={COLORS.black} />
-            </TouchableOpacity>
+            {!item.isUniqueInstance && (
+              <TouchableOpacity
+                style={styles.plusBtn}
+                onPress={() => handleAddToCart(item.id)}
+              >
+                <Ionicons name="add" size={15} color={COLORS.black} />
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </TouchableOpacity>
@@ -155,7 +304,10 @@ export default function HomeScreen() {
               <Text style={styles.brandText}>PlantDecor</Text>
             </View>
 
-            <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.navigate('CartTab')}>
+            <TouchableOpacity
+              style={styles.iconBtn}
+              onPress={() => requireAuth(() => navigation.navigate('CartTab'))}
+            >
               <Ionicons name="bag-outline" size={21} color={COLORS.textPrimary} />
               {totalItems() > 0 && <View style={styles.cartDot} />}
             </TouchableOpacity>
@@ -498,6 +650,9 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primaryLight,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  plusBtnDisabled: {
+    opacity: 0.35,
   },
   banner: {
     marginTop: SPACING.lg,

@@ -47,3 +47,6 @@ export function isValidPhone(phone: string): boolean {
   const phoneRegex = /^(0|\+84)(3|5|7|8|9)[0-9]{8}$/;
   return phoneRegex.test(phone.replace(/\s/g, ''));
 }
+
+export { notify } from './notify';
+export { getWishlistKey, resolveWishlistTarget } from './wishlist';

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   TextInput,
   Animated,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,7 +20,8 @@ import { useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, SPACING, RADIUS, SHADOWS } from '../../constants';
 import { RootStackParamList, Plant } from '../../types';
-import { usePlantStore } from '../../stores';
+import { usePlantStore, useCartStore, useAuthStore, useWishlistStore } from '../../stores';
+import { getWishlistKey, notify, resolveWishlistTarget } from '../../utils';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -34,6 +36,8 @@ export default function CatalogScreen() {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
   const { plants, isLoading, error, searchShopPlants } = usePlantStore();
+  const addToCart = useCartStore((state) => state.addToCart);
+  const { isAuthenticated } = useAuthStore();
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
 
   // Filter states
@@ -53,6 +57,10 @@ export default function CatalogScreen() {
   const [categoryIds, setCategoryIds] = useState<number[]>([]);
   const [tagIds, setTagIds] = useState<number[]>([]);
   const [nurseryId, setNurseryId] = useState<number | undefined>(undefined);
+  const wishlistStatus = useWishlistStore((state) => state.statusByKey);
+  const ensureWishlistStatus = useWishlistStore((state) => state.ensureStatus);
+  const toggleWishlist = useWishlistStore((state) => state.toggleWishlist);
+  const clearWishlistStatus = useWishlistStore((state) => state.clearStatus);
 
   // Animation
   const filterHeight = useRef(new Animated.Value(0)).current;
@@ -95,6 +103,23 @@ export default function CatalogScreen() {
       setPriceRange(prev => ({ ...prev, max: value }));
     }
   };
+
+  const wishlistTargets = useMemo(
+    () =>
+      plants
+        .map(resolveWishlistTarget)
+        .filter(
+          (target): target is NonNullable<ReturnType<typeof resolveWishlistTarget>> =>
+            target !== null
+        ),
+    [plants]
+  );
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      clearWishlistStatus();
+    }
+  }, [clearWishlistStatus, isAuthenticated]);
 
   const formatPriceInput = (value: number) => {
     return value.toLocaleString(locale);
@@ -353,6 +378,100 @@ export default function CatalogScreen() {
     </ScrollView>
   );
 
+  const requireAuth = (onSuccess?: () => void) => {
+    if (isAuthenticated) {
+      onSuccess?.();
+      return true;
+    }
+
+    Alert.alert(
+      t('common.loginRequiredTitle', { defaultValue: 'Login required' }),
+      t('common.loginRequiredMessage', { defaultValue: 'Please login to continue.' }),
+      [
+        { text: t('common.cancel', { defaultValue: 'Cancel' }), style: 'cancel' },
+        {
+          text: t('common.login', { defaultValue: 'Login' }),
+          onPress: () => navigation.navigate('Login'),
+        },
+      ],
+    );
+    return false;
+  };
+
+  const handleAddToCart = (targetPlant: Plant) => {
+    if (!requireAuth()) {
+      return;
+    }
+
+    if (targetPlant.isUniqueInstance) {
+      return;
+    }
+
+    addToCart(targetPlant);
+    notify({ message: t('cart.addedMessage', { defaultValue: 'Added to cart.' }) });
+  };
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+    void ensureWishlistStatus(wishlistTargets);
+  }, [ensureWishlistStatus, isAuthenticated, wishlistTargets]);
+
+  const handleToggleWishlist = async (targetPlant: Plant) => {
+    if (!requireAuth()) {
+      return;
+    }
+
+    const wishlistTarget = resolveWishlistTarget(targetPlant);
+    if (!wishlistTarget) {
+      notify({
+        message: t('wishlist.invalidItem', {
+          defaultValue: 'Unable to add this item to wishlist.',
+        }),
+      });
+      return;
+    }
+
+    const wishlistKey = getWishlistKey(wishlistTarget.itemType, wishlistTarget.itemId);
+    const wasInWishlist = wishlistStatus[wishlistKey] ?? false;
+
+    try {
+      await toggleWishlist(wishlistTarget.itemType, wishlistTarget.itemId);
+      notify({
+        message: wasInWishlist
+          ? t('wishlist.removeSuccess', { defaultValue: 'Removed from wishlist.' })
+          : t('wishlist.addedMessage', { defaultValue: 'Added to wishlist.' }),
+      });
+    } catch (error) {
+      const apiMessage = (error as { response?: { data?: { message?: string } } })?.response
+        ?.data?.message;
+      notify({
+        message:
+          apiMessage ||
+          (wasInWishlist
+            ? t('wishlist.removeFailed', {
+                defaultValue: 'Unable to remove from wishlist.',
+              })
+            : t('wishlist.addFailed', {
+                defaultValue: 'Unable to add to wishlist.',
+              })),
+      });
+    }
+  };
+
+  const isWishlisted = useCallback(
+    (targetPlant: Plant) => {
+      const wishlistTarget = resolveWishlistTarget(targetPlant);
+      if (!wishlistTarget) {
+        return false;
+      }
+      const wishlistKey = getWishlistKey(wishlistTarget.itemType, wishlistTarget.itemId);
+      return wishlistStatus[wishlistKey] ?? false;
+    },
+    [wishlistStatus]
+  );
+
   const renderPlantCard = ({ item }: { item: Plant }) => {
     const imageUrl = item.images && item.images.length > 0
       ? item.images[0]
@@ -369,8 +488,15 @@ export default function CatalogScreen() {
             style={styles.plantImage}
             resizeMode="cover"
           />
-          <TouchableOpacity style={styles.favoriteButton}>
-            <Ionicons name="heart-outline" size={20} color={COLORS.white} />
+          <TouchableOpacity
+            style={styles.favoriteButton}
+            onPress={() => handleToggleWishlist(item)}
+          >
+            <Ionicons
+              name={isWishlisted(item) ? 'heart' : 'heart-outline'}
+              size={20}
+              color={isWishlisted(item) ? COLORS.error : COLORS.white}
+            />
           </TouchableOpacity>
           <View style={styles.ratingBadge}>
             <Ionicons name="star" size={12} color="#FACC15" />
@@ -395,9 +521,14 @@ export default function CatalogScreen() {
             <Text style={styles.plantPrice}>
               {(item.basePrice || 0).toLocaleString(locale)}₫
             </Text>
-            <TouchableOpacity style={styles.addButton}>
-              <Ionicons name="add" size={12} color={COLORS.black} />
-            </TouchableOpacity>
+            {!item.isUniqueInstance && (
+              <TouchableOpacity
+                style={styles.addButton}
+                onPress={() => handleAddToCart(item)}
+              >
+                <Ionicons name="add" size={12} color={COLORS.black} />
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </TouchableOpacity>
@@ -412,7 +543,10 @@ export default function CatalogScreen() {
             <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>{t('catalog.headerTitle')}</Text>
-          <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.navigate('Cart')}>
+          <TouchableOpacity
+            style={styles.iconBtn}
+            onPress={() => requireAuth(() => navigation.navigate('Cart'))}
+          >
             <View>
               <Ionicons name="cart" size={24} color={COLORS.textPrimary} />
               <View style={styles.cartBadge}>
@@ -437,7 +571,10 @@ export default function CatalogScreen() {
             <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>{t('catalog.headerTitle')}</Text>
-          <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.navigate('Cart')}>
+          <TouchableOpacity
+            style={styles.iconBtn}
+            onPress={() => requireAuth(() => navigation.navigate('Cart'))}
+          >
             <View>
               <Ionicons name="cart" size={24} color={COLORS.textPrimary} />
               <View style={styles.cartBadge}>
@@ -465,7 +602,10 @@ export default function CatalogScreen() {
           <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('catalog.headerTitle')}</Text>
-        <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.navigate('Cart')}>
+        <TouchableOpacity
+          style={styles.iconBtn}
+          onPress={() => requireAuth(() => navigation.navigate('Cart'))}
+        >
           <View>
             <Ionicons name="cart" size={24} color={COLORS.textPrimary} />
             <View style={styles.cartBadge}>
@@ -1021,5 +1161,8 @@ const styles = StyleSheet.create({
     borderRadius: 9,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  addButtonDisabled: {
+    opacity: 0.35,
   },
 });

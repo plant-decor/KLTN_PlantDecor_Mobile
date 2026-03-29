@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,8 @@ import {
   FlatList,
   TouchableOpacity,
   Image,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,60 +15,83 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../constants';
-import { RootStackParamList } from '../../types';
+import { CartApiItem, RootStackParamList } from '../../types';
+import { useAuthStore, useCartStore } from '../../stores';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
-type MockCartItem = {
+type CartDisplayItem = {
   id: string;
   name: string;
-  size: string;
-  image: string;
+  size?: string;
+  image?: string;
   price: number;
   oldPrice?: number;
   quantity: number;
   isAvailable: boolean;
 };
 
-const MOCK_CART_ITEMS: MockCartItem[] = [
-  {
-    id: 'c1',
-    name: 'Cây Lưỡi Hổ',
-    size: 'Nhỏ',
-    image:
-      'https://images.unsplash.com/photo-1459156212016-c812468e2115?auto=format&fit=crop&w=700&q=80',
-    price: 150000,
-    quantity: 1,
+const mapCartItems = (
+  items: CartApiItem[],
+  fallbackSize: string
+): CartDisplayItem[] =>
+  items.map((item) => ({
+    id: String(item.id),
+    name: item.productName,
+    size: fallbackSize,
+    price: item.price,
+    quantity: item.quantity,
     isAvailable: true,
-  },
-  {
-    id: 'c2',
-    name: 'Trầu Bà Nam Mỹ',
-    size: 'Vừa',
-    image:
-      'https://images.unsplash.com/photo-1509423350716-97f2360af9e4?auto=format&fit=crop&w=700&q=80',
-    price: 280000,
-    quantity: 2,
-    isAvailable: true,
-  },
-  {
-    id: 'c3',
-    name: 'Cây Lan Ý',
-    size: 'Nhỏ',
-    image:
-      'https://images.unsplash.com/photo-1463320898484-cdee8141c787?auto=format&fit=crop&w=700&q=80',
-    price: 120000,
-    oldPrice: 120000,
-    quantity: 1,
-    isAvailable: false,
-  },
-];
+  }));
 
 export default function CartScreen() {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
-  const [items, setItems] = useState<MockCartItem[]>(MOCK_CART_ITEMS);
+  const [items, setItems] = useState<CartDisplayItem[]>([]);
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
+  const { isAuthenticated } = useAuthStore();
+  const {
+    cartItems,
+    fetchCart,
+    updateCartItem,
+    removeCartItem,
+    clearCart,
+    isLoading,
+  } = useCartStore();
+  const authPromptedRef = useRef(false);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+
+    fetchCart({ pageNumber: 1, pageSize: 10 }).catch(() => {
+      // Error state handled by UI; keep silent here.
+    });
+  }, [fetchCart, isAuthenticated]);
+
+  useEffect(() => {
+    const fallbackSize = t('common.updating', { defaultValue: 'Updating' });
+    setItems(mapCartItems(cartItems, fallbackSize));
+  }, [cartItems, t]);
+
+  useEffect(() => {
+    if (isAuthenticated || authPromptedRef.current) {
+      return;
+    }
+
+    authPromptedRef.current = true;
+    Alert.alert(
+      t('common.loginRequiredTitle', { defaultValue: 'Login required' }),
+      t('common.loginRequiredMessage', { defaultValue: 'Please login to continue.' }),
+      [
+        {
+          text: t('common.login', { defaultValue: 'Login' }),
+          onPress: () => navigation.navigate('Login'),
+        },
+      ],
+    );
+  }, [isAuthenticated, navigation, t]);
 
   const totalItems = useMemo(
     () => items.reduce((sum, item) => sum + item.quantity, 0),
@@ -82,34 +107,68 @@ export default function CartScreen() {
   );
 
   const incrementQuantity = (id: string) => {
+    const nextQuantity = items.find((item) => item.id === id)?.quantity ?? 1;
+    const quantity = nextQuantity + 1;
     setItems((prev) =>
       prev.map((item) =>
         item.id === id && item.isAvailable
-          ? { ...item, quantity: item.quantity + 1 }
+          ? { ...item, quantity }
           : item,
       ),
     );
+    void updateCartItem(Number(id), quantity).catch(() => {
+      // keep optimistic state for now
+    });
   };
 
   const decrementQuantity = (id: string) => {
+    const currentQuantity = items.find((item) => item.id === id)?.quantity ?? 1;
+    const quantity = Math.max(1, currentQuantity - 1);
     setItems((prev) =>
       prev.map((item) => {
         if (item.id !== id || !item.isAvailable) return item;
-        return { ...item, quantity: Math.max(1, item.quantity - 1) };
+        return { ...item, quantity };
       }),
     );
+    console.log('Updating cart item', { id, quantity });
+    void updateCartItem(Number(id), quantity).catch(() => {
+      // keep optimistic state for now
+    });
   };
 
   const removeItem = (id: string) => {
     setItems((prev) => prev.filter((item) => item.id !== id));
+    void removeCartItem(Number(id)).catch(() => {
+      void fetchCart({ pageNumber: 1, pageSize: 10 }).catch(() => {
+        // keep optimistic state for now
+      });
+    });
   };
 
-  const renderCartItem = ({ item }: { item: MockCartItem }) => {
+  const handleClearAll = () => {
+    setItems([]);
+    void clearCart().catch(() => {
+      void fetchCart({ pageNumber: 1, pageSize: 10 }).catch(() => {
+        // keep optimistic state for now
+      });
+    });
+  };
+
+  const renderCartItem = ({ item }: { item: CartDisplayItem }) => {
     const isUnavailable = !item.isAvailable;
+    const sizeLabel = item.size
+      ? t('cart.size', { size: item.size })
+      : t('common.updating', { defaultValue: 'Updating' });
 
     return (
       <View style={[styles.cartItem, isUnavailable && styles.cartItemUnavailable]}>
-        <Image source={{ uri: item.image }} style={styles.itemImage} resizeMode="cover" />
+        {item.image ? (
+          <Image source={{ uri: item.image }} style={styles.itemImage} resizeMode="cover" />
+        ) : (
+          <View style={styles.itemImagePlaceholder}>
+            <Ionicons name="leaf-outline" size={28} color={COLORS.gray400} />
+          </View>
+        )}
 
         {!isUnavailable ? (
           <TouchableOpacity style={styles.closeBtn} onPress={() => removeItem(item.id)}>
@@ -138,10 +197,6 @@ export default function CartScreen() {
           )}
 
           <View style={styles.bottomRow}>
-            <Text style={[styles.itemSize, isUnavailable && styles.unavailableText]}>
-              {t('cart.size', { size: item.size })}
-            </Text>
-
             {!isUnavailable && (
               <View style={styles.quantityPill}>
                 <TouchableOpacity
@@ -172,6 +227,20 @@ export default function CartScreen() {
     );
   };
 
+  if (!isAuthenticated) {
+    return <SafeAreaView style={styles.container} edges={['top']} />;
+  }
+
+  if (isLoading && items.length === 0) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.loaderContainer}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   if (items.length === 0) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
@@ -198,8 +267,8 @@ export default function CartScreen() {
           <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('cart.headerWithCount', { count: totalItems })}</Text>
-        <TouchableOpacity style={styles.headerEditBtn}>
-          <Text style={styles.headerEditText}>{t('cart.edit')}</Text>
+        <TouchableOpacity style={styles.headerEditBtn} onPress={handleClearAll}>
+          <Text style={styles.headerEditText}>{t('cart.clearAll')}</Text>
         </TouchableOpacity>
       </View>
 
@@ -285,11 +354,24 @@ const styles = StyleSheet.create({
   cartItemUnavailable: {
     opacity: 0.78,
   },
+  loaderContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   itemImage: {
     width: 90,
     height: 90,
     borderRadius: 24,
     backgroundColor: COLORS.gray100,
+  },
+  itemImagePlaceholder: {
+    width: 90,
+    height: 90,
+    borderRadius: 24,
+    backgroundColor: COLORS.gray100,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   closeBtn: {
     position: 'absolute',
@@ -370,8 +452,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   quantityCircle: {
-    width: 34,
-    height: 34,
+    width: 24,
+    height: 24,
     borderRadius: 999,
     justifyContent: 'center',
     alignItems: 'center',

@@ -149,7 +149,7 @@ export const API = {
     // Auth
     LOGIN: "/Authentication/login",
     REGISTER: "/Authentication/register",
-    REFRESH_TOKEN: "/Authentication/refresh",
+    REFRESH_TOKEN: "/Authentication/refreshToken",
     LOGOUT: "/Authentication/logout",
     SEND_OTP_EMAIL: "/Authentication/send-otp-email-verification",
     VERIFY_OTP_EMAIL: "/Authentication/verify-otp-email-verification",
@@ -172,8 +172,8 @@ export const API = {
     // Cart
     CART: "/Cart",
     CART_ADD: "/Cart/items",
-    CART_UPDATE: (id: string) => `/Cart/items/${id}`,
-    CART_REMOVE: (id: string) => `/Cart/items/${id}`,
+    CART_UPDATE: (id: number) => `/Cart/items/${id}`,
+    CART_REMOVE: (id: number) => `/Cart/items/${id}`,
     CART_CLEAR: "/Cart",
 
     // Orders

@@ -1,7 +1,7 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import { API, APP_CONFIG } from '../constants';
-import { AuthTokens } from '../types';
+import { authService } from './authService';
 
 // Create axios instance
 const api = axios.create({
@@ -59,42 +59,8 @@ api.interceptors.response.use(
       originalRequest._retry = true;
 
       try {
-        const storedRefreshToken = await SecureStore.getItemAsync(
-          APP_CONFIG.SECURE_STORE_KEYS.REFRESH_TOKEN
-        );
-
-        if (!storedRefreshToken) {
-          throw new Error('No refresh token available');
-        }
-
-        /**
-         * POST /api/Authentication/refresh-token
-         * Request:  { refreshToken }
-         * Response: { success, statusCode, message, payload: { accessToken, refreshToken } }
-         */
-        const refreshResponse = await axios.post<{
-          success: boolean;
-          payload: AuthTokens;
-        }>(
-          `${API.BASE_URL}${API.ENDPOINTS.REFRESH_TOKEN}`,
-          { refreshToken: storedRefreshToken }
-        );
-
-        const tokens = refreshResponse.data?.payload;
-        if (!tokens?.accessToken || !tokens?.refreshToken) {
-          throw new Error('Invalid refresh token response: missing payload');
-        }
-
-        const { accessToken, refreshToken: newRefreshToken } = tokens;
-
-        await SecureStore.setItemAsync(
-          APP_CONFIG.SECURE_STORE_KEYS.ACCESS_TOKEN,
-          accessToken
-        );
-        await SecureStore.setItemAsync(
-          APP_CONFIG.SECURE_STORE_KEYS.REFRESH_TOKEN,
-          newRefreshToken
-        );
+        const { tokens } = await authService.refreshToken();
+        const { accessToken } = tokens;
 
         if (originalRequest.headers) {
           originalRequest.headers.Authorization = `Bearer ${accessToken}`;
