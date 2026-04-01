@@ -1,7 +1,7 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import { API, APP_CONFIG } from '../constants';
-import { authService } from './authService';
+import { clearStoredTokens, notifyAuthFailure, refreshAccessToken } from './authSession';
 
 // Create axios instance
 const api = axios.create({
@@ -59,8 +59,7 @@ api.interceptors.response.use(
       originalRequest._retry = true;
 
       try {
-        const { tokens } = await authService.refreshToken();
-        const { accessToken } = tokens;
+        const { accessToken } = await refreshAccessToken();
 
         if (originalRequest.headers) {
           originalRequest.headers.Authorization = `Bearer ${accessToken}`;
@@ -77,8 +76,8 @@ api.interceptors.response.use(
           console.warn('[API] Token refresh failed — clearing stored tokens');
         }
         // Clear tokens and let the calling code handle the unauthenticated state
-        await SecureStore.deleteItemAsync(APP_CONFIG.SECURE_STORE_KEYS.ACCESS_TOKEN);
-        await SecureStore.deleteItemAsync(APP_CONFIG.SECURE_STORE_KEYS.REFRESH_TOKEN);
+        await clearStoredTokens();
+        notifyAuthFailure();
       }
     }
 

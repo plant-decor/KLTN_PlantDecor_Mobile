@@ -83,6 +83,7 @@ export default function PlantDetailScreen() {
   const [renderExtraNurseries, setRenderExtraNurseries] = useState(false);
   const [extraNurseryHeight, setExtraNurseryHeight] = useState(0);
   const [selectedNurseryId, setSelectedNurseryId] = useState<number | null>(null);
+  const [selectedQuantity, setSelectedQuantity] = useState(1);
   const wishlistStatus = useWishlistStore((state) => state.statusByKey);
   const ensureWishlistStatus = useWishlistStore((state) => state.ensureStatus);
   const toggleWishlist = useWishlistStore((state) => state.toggleWishlist);
@@ -98,6 +99,10 @@ export default function PlantDetailScreen() {
       fetchPlants({ page: 1, sortBy: 'createdAt', sortDirection: 'desc' });
     }
   }, [fetchPlants, plants.length]);
+
+  useEffect(() => {
+    setSelectedQuantity(1);
+  }, [plantId]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -270,10 +275,21 @@ export default function PlantDetailScreen() {
   };
 
   const handleBuyNow = () => {
-    requireAuth(() => navigation.navigate('Checkout'));
+    requireAuth(() => {
+      if (plant && !plant.isUniqueInstance) {
+        addToCart(plant, selectedQuantity, {
+          commonPlantId: selectedNursery?.commonPlantId ?? undefined,
+        });
+      }
+      navigation.navigate('Checkout');
+    });
   };
 
-  const handleAddToCart = (targetPlant: Plant, overrideCommonPlantId?: number) => {
+  const handleAddToCart = (
+    targetPlant: Plant,
+    overrideCommonPlantId?: number,
+    quantity = 1,
+  ) => {
     if (!requireAuth()) {
       return;
     }
@@ -282,7 +298,7 @@ export default function PlantDetailScreen() {
       return;
     }
 
-    addToCart(targetPlant, 1, {
+    addToCart(targetPlant, quantity, {
       commonPlantId: overrideCommonPlantId,
     });
     notify({ message: t('cart.addedMessage', { defaultValue: 'Added to cart.' }) });
@@ -868,24 +884,56 @@ export default function PlantDetailScreen() {
             </Text>
           </TouchableOpacity>
         ) : (
-          <View style={styles.bottomActionRow}>
-            <TouchableOpacity
-              style={[styles.buyNowBtn, styles.buyNowBtnCompact]}
-              onPress={handleBuyNow}
-            >
-              <Text style={styles.buyNowText}>
-                {t('plantDetail.buyNow', { defaultValue: 'Buy now' })}
+          <View style={styles.bottomActionWrap}>
+            <View style={styles.quantityControl}>
+              <Text style={styles.quantityLabel}>
+                {t('cart.quantity', { defaultValue: 'Quantity' })}
               </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.addToCartBtn, styles.addToCartBtnWide]}
-              onPress={() => handleAddToCart(plant)}
-            >
-              <Ionicons name="cart-outline" size={20} color="#102216" />
-              <Text style={styles.addToCartText}>
-                {t('plantDetail.addToCart')}
-              </Text>
-            </TouchableOpacity>
+              <View style={styles.quantityStepper}>
+                <TouchableOpacity
+                  style={[
+                    styles.quantityBtn,
+                    selectedQuantity <= 1 && styles.quantityBtnDisabled,
+                  ]}
+                  disabled={selectedQuantity <= 1}
+                  onPress={() => setSelectedQuantity((prev) => Math.max(1, prev - 1))}
+                >
+                  <Ionicons name="remove" size={16} color={COLORS.textSecondary} />
+                </TouchableOpacity>
+                <Text style={styles.quantityValue}>{selectedQuantity}</Text>
+                <TouchableOpacity
+                  style={styles.quantityBtn}
+                  onPress={() => setSelectedQuantity((prev) => Math.min(99, prev + 1))}
+                >
+                  <Ionicons name="add" size={16} color={COLORS.textPrimary} />
+                </TouchableOpacity>
+              </View>
+            </View>
+            <View style={styles.bottomActionRow}>
+              <TouchableOpacity
+                style={[styles.buyNowBtn, styles.buyNowBtnCompact]}
+                onPress={handleBuyNow}
+              >
+                <Text style={styles.buyNowText}>
+                  {t('plantDetail.buyNow', { defaultValue: 'Buy now' })}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.addToCartBtn, styles.addToCartBtnWide]}
+                onPress={() =>
+                  handleAddToCart(
+                    plant,
+                    selectedNursery?.commonPlantId ?? undefined,
+                    selectedQuantity,
+                  )
+                }
+              >
+                <Ionicons name="cart-outline" size={20} color="#102216" />
+                <Text style={styles.addToCartText}>
+                  {t('plantDetail.addToCart')}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
       </View>
@@ -1532,9 +1580,53 @@ const styles = StyleSheet.create({
     zIndex: 3,
     elevation: 3,
   },
+  bottomActionWrap: {
+    gap: 10,
+  },
   bottomActionRow: {
     flexDirection: 'row',
     gap: 12,
+  },
+  quantityControl: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#F0FDF4',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#13EC5B',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  quantityLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0D1B12',
+  },
+  quantityStepper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  quantityBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.gray300,
+    backgroundColor: COLORS.white,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  quantityBtnDisabled: {
+    opacity: 0.4,
+  },
+  quantityValue: {
+    minWidth: 24,
+    textAlign: 'center',
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0D1B12',
   },
   buyNowBtn: {
     flex: 1,

@@ -1,4 +1,3 @@
-import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import { jwtDecode } from 'jwt-decode';
 import { API, APP_CONFIG } from '../constants';
@@ -9,8 +8,6 @@ import {
   User,
   LoginRequest,
   LoginResponse,
-  RefreshTokenRequest,
-  RefreshTokenResponse,
   RegisterRequest,
   RegisterResponse,
   SendOTPRequest,
@@ -19,6 +16,12 @@ import {
   VerifyOTPResponse,
 } from '../types';
 import api from './api';
+import {
+  clearStoredTokens,
+  notifyAuthFailure,
+  refreshAccessToken,
+  setAuthFailureHandler,
+} from './authSession';
 
 const EMPTY_DATE = new Date(0).toISOString();
 
@@ -63,6 +66,8 @@ const buildUserFromToken = (accessToken: string): User | null => {
 };
 
 export const authService = {
+  setAuthFailureHandler,
+  notifyAuthFailure,
   login: async (email: string, password: string, deviceId: string) => {
     const loginRequest: LoginRequest = { email, password, deviceId };
     const response = await api.post<LoginResponse>(
@@ -85,34 +90,8 @@ export const authService = {
   },
 
   refreshToken: async (refreshToken?: string) => {
-    const storedRefreshToken =
-      refreshToken ??
-      (await SecureStore.getItemAsync(
-        APP_CONFIG.SECURE_STORE_KEYS.REFRESH_TOKEN
-      ));
-
-    if (!storedRefreshToken) {
-      throw new Error('No refresh token available');
-    }
-
-    const refreshRequest: RefreshTokenRequest = {
-      refreshToken: storedRefreshToken,
-    };
-    // Use axios directly to avoid interceptor recursion during refresh.
-    const response = await axios.post<RefreshTokenResponse>(
-      `${API.BASE_URL}${API.ENDPOINTS.REFRESH_TOKEN}`,
-      refreshRequest
-    );
-
-    const { accessToken, refreshToken: newRefreshToken } = response.data.payload;
-    await SecureStore.setItemAsync(
-      APP_CONFIG.SECURE_STORE_KEYS.ACCESS_TOKEN,
-      accessToken
-    );
-    await SecureStore.setItemAsync(
-      APP_CONFIG.SECURE_STORE_KEYS.REFRESH_TOKEN,
-      newRefreshToken
-    );
+    const tokens = await refreshAccessToken(refreshToken);
+    const { accessToken, refreshToken: newRefreshToken } = tokens;
 
     const user = buildUserFromToken(accessToken);
     return { user, tokens: { accessToken, refreshToken: newRefreshToken } };
@@ -138,12 +117,7 @@ export const authService = {
     } catch {
       // Ignore logout API errors
     } finally {
-      await SecureStore.deleteItemAsync(
-        APP_CONFIG.SECURE_STORE_KEYS.ACCESS_TOKEN
-      );
-      await SecureStore.deleteItemAsync(
-        APP_CONFIG.SECURE_STORE_KEYS.REFRESH_TOKEN
-      );
+      await clearStoredTokens();
     }
   },
 
