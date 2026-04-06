@@ -3,15 +3,35 @@ import * as SecureStore from 'expo-secure-store';
 export interface User {
   id: string;
   email: string;
+  username?: string;
   fullName: string;
   phone?: string;
   avatar?: string;
-  address?: Address;
+  address?: string | Address;
+  birthYear?: number;
+  gender?: UserGender;
+  genderCode?: number;
+  receiveNotifications?: boolean;
+  receiveNotification?: boolean;
+  profileCompleteness?: number;
   createdAt: string;
   updatedAt?: string;
   status?: string;
   isVerified?: boolean;
   role?: string;
+}
+
+export type UserGender = 'Male' | 'Female' | 'Other';
+export type UserGenderCode = 1 | 2 | 3;
+
+export interface UpdateProfileRequest {
+  username: string;
+  fullName: string;
+  phoneNumber?: string;
+  address: string;
+  birthYear: number;
+  gender: UserGenderCode;
+  receiveNotifications: boolean;
 }
 
 export interface Address {
@@ -453,6 +473,17 @@ export interface CartItem {
   quantity: number;
 }
 
+export type CheckoutSource = 'cart' | 'buy-now';
+
+export interface CheckoutItem {
+  id: string;
+  name: string;
+  size?: string;
+  image?: string;
+  price: number;
+  quantity: number;
+}
+
 // ==================== Wishlist ====================
 export type WishlistItemType =
   | 'CommonPlant'
@@ -606,7 +637,10 @@ export type RootStackParamList = {
   AIDesignResult: { resultId: string };
   Cart: undefined;
   Wishlist: undefined;
-  Checkout: undefined;
+  Checkout: {
+    source?: CheckoutSource;
+    items?: CheckoutItem[];
+  } | undefined;
   VerifyCode: { email: string; password: string };
   OrderDetail: { orderId: string };
   Login: undefined;

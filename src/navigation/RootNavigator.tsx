@@ -12,6 +12,7 @@ import {
   RegisterScreen,
   CatalogScreen,
   WishlistScreen,
+  EditProfileScreen,
 } from '../screens';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -34,12 +35,12 @@ export default function RootNavigator() {
       <Stack.Screen name="Login" component={LoginScreen} options={{ animation: 'fade_from_bottom' }} />
       <Stack.Screen name="Register" component={RegisterScreen} options={{ animation: 'fade_from_bottom' }} />
       <Stack.Screen name="Catalog" component={CatalogScreen} />
+      <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{ animation: 'fade_from_bottom' }} />
       {/* Add more stack screens as needed:
         <Stack.Screen name="Checkout" component={CheckoutScreen} />
         <Stack.Screen name="Search" component={SearchScreen} />
         <Stack.Screen name="OrderDetail" component={OrderDetailScreen} />
         <Stack.Screen name="OrderHistory" component={OrderHistoryScreen} />
-        <Stack.Screen name="EditProfile" component={EditProfileScreen} />
         <Stack.Screen name="CategoryPlants" component={CategoryPlantsScreen} />
         <Stack.Screen name="AIDesignResult" component={AIDesignResultScreen} />
       */}

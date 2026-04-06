@@ -20,7 +20,12 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, SPACING, RADIUS, SHADOWS } from '../../constants';
-import { RootStackParamList, Plant, NurseryPlantInstanceAvailability } from '../../types';
+import {
+  RootStackParamList,
+  Plant,
+  NurseryPlantInstanceAvailability,
+  CheckoutItem,
+} from '../../types';
 import { usePlantStore, useCartStore, useAuthStore, useWishlistStore } from '../../stores';
 import { plantService } from '../../services/plantService';
 import { getWishlistKey, notify, resolveWishlistTarget } from '../../utils';
@@ -501,15 +506,30 @@ export default function CatalogScreen() {
       return;
     }
 
+    const checkoutQuantity = Math.max(1, selectedCartQuantity);
+
     handleAddToCart(
       pendingCartPlant,
       selectedNursery.commonPlantId,
-      Math.max(1, selectedCartQuantity),
+      checkoutQuantity,
     );
+
+    const checkoutItem: CheckoutItem = {
+      id: `buy_now_${pendingCartPlant.id}_${selectedNursery.nurseryId}`,
+      name: pendingCartPlant.name,
+      size: pendingCartPlant.sizeName || t('common.updating', { defaultValue: 'Updating' }),
+      image: pendingCartPlant.images?.[0] ?? undefined,
+      price: selectedNursery.minPrice || pendingCartPlant.basePrice || 0,
+      quantity: checkoutQuantity,
+    };
+
     closeNurseryPicker();
 
     if (goToCheckout) {
-      navigation.navigate('Checkout');
+      navigation.navigate('Checkout', {
+        source: 'buy-now',
+        items: [checkoutItem],
+      });
     }
   };
 

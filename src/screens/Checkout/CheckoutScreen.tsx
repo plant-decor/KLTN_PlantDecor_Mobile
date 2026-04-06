@@ -1,69 +1,249 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
   Image,
+  ActivityIndicator,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../constants';
-import { RootStackParamList } from '../../types';
+import {
+  CartApiItem,
+  CartItem,
+  CheckoutItem,
+  RootStackParamList,
+  UpdateProfileRequest,
+  UserGender,
+  UserGenderCode,
+} from '../../types';
+import { useAuthStore, useCartStore } from '../../stores';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+type ScreenRouteProp = RouteProp<RootStackParamList, 'Checkout'>;
 
-type CheckoutItem = {
-  id: string;
-  name: string;
-  size: string;
-  image: string;
-  price: number;
-  quantity: number;
+const mapApiCartItems = (
+  items: CartApiItem[],
+  fallbackSize: string
+): CheckoutItem[] =>
+  items.map((item) => ({
+    id: String(item.id),
+    name: item.productName,
+    size: fallbackSize,
+    image: undefined,
+    price: item.price,
+    quantity: item.quantity,
+  }));
+
+const mapLocalCartItems = (
+  items: CartItem[],
+  fallbackSize: string
+): CheckoutItem[] =>
+  items.map((item) => ({
+    id: item.id,
+    name: item.plant.name,
+    size: item.plant.sizeName || fallbackSize,
+    image: item.plant.images?.[0] ?? undefined,
+    price: item.plant.basePrice || 0,
+    quantity: item.quantity,
+  }));
+
+const mapGenderToCode = (gender?: UserGender): UserGenderCode => {
+  if (gender === 'Female') {
+    return 2;
+  }
+  if (gender === 'Other') {
+    return 3;
+  }
+  return 1;
 };
 
-const CHECKOUT_ITEMS: CheckoutItem[] = [
-  {
-    id: 'co1',
-    name: 'Cây Lưỡi Hổ',
-    size: 'Nhỏ',
-    image:
-      'https://images.unsplash.com/photo-1459156212016-c812468e2115?auto=format&fit=crop&w=700&q=80',
-    price: 150000,
-    quantity: 1,
-  },
-  {
-    id: 'co2',
-    name: 'Trầu Bà Nam Mỹ',
-    size: 'Vừa',
-    image:
-      'https://images.unsplash.com/photo-1509423350716-97f2360af9e4?auto=format&fit=crop&w=700&q=80',
-    price: 280000,
-    quantity: 2,
-  },
-];
+const normalizeGenderCode = (rawCode: unknown): UserGenderCode | null => {
+  if (rawCode === 1 || rawCode === 2 || rawCode === 3) {
+    return rawCode;
+  }
+  return null;
+};
 
 export default function CheckoutScreen() {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
-  const [paymentMethod, setPaymentMethod] = useState<'cod' | 'vnpay'>('cod');
+  const route = useRoute<ScreenRouteProp>();
+  const paymentMethod: 'vnpay' = 'vnpay';
+  const { isAuthenticated, user, updateProfile } = useAuthStore();
+  const {
+    cartItems,
+    items: localCartItems,
+    fetchCart,
+    isLoading: isCartLoading,
+  } = useCartStore();
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
+  const fallbackSize = t('common.updating', { defaultValue: 'Updating' });
+  const routeItems = route.params?.items ?? [];
+  const hasRouteItems = routeItems.length > 0;
+  const userAddress =
+    typeof user?.address === 'string'
+      ? user.address.trim()
+      : user?.address?.fullAddress?.trim() ?? '';
+  const userPhone = user?.phone?.trim() ?? '';
+  const [deliveryAddress, setDeliveryAddress] = useState(userAddress);
+  const [deliveryPhone, setDeliveryPhone] = useState(userPhone);
+  const [isEditingAddress, setIsEditingAddress] = useState(false);
+  const [isSavingAddress, setIsSavingAddress] = useState(false);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+    if (hasRouteItems) {
+      return;
+    }
+    if (cartItems.length > 0 || localCartItems.length > 0) {
+      return;
+    }
+
+    void fetchCart({ pageNumber: 1, pageSize: 20 }).catch(() => {
+      // Keep screen usable with empty state when cart fetch fails.
+    });
+  }, [
+    isAuthenticated,
+    hasRouteItems,
+    cartItems.length,
+    localCartItems.length,
+    fetchCart,
+  ]);
+
+  useEffect(() => {
+    if (!isEditingAddress) {
+      setDeliveryAddress(userAddress);
+      setDeliveryPhone(userPhone);
+    }
+  }, [userAddress, userPhone, isEditingAddress]);
+
+  const checkoutItems = useMemo(() => {
+    if (routeItems.length > 0) {
+      return routeItems;
+    }
+    if (cartItems.length > 0) {
+      return mapApiCartItems(cartItems, fallbackSize);
+    }
+    if (localCartItems.length > 0) {
+      return mapLocalCartItems(localCartItems, fallbackSize);
+    }
+    return [];
+  }, [routeItems, cartItems, localCartItems, fallbackSize]);
 
   const subTotal = useMemo(
-    () => CHECKOUT_ITEMS.reduce((sum, item) => sum + (item.price || 0) * item.quantity, 0),
-    [],
+    () => checkoutItems.reduce((sum, item) => sum + (item.price || 0) * item.quantity, 0),
+    [checkoutItems],
   );
   const totalQuantity = useMemo(
-    () => CHECKOUT_ITEMS.reduce((sum, item) => sum + item.quantity, 0),
-    [],
+    () => checkoutItems.reduce((sum, item) => sum + item.quantity, 0),
+    [checkoutItems],
   );
-  const shippingFee = 35000;
-  const discount = 15000;
-  const total = subTotal + shippingFee - discount;
+  const total = subTotal;
+
+  const isLoadingCheckout = isCartLoading && !hasRouteItems && checkoutItems.length === 0;
+  const receiverLine = [user?.fullName?.trim(), deliveryPhone.trim()]
+    .filter((value): value is string => Boolean(value))
+    .join(' | ');
+
+  const handleCancelEditAddress = () => {
+    if (isSavingAddress) {
+      return;
+    }
+    setDeliveryAddress(userAddress);
+    setDeliveryPhone(userPhone);
+    setIsEditingAddress(false);
+  };
+
+  const handleSaveEditAddress = async () => {
+    const trimmedAddress = deliveryAddress.trim();
+    const trimmedPhone = deliveryPhone.trim();
+
+    if (!trimmedAddress) {
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        t('checkout.editAddressRequired', {
+          defaultValue: 'Please enter a delivery address.',
+        })
+      );
+      return;
+    }
+
+    if (!user) {
+      setDeliveryAddress(trimmedAddress);
+      setDeliveryPhone(trimmedPhone);
+      setIsEditingAddress(false);
+      return;
+    }
+
+    const username = user.username?.trim() ?? '';
+    const fullName = user.fullName?.trim() ?? '';
+    const birthYear = user.birthYear;
+
+    if (!username || !fullName || typeof birthYear !== 'number' || !Number.isInteger(birthYear)) {
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        t('checkout.profileRequiredForAddressUpdate', {
+          defaultValue: 'Please complete your profile before saving address from checkout.',
+        }),
+        [
+          {
+            text: t('common.cancel', { defaultValue: 'Cancel' }),
+            style: 'cancel',
+          },
+          {
+            text: t('profile.editProfile', { defaultValue: 'Edit profile' }),
+            onPress: () => {
+              setIsEditingAddress(false);
+              navigation.navigate('EditProfile');
+            },
+          },
+        ]
+      );
+      return;
+    }
+
+    const payload: UpdateProfileRequest = {
+      username,
+      fullName,
+      phoneNumber: trimmedPhone || user.phone?.trim() || undefined,
+      address: trimmedAddress,
+      birthYear,
+      gender: normalizeGenderCode(user.genderCode) ?? mapGenderToCode(user.gender),
+      receiveNotifications:
+        user.receiveNotifications ?? user.receiveNotification ?? false,
+    };
+
+    try {
+      setIsSavingAddress(true);
+      await updateProfile(payload);
+      setDeliveryAddress(trimmedAddress);
+      setDeliveryPhone(trimmedPhone);
+      setIsEditingAddress(false);
+    } catch (error: any) {
+      const apiMessage = error?.response?.data?.message;
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        typeof apiMessage === 'string' && apiMessage.trim().length > 0
+          ? apiMessage
+          : t('profile.editFormUpdateFailed', {
+              defaultValue: 'Unable to update profile. Please try again.',
+            })
+      );
+    } finally {
+      setIsSavingAddress(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -78,61 +258,136 @@ export default function CheckoutScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {isLoadingCheckout && (
+          <View style={styles.loadingCard}>
+            <ActivityIndicator size="small" color={COLORS.primary} />
+          </View>
+        )}
+
         <View style={styles.card}>
           <View style={styles.cardTitleRow}>
             <Ionicons name="location" size={16} color={COLORS.primaryLight} />
             <Text style={styles.cardTitle}>{t('checkout.deliveryAddress')}</Text>
-            <TouchableOpacity style={styles.changeBtn}>
-              <Text style={styles.changeText}>{t('checkout.change')}</Text>
+            <TouchableOpacity
+              style={styles.changeBtn}
+              onPress={() => setIsEditingAddress(true)}
+              disabled={isEditingAddress || isSavingAddress}
+            >
+              <Text style={styles.changeText}>
+                {isEditingAddress
+                  ? t('checkout.editingAddress', { defaultValue: 'Editing...' })
+                  : t('checkout.change')}
+              </Text>
             </TouchableOpacity>
           </View>
-          <Text style={styles.receiverText}>Nguyễn Văn A | (+84)912345 678</Text>
-          <Text style={styles.addressText}>
-            Số 123, Đường Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP. Hồ Chí Minh
+          <Text style={styles.receiverText}>
+            {receiverLine ||
+              t('checkout.receiverFallback', {
+                defaultValue: 'Recipient information unavailable',
+              })}
           </Text>
+          {isEditingAddress ? (
+            <>
+              <TextInput
+                style={styles.phoneInput}
+                value={deliveryPhone}
+                onChangeText={setDeliveryPhone}
+                placeholder={t('checkout.editPhonePlaceholder', {
+                  defaultValue: 'Enter phone number',
+                })}
+                placeholderTextColor={COLORS.gray500}
+                keyboardType="phone-pad"
+                editable={!isSavingAddress}
+              />
+              <TextInput
+                style={styles.addressInput}
+                value={deliveryAddress}
+                onChangeText={setDeliveryAddress}
+                placeholder={t('checkout.editAddressPlaceholder', {
+                  defaultValue: 'Enter your delivery address',
+                })}
+                placeholderTextColor={COLORS.gray500}
+                multiline
+                numberOfLines={3}
+                textAlignVertical="top"
+                editable={!isSavingAddress}
+              />
+              <View style={styles.addressActions}>
+                <TouchableOpacity
+                  style={[
+                    styles.addressActionBtn,
+                    styles.addressCancelBtn,
+                    isSavingAddress && styles.addressActionBtnDisabled,
+                  ]}
+                  onPress={handleCancelEditAddress}
+                  disabled={isSavingAddress}
+                >
+                  <Text style={styles.addressCancelText}>{t('common.cancel')}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.addressActionBtn,
+                    styles.addressSaveBtn,
+                    isSavingAddress && styles.addressActionBtnDisabled,
+                  ]}
+                  onPress={handleSaveEditAddress}
+                  disabled={isSavingAddress}
+                >
+                  <Text style={styles.addressSaveText}>
+                    {isSavingAddress
+                      ? t('common.updating', { defaultValue: 'Updating...' })
+                      : t('checkout.saveAddress', { defaultValue: 'Save address' })}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          ) : (
+            <Text style={styles.addressText}>
+              {deliveryAddress ||
+                t('checkout.deliveryAddressFallback', {
+                  defaultValue: 'No delivery address found. Please update your profile address.',
+                })}
+            </Text>
+          )}
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>{t('checkout.orderTitle', { count: CHECKOUT_ITEMS.length })}</Text>
-          {CHECKOUT_ITEMS.map((item) => (
-            <View key={item.id} style={styles.orderItem}>
-              <View style={styles.orderImageWrap}>
-                <Image source={{ uri: item.image }} style={styles.orderImage} resizeMode="cover" />
-                <View style={styles.quantityBadge}>
-                  <Text style={styles.quantityBadgeText}>x{item.quantity}</Text>
+          <Text style={styles.sectionTitle}>{t('checkout.orderTitle', { count: checkoutItems.length })}</Text>
+          {checkoutItems.length === 0 ? (
+            <Text style={styles.emptyOrderText}>
+              {t('cart.emptySubtitle', {
+                defaultValue: 'Your cart is empty.',
+              })}
+            </Text>
+          ) : (
+            checkoutItems.map((item) => (
+              <View key={item.id} style={styles.orderItem}>
+                <View style={styles.orderImageWrap}>
+                  {item.image ? (
+                    <Image source={{ uri: item.image }} style={styles.orderImage} resizeMode="cover" />
+                  ) : (
+                    <View style={styles.orderImagePlaceholder}>
+                      <Ionicons name="leaf-outline" size={22} color={COLORS.gray500} />
+                    </View>
+                  )}
+                  <View style={styles.quantityBadge}>
+                    <Text style={styles.quantityBadgeText}>x{item.quantity}</Text>
+                  </View>
+                </View>
+                <View style={styles.orderInfo}>
+                  <Text style={styles.orderName}>{item.name}</Text>
+                  <Text style={styles.orderSize}>{t('checkout.size', { size: item.size || fallbackSize })}</Text>
+                  <Text style={styles.orderPrice}>{(item.price || 0).toLocaleString(locale)}đ</Text>
                 </View>
               </View>
-              <View style={styles.orderInfo}>
-                <Text style={styles.orderName}>{item.name}</Text>
-                <Text style={styles.orderSize}>{t('checkout.size', { size: item.size })}</Text>
-                <Text style={styles.orderPrice}>{(item.price || 0).toLocaleString(locale)}đ</Text>
-              </View>
-            </View>
-          ))}
+            ))
+          )}
         </View>
 
         <Text style={styles.sectionHeading}>{t('checkout.paymentMethod')}</Text>
 
-        <TouchableOpacity
-          style={[styles.paymentCard, paymentMethod === 'cod' && styles.paymentCardActive]}
-          onPress={() => setPaymentMethod('cod')}
-          activeOpacity={0.8}
-        >
-          <View style={[styles.radioOuter, paymentMethod === 'cod' && styles.radioOuterActive]}>
-            {paymentMethod === 'cod' && <View style={styles.radioInner} />}
-          </View>
-          <View style={styles.paymentInfo}>
-            <Text style={styles.paymentTitle}>{t('checkout.paymentCODTitle')}</Text>
-            <Text style={styles.paymentSub}>{t('checkout.paymentCODSub')}</Text>
-          </View>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.paymentCard, paymentMethod === 'vnpay' && styles.paymentCardActive]}
-          onPress={() => setPaymentMethod('vnpay')}
-          activeOpacity={0.8}
-        >
-          <View style={[styles.radioOuter, paymentMethod === 'vnpay' && styles.radioOuterActive]}>
+        <View style={[styles.paymentCard, styles.paymentCardActive]}>
+          <View style={[styles.radioOuter, styles.radioOuterActive]}>
             {paymentMethod === 'vnpay' && <View style={styles.radioInner} />}
           </View>
           <View style={styles.paymentInfo}>
@@ -142,21 +397,13 @@ export default function CheckoutScreen() {
           <View style={styles.payIconWrap}>
             <Text style={styles.payIconText}>e</Text>
           </View>
-        </TouchableOpacity>
+        </View>
 
         <Text style={styles.sectionHeading}>{t('checkout.paymentDetail')}</Text>
         <View style={styles.card}>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>{t('checkout.summarySubtotal', { count: totalQuantity })}</Text>
             <Text style={styles.summaryValue}>{subTotal.toLocaleString(locale)}đ</Text>
-          </View>
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>{t('checkout.shippingFee')}</Text>
-            <Text style={styles.summaryValue}>{shippingFee.toLocaleString(locale)}đ</Text>
-          </View>
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>{t('checkout.discount')}</Text>
-            <Text style={styles.discountValue}>-{discount.toLocaleString(locale)}đ</Text>
           </View>
           <View style={styles.divider} />
           <View style={styles.summaryRow}>
@@ -165,7 +412,11 @@ export default function CheckoutScreen() {
           </View>
         </View>
 
-        <TouchableOpacity style={styles.checkoutBtn} activeOpacity={0.85}>
+        <TouchableOpacity
+          style={[styles.checkoutBtn, checkoutItems.length === 0 && styles.checkoutBtnDisabled]}
+          activeOpacity={0.85}
+          disabled={checkoutItems.length === 0}
+        >
           <Text style={styles.checkoutBtnText}>{t('checkout.checkoutButton')}</Text>
         </TouchableOpacity>
       </ScrollView>
@@ -202,6 +453,12 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING['4xl'],
     gap: SPACING.md,
   },
+  loadingCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: 24,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+  },
   card: {
     backgroundColor: COLORS.white,
     borderRadius: 24,
@@ -237,6 +494,60 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     lineHeight: 21,
   },
+  phoneInput: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    marginBottom: SPACING.sm,
+    color: COLORS.textPrimary,
+    fontSize: FONTS.sizes.lg,
+    backgroundColor: COLORS.white,
+  },
+  addressInput: {
+    minHeight: 84,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    color: COLORS.textPrimary,
+    fontSize: FONTS.sizes.lg,
+    backgroundColor: COLORS.white,
+  },
+  addressActions: {
+    marginTop: SPACING.sm,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: SPACING.sm,
+  },
+  addressActionBtn: {
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+  },
+  addressActionBtnDisabled: {
+    opacity: 0.6,
+  },
+  addressCancelBtn: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
+  },
+  addressSaveBtn: {
+    backgroundColor: COLORS.primary,
+  },
+  addressCancelText: {
+    color: COLORS.textSecondary,
+    fontSize: FONTS.sizes.md,
+    fontWeight: '600',
+  },
+  addressSaveText: {
+    color: COLORS.white,
+    fontSize: FONTS.sizes.md,
+    fontWeight: '700',
+  },
   sectionTitle: {
     fontSize: FONTS.sizes.xl,
     fontWeight: '700',
@@ -259,6 +570,13 @@ const styles = StyleSheet.create({
   orderImage: {
     width: '100%',
     height: '100%',
+  },
+  orderImagePlaceholder: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.gray100,
   },
   quantityBadge: {
     position: 'absolute',
@@ -293,6 +611,12 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes['2xl'],
     fontWeight: '700',
     color: COLORS.primaryLight,
+  },
+  emptyOrderText: {
+    fontSize: FONTS.sizes.md,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    paddingVertical: SPACING.sm,
   },
   sectionHeading: {
     fontSize: FONTS.sizes['2xl'],
@@ -373,11 +697,6 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     fontWeight: '600',
   },
-  discountValue: {
-    fontSize: FONTS.sizes.xl,
-    color: COLORS.primaryLight,
-    fontWeight: '700',
-  },
   divider: {
     marginTop: SPACING.sm,
     marginBottom: 4,
@@ -401,6 +720,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: SPACING.sm + 4,
     marginTop: SPACING.xs,
+  },
+  checkoutBtnDisabled: {
+    opacity: 0.45,
   },
   checkoutBtnText: {
     color: COLORS.white,

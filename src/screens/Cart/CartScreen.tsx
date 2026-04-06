@@ -15,7 +15,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../constants';
-import { CartApiItem, RootStackParamList } from '../../types';
+import { CartApiItem, CheckoutItem, RootStackParamList } from '../../types';
 import { useAuthStore, useCartStore } from '../../stores';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -291,7 +291,23 @@ export default function CartScreen() {
         </View>
         <TouchableOpacity
           style={styles.checkoutBtn}
-          onPress={() => navigation.navigate('Checkout')}
+          onPress={() => {
+            const checkoutItems: CheckoutItem[] = items
+              .filter((item) => item.isAvailable)
+              .map((item) => ({
+                id: item.id,
+                name: item.name,
+                size: item.size,
+                image: item.image,
+                price: item.price,
+                quantity: item.quantity,
+              }));
+
+            navigation.navigate('Checkout', {
+              source: 'cart',
+              items: checkoutItems,
+            });
+          }}
           activeOpacity={0.85}
         >
           <Text style={styles.checkoutBtnText}>{t('cart.checkout')}</Text>

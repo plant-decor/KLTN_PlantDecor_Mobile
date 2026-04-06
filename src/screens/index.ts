@@ -9,3 +9,4 @@ export { default as LoginScreen } from './Login/LoginScreen';
 export { default as RegisterScreen } from './Register/RegisterScreen';
 export { default as CatalogScreen } from './Catalog/CatalogScreen';
 export { default as WishlistScreen } from './Wishlist/WishlistScreen';
+export { default as EditProfileScreen } from './EditProfile/EditProfileScreen';

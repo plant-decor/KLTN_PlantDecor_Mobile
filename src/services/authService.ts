@@ -6,6 +6,8 @@ import {
   AuthJwtClaims,
   AuthTokens,
   User,
+  UserGender,
+  UpdateProfileRequest,
   LoginRequest,
   LoginResponse,
   RegisterRequest,
@@ -33,22 +35,109 @@ const getEnvelopeData = <T>(response: ApiResponse<T>): T => {
   return body;
 };
 
-const normalizeUser = (rawUser: any): User => ({
-  id: String(rawUser?.id ?? rawUser?.sub ?? ''),
-  email: rawUser?.email ?? '',
-  fullName: rawUser?.fullName ?? rawUser?.username ?? rawUser?.name ?? '',
-  phone: rawUser?.phone ?? rawUser?.phoneNumber ?? undefined,
-  avatar: rawUser?.avatar ?? rawUser?.avatarUrl ?? rawUser?.avatarURL ?? undefined,
-  createdAt: rawUser?.createdAt ?? EMPTY_DATE,
-  updatedAt: rawUser?.updatedAt,
-  status: rawUser?.status,
-  isVerified: rawUser?.isVerified,
-  role: rawUser?.role ?? rawUser?.Role,
-});
+const normalizeBirthYear = (rawBirthYear: unknown): number | undefined => {
+  if (typeof rawBirthYear === 'number' && Number.isInteger(rawBirthYear)) {
+    return rawBirthYear;
+  }
+
+  if (typeof rawBirthYear === 'string' && rawBirthYear.trim().length > 0) {
+    const parsed = Number(rawBirthYear);
+    return Number.isInteger(parsed) ? parsed : undefined;
+  }
+
+  return undefined;
+};
+
+const GENDER_BY_CODE: Partial<Record<number, UserGender>> = {
+  1: 'Male',
+  2: 'Female',
+  3: 'Other',
+};
+
+const normalizeGender = (
+  rawGender: unknown
+): { gender?: UserGender; genderCode?: number } => {
+  if (typeof rawGender === 'number' && Number.isInteger(rawGender)) {
+    return {
+      gender: GENDER_BY_CODE[rawGender],
+      genderCode: rawGender,
+    };
+  }
+
+  if (typeof rawGender === 'string') {
+    const normalized = rawGender.trim().toLowerCase();
+
+    if (normalized === 'male') {
+      return { gender: 'Male', genderCode: 1 };
+    }
+    if (normalized === 'female') {
+      return { gender: 'Female', genderCode: 2 };
+    }
+    if (normalized === 'other') {
+      return { gender: 'Other', genderCode: 3 };
+    }
+
+    const parsed = Number(rawGender);
+    if (Number.isInteger(parsed)) {
+      return {
+        gender: GENDER_BY_CODE[parsed],
+        genderCode: parsed,
+      };
+    }
+  }
+
+  return {};
+};
+
+const normalizeUser = (rawUser: any): User => {
+  const normalizedGender = normalizeGender(rawUser?.gender);
+  const normalizedReceiveNotifications =
+    typeof rawUser?.receiveNotifications === 'boolean'
+      ? rawUser.receiveNotifications
+      : typeof rawUser?.receiveNotification === 'boolean'
+        ? rawUser.receiveNotification
+        : undefined;
+
+  return {
+    id: String(rawUser?.id ?? rawUser?.sub ?? ''),
+    email: rawUser?.email ?? '',
+    username: rawUser?.username ?? rawUser?.userName ?? undefined,
+    fullName: rawUser?.fullName ?? rawUser?.username ?? rawUser?.name ?? '',
+    phone: rawUser?.phone ?? rawUser?.phoneNumber ?? undefined,
+    avatar: rawUser?.avatar ?? rawUser?.avatarUrl ?? rawUser?.avatarURL ?? undefined,
+    address:
+      typeof rawUser?.address === 'string'
+        ? rawUser.address
+        : rawUser?.address?.fullAddress ?? undefined,
+    birthYear: normalizeBirthYear(rawUser?.birthYear),
+    gender: normalizedGender.gender,
+    genderCode: normalizedGender.genderCode,
+    receiveNotifications: normalizedReceiveNotifications,
+    receiveNotification: normalizedReceiveNotifications,
+    profileCompleteness:
+      typeof rawUser?.profileCompleteness === 'number'
+        ? rawUser.profileCompleteness
+        : undefined,
+    createdAt: rawUser?.createdAt ?? EMPTY_DATE,
+    updatedAt: rawUser?.updatedAt,
+    status: rawUser?.status,
+    isVerified: rawUser?.isVerified,
+    role: rawUser?.role ?? rawUser?.Role,
+  };
+};
 
 const buildUserFromToken = (accessToken: string): User | null => {
   try {
     const claims = jwtDecode<AuthJwtClaims>(accessToken);
+
+    // Force refresh flow when the access token has expired.
+    if (typeof claims?.exp === 'number') {
+      const nowInSeconds = Math.floor(Date.now() / 1000);
+      if (claims.exp <= nowInSeconds) {
+        return null;
+      }
+    }
+
     if (!claims?.sub && !claims?.email) {
       return null;
     }
@@ -126,7 +215,7 @@ export const authService = {
     return normalizeUser(getEnvelopeData(response.data));
   },
 
-  updateProfile: async (data: Partial<User>) => {
+  updateProfile: async (data: UpdateProfileRequest) => {
     const response = await api.put<ApiResponse<User>>(
       API.ENDPOINTS.UPDATE_PROFILE,
       data

@@ -19,7 +19,7 @@ import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, SPACING, RADIUS, SHADOWS } from '../../constants';
 import { usePlantStore, useCartStore, useAuthStore, useWishlistStore } from '../../stores';
-import { RootStackParamList, Plant } from '../../types';
+import { RootStackParamList, Plant, CheckoutItem } from '../../types';
 import { getWishlistKey, notify, resolveWishlistTarget } from '../../utils';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -276,12 +276,31 @@ export default function PlantDetailScreen() {
 
   const handleBuyNow = () => {
     requireAuth(() => {
-      if (plant && !plant.isUniqueInstance) {
-        addToCart(plant, selectedQuantity, {
+      if (!plant) {
+        navigation.navigate('Checkout');
+        return;
+      }
+
+      const checkoutQuantity = plant.isUniqueInstance ? 1 : selectedQuantity;
+      const checkoutItem: CheckoutItem = {
+        id: `buy_now_${plant.id}`,
+        name: plant.name,
+        size: plant.sizeName || t('common.updating', { defaultValue: 'Updating' }),
+        image: plant.images?.[0] ?? undefined,
+        price: selectedNursery?.minPrice || plant.basePrice || 0,
+        quantity: checkoutQuantity,
+      };
+
+      if (!plant.isUniqueInstance) {
+        addToCart(plant, checkoutQuantity, {
           commonPlantId: selectedNursery?.commonPlantId ?? undefined,
         });
       }
-      navigation.navigate('Checkout');
+
+      navigation.navigate('Checkout', {
+        source: 'buy-now',
+        items: [checkoutItem],
+      });
     });
   };
 

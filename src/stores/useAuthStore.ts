@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { User, RegisterRequest } from "../types";
+import { User, RegisterRequest, UpdateProfileRequest } from "../types";
 import { authService } from "../services/authService";
 
 interface AuthState {
@@ -7,6 +7,7 @@ interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  hasCheckedAuth: boolean;
   error: string | null;
 
   // Actions
@@ -14,7 +15,7 @@ interface AuthState {
   register: (data: RegisterRequest) => Promise<{ message: string }>;
   logout: () => Promise<void>;
   fetchProfile: () => Promise<void>;
-  updateProfile: (data: Partial<User>) => Promise<void>;
+  updateProfile: (data: UpdateProfileRequest) => Promise<void>;
   checkAuth: () => Promise<void>;
   clearError: () => void;
   setUser: (user: User) => void;
@@ -22,7 +23,13 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>((set) => {
   authService.setAuthFailureHandler(() => {
-    set({ user: null, isAuthenticated: false, isLoading: false, error: null });
+    set({
+      user: null,
+      isAuthenticated: false,
+      isLoading: false,
+      hasCheckedAuth: true,
+      error: null,
+    });
   });
 
   return {
@@ -30,6 +37,7 @@ export const useAuthStore = create<AuthState>((set) => {
     user: null,
     isAuthenticated: false,
     isLoading: false,
+    hasCheckedAuth: false,
     error: null,
 
     // Actions
@@ -117,11 +125,16 @@ export const useAuthStore = create<AuthState>((set) => {
     checkAuth: async () => {
       set({ isLoading: true });
       try {
-        const isAuth = await authService.checkAuthStatus();
-        if (isAuth) {
-          const tokenUser = await authService.getUserFromStoredToken();
+        const tokenUser = await authService.getUserFromStoredToken();
 
-          set({ user: tokenUser, isAuthenticated: true, isLoading: false });
+        if (tokenUser) {
+          set({
+            user: tokenUser,
+            isAuthenticated: true,
+            isLoading: false,
+            hasCheckedAuth: true,
+            error: null,
+          });
 
           // Refresh profile in background to get the latest server state.
           void authService
@@ -132,11 +145,35 @@ export const useAuthStore = create<AuthState>((set) => {
             .catch(() => {
               // Keep token-based user when profile refresh fails.
             });
-        } else {
-          set({ user: null, isAuthenticated: false, isLoading: false });
+          return;
         }
+
+        // Try silent refresh for auto-login when only refresh token is available.
+        const { user } = await authService.refreshToken();
+        set({
+          user: user ?? null,
+          isAuthenticated: true,
+          isLoading: false,
+          hasCheckedAuth: true,
+          error: null,
+        });
+
+        void authService
+          .getProfile()
+          .then((profile) => {
+            set({ user: profile });
+          })
+          .catch(() => {
+            // Keep token-based user when profile refresh fails.
+          });
       } catch {
-        set({ user: null, isAuthenticated: false, isLoading: false });
+        set({
+          user: null,
+          isAuthenticated: false,
+          isLoading: false,
+          hasCheckedAuth: true,
+          error: null,
+        });
       }
     },
 
