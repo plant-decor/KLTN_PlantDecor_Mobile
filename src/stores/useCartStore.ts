@@ -31,7 +31,11 @@ interface CartState {
   totalPrice: () => number;
 
   // Actions
-  addToCart: (plant: Plant, quantity?: number, options?: AddToCartOptions) => void;
+  addToCart: (
+    plant: Plant,
+    quantity?: number,
+    options?: AddToCartOptions
+  ) => Promise<CartApiItem | null>;
   fetchCart: (params?: GetCartRequest) => Promise<void>;
   removeFromCart: (plantId: string) => void;
   updateQuantity: (plantId: string, quantity: number) => void;
@@ -75,10 +79,10 @@ export const useCartStore = create<CartState>((set, get) => ({
   },
 
   // Actions
-  addToCart: (plant, quantity = 1, options) => {
+  addToCart: async (plant, quantity = 1, options) => {
     if (plant.isUniqueInstance) {
       console.warn('[Cart] Unique plant instances cannot be added to cart.');
-      return;
+      return null;
     }
 
     set((state) => {
@@ -124,44 +128,46 @@ export const useCartStore = create<CartState>((set, get) => ({
       quantity,
     };
     console.log('[Cart] Adding to cart with request:', request);
-    void cartService
-      .addCartItem(request)
-      .then((payload) => {
-        set((state) => {
-          const existingIndex = state.cartItems.findIndex(
-            (item) => item.id === payload.id
-          );
-          const nextItems = [...state.cartItems];
 
-          if (existingIndex >= 0) {
-            nextItems[existingIndex] = payload;
-          } else {
-            nextItems.unshift(payload);
-          }
-
-          const cartMeta = state.cartMeta
-            ? {
-                ...state.cartMeta,
-                totalCount:
-                  existingIndex >= 0
-                    ? state.cartMeta.totalCount
-                    : state.cartMeta.totalCount + 1,
-              }
-            : state.cartMeta;
-
-          return {
-            cartItems: nextItems,
-            cartMeta,
-            hasLoadedCart: true,
-          };
-        });
-      })
-      .catch((error) => {
-        console.warn(
-          '[Cart] addToCart API failed:',
-          error?.response?.data || error?.message || error
+    try {
+      const payload = await cartService.addCartItem(request);
+      set((state) => {
+        const existingIndex = state.cartItems.findIndex(
+          (item) => item.id === payload.id
         );
+        const nextItems = [...state.cartItems];
+
+        if (existingIndex >= 0) {
+          nextItems[existingIndex] = payload;
+        } else {
+          nextItems.unshift(payload);
+        }
+
+        const cartMeta = state.cartMeta
+          ? {
+              ...state.cartMeta,
+              totalCount:
+                existingIndex >= 0
+                  ? state.cartMeta.totalCount
+                  : state.cartMeta.totalCount + 1,
+            }
+          : state.cartMeta;
+
+        return {
+          cartItems: nextItems,
+          cartMeta,
+          hasLoadedCart: true,
+        };
       });
+
+      return payload;
+    } catch (error: any) {
+      console.warn(
+        '[Cart] addToCart API failed:',
+        error?.response?.data || error?.message || error
+      );
+      return null;
+    }
   },
 
   fetchCart: async (params) => {

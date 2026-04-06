@@ -168,7 +168,8 @@ export interface Plant {
   hasFlower: boolean;
   petSafe: boolean;
   childSafe: boolean;
-  fengShuiElement: string;
+  fengShuiElement: number | string;
+  fengShuiElementName?: string | null;
   fengShuiMeaning: string;
   potIncluded: boolean;
   potSize: string;
@@ -231,7 +232,7 @@ export interface SearchPlantsRequest {
   categoryIds?: number[];
   tagIds?: number[];
   sizes?: number[];
-  fengShuiElement?: string;
+  fengShuiElement?: number;
   nurseryId?: number;
   sortBy?: string;
   sortDirection?: string;
@@ -482,6 +483,9 @@ export interface CheckoutItem {
   image?: string;
   price: number;
   quantity: number;
+  cartItemId?: number;
+  plantInstanceId?: number;
+  isUniqueInstance?: boolean;
 }
 
 // ==================== Wishlist ====================
@@ -547,37 +551,135 @@ export interface CheckWishlistResponse {
   payload: boolean;
 }
 
-// // ==================== Order ====================
-// export interface Order {
-//   id: string;
-//   items: OrderItem[];
-//   totalAmount: number;
-//   shippingFee: number;
-//   discount: number;
-//   finalAmount: number;
-//   status: OrderStatus;
-//   shippingAddress: Address;
-//   paymentMethod: PaymentMethod;
-//   note?: string;
-//   createdAt: string;
-//   updatedAt: string;
-// }
+// ==================== Order & Payment ====================
+export type OrderType = 1 | 2 | 3;
+export type PaymentStrategy = 1 | 2;
+export type OrderStatusFilter =
+  | 'Pending'
+  | 'DepositPaid'
+  | 'Paid'
+  | 'Assigned'
+  | 'Shipping'
+  | 'Delivered'
+  | 'RemainingPaymentPending'
+  | 'Completed'
+  | 'Cancelled'
+  | 'Failed'
+  | 'RefundRequested'
+  | 'Refunded'
+  | 'Rejected'
+  | 'PendingConfirmation';
 
-// export interface OrderItem {
-//   plant: Plant;
-//   quantity: number;
-//   price: number;
-// }
+export interface CreateOrderRequest {
+  address: string;
+  phone: string;
+  customerName: string;
+  note?: string;
+  paymentStrategy: PaymentStrategy;
+  orderType: OrderType;
+  cartItemIds: number[];
+  plantInstanceId?: number;
+}
 
-// export type OrderStatus =
-//   | 'pending'
-//   | 'confirmed'
-//   | 'processing'
-//   | 'shipping'
-//   | 'delivered'
-//   | 'cancelled';
+export interface OrderLineItem {
+  id: number;
+  itemName: string;
+  quantity: number;
+  price: number;
+  status: number;
+  statusName: string;
+}
 
-// export type PaymentMethod = 'cod' | 'bank_transfer' | 'momo' | 'vnpay';
+export interface OrderNursery {
+  id: number;
+  nurseryId: number;
+  nurseryName: string;
+  shipperId: number | null;
+  shipperName: string | null;
+  subTotalAmount: number;
+  status: number;
+  statusName: string;
+  shipperNote: string | null;
+  items: OrderLineItem[];
+}
+
+export interface InvoiceDetail {
+  id: number;
+  itemName: string;
+  unitPrice: number;
+  quantity: number;
+  amount: number;
+}
+
+export interface OrderInvoice {
+  id: number;
+  orderId: number;
+  issuedDate: string;
+  totalAmount: number;
+  type: number;
+  typeName: string;
+  status: number;
+  statusName: string;
+  details: InvoiceDetail[];
+}
+
+export interface OrderPayload {
+  id: number;
+  userId: number;
+  address: string;
+  phone: string;
+  customerName: string;
+  totalAmount: number;
+  depositAmount: number | null;
+  remainingAmount: number | null;
+  status: number;
+  statusName: string;
+  paymentStrategy: number;
+  orderType: number;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+  items: OrderLineItem[];
+  nurseryOrders: OrderNursery[];
+  invoices: OrderInvoice[];
+}
+
+export interface CreateOrderResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: OrderPayload;
+}
+
+export interface GetOrdersResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: OrderPayload[];
+}
+
+export interface GetOrderDetailResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: OrderPayload;
+}
+
+export interface CreatePaymentRequest {
+  invoiceId: number;
+}
+
+export interface CreatePaymentPayload {
+  paymentId: number;
+  paymentUrl: string;
+}
+
+export interface CreatePaymentResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: CreatePaymentPayload;
+}
 
 // // ==================== AI Design ====================
 // export interface AIDesignRequest {
@@ -640,9 +742,15 @@ export type RootStackParamList = {
   Checkout: {
     source?: CheckoutSource;
     items?: CheckoutItem[];
+    paymentCompleted?: boolean;
+    completedOrderId?: number;
   } | undefined;
+  PaymentWebView: {
+    paymentUrl: string;
+    orderId: number;
+  };
   VerifyCode: { email: string; password: string };
-  OrderDetail: { orderId: string };
+  OrderDetail: { orderId: number };
   Login: undefined;
   Register: undefined;
   Search: undefined;

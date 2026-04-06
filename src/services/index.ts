@@ -3,3 +3,5 @@ export { authService } from './authService';
 export { plantService } from './plantService';
 export { cartService } from './cartService';
 export { wishlistService } from './wishlistService';
+export { orderService } from './orderService';
+export { paymentService } from './paymentService';

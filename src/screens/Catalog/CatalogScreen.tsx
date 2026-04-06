@@ -432,23 +432,22 @@ export default function CatalogScreen() {
     return `${minPrice.toLocaleString(locale)}₫ - ${maxPrice.toLocaleString(locale)}₫`;
   }, [locale, t]);
 
-  const handleAddToCart = (
+  const handleAddToCart = async (
     targetPlant: Plant,
     overrideCommonPlantId?: number,
     quantity = 1,
   ) => {
     if (!requireAuth()) {
-      return;
+      return null;
     }
 
     if (targetPlant.isUniqueInstance) {
-      return;
+      return null;
     }
 
-    addToCart(targetPlant, quantity, {
+    return addToCart(targetPlant, quantity, {
       commonPlantId: overrideCommonPlantId,
     });
-    notify({ message: t('cart.addedMessage', { defaultValue: 'Added to cart.' }) });
   };
 
   const handleSelectNurseryForCart = async (targetPlant: Plant) => {
@@ -488,7 +487,7 @@ export default function CatalogScreen() {
     }
   };
 
-  const handleConfirmNurseryAdd = (goToCheckout = false) => {
+  const handleConfirmNurseryAdd = async (goToCheckout = false) => {
     if (!pendingCartPlant || selectedNurseryOptionId === null) {
       return;
     }
@@ -508,11 +507,24 @@ export default function CatalogScreen() {
 
     const checkoutQuantity = Math.max(1, selectedCartQuantity);
 
-    handleAddToCart(
+    const createdCartItem = await handleAddToCart(
       pendingCartPlant,
       selectedNursery.commonPlantId,
       checkoutQuantity,
     );
+
+    if (!createdCartItem) {
+      notify({
+        message: t('cart.addFailed', {
+          defaultValue: 'Unable to add to cart.',
+        }),
+      });
+      return;
+    }
+
+    if (!goToCheckout) {
+      notify({ message: t('cart.addedMessage', { defaultValue: 'Added to cart.' }) });
+    }
 
     const checkoutItem: CheckoutItem = {
       id: `buy_now_${pendingCartPlant.id}_${selectedNursery.nurseryId}`,
@@ -521,6 +533,8 @@ export default function CatalogScreen() {
       image: pendingCartPlant.images?.[0] ?? undefined,
       price: selectedNursery.minPrice || pendingCartPlant.basePrice || 0,
       quantity: checkoutQuantity,
+      cartItemId: createdCartItem.id,
+      isUniqueInstance: false,
     };
 
     closeNurseryPicker();

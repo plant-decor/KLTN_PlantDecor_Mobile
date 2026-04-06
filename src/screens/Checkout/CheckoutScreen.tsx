@@ -20,11 +20,13 @@ import {
   CartApiItem,
   CartItem,
   CheckoutItem,
+  CreateOrderRequest,
   RootStackParamList,
   UpdateProfileRequest,
   UserGender,
   UserGenderCode,
 } from '../../types';
+import { orderService, paymentService } from '../../services';
 import { useAuthStore, useCartStore } from '../../stores';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -41,6 +43,8 @@ const mapApiCartItems = (
     image: undefined,
     price: item.price,
     quantity: item.quantity,
+    cartItemId: item.id,
+    isUniqueInstance: false,
   }));
 
 const mapLocalCartItems = (
@@ -54,6 +58,7 @@ const mapLocalCartItems = (
     image: item.plant.images?.[0] ?? undefined,
     price: item.plant.basePrice || 0,
     quantity: item.quantity,
+    isUniqueInstance: item.plant.isUniqueInstance,
   }));
 
 const mapGenderToCode = (gender?: UserGender): UserGenderCode => {
@@ -96,8 +101,10 @@ export default function CheckoutScreen() {
   const userPhone = user?.phone?.trim() ?? '';
   const [deliveryAddress, setDeliveryAddress] = useState(userAddress);
   const [deliveryPhone, setDeliveryPhone] = useState(userPhone);
+  const [orderNote, setOrderNote] = useState('');
   const [isEditingAddress, setIsEditingAddress] = useState(false);
   const [isSavingAddress, setIsSavingAddress] = useState(false);
+  const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -127,6 +134,39 @@ export default function CheckoutScreen() {
       setDeliveryPhone(userPhone);
     }
   }, [userAddress, userPhone, isEditingAddress]);
+
+  useEffect(() => {
+    if (!route.params?.paymentCompleted) {
+      return;
+    }
+
+    Alert.alert(
+      t('common.success', { defaultValue: 'Success' }),
+      t('checkout.paymentSuccessMessage', {
+        orderId: route.params.completedOrderId,
+        defaultValue: 'Payment completed successfully.',
+      })
+    );
+
+    setOrderNote('');
+
+    void fetchCart({ pageNumber: 1, pageSize: 20 }).catch(() => {
+      // Keep screen usable even when cart refresh fails.
+    });
+
+    navigation.setParams({
+      paymentCompleted: undefined,
+      completedOrderId: undefined,
+      source: undefined,
+      items: [],
+    });
+  }, [
+    fetchCart,
+    navigation,
+    route.params?.completedOrderId,
+    route.params?.paymentCompleted,
+    t,
+  ]);
 
   const checkoutItems = useMemo(() => {
     if (routeItems.length > 0) {
@@ -242,6 +282,142 @@ export default function CheckoutScreen() {
       );
     } finally {
       setIsSavingAddress(false);
+    }
+  };
+
+  const handleCheckout = async () => {
+    if (isSubmittingOrder) {
+      return;
+    }
+
+    const trimmedAddress = deliveryAddress.trim();
+    const trimmedPhone = deliveryPhone.trim();
+    const trimmedCustomerName = user?.fullName?.trim() ?? '';
+    const trimmedNote = orderNote.trim();
+
+    if (!isAuthenticated || !user) {
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        t('common.loginRequiredMessage', {
+          defaultValue: 'Please login to continue.',
+        })
+      );
+      return;
+    }
+
+    if (!trimmedAddress) {
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        t('checkout.editAddressRequired', {
+          defaultValue: 'Please enter a delivery address.',
+        })
+      );
+      return;
+    }
+
+    if (!trimmedPhone) {
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        t('checkout.phoneRequired', {
+          defaultValue: 'Please enter phone number.',
+        })
+      );
+      return;
+    }
+
+    if (!trimmedCustomerName) {
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        t('checkout.customerNameRequired', {
+          defaultValue: 'Please complete your profile name before checkout.',
+        })
+      );
+      return;
+    }
+
+    if (checkoutItems.length === 0) {
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        t('checkout.emptyOrder', {
+          defaultValue: 'No items available for checkout.',
+        })
+      );
+      return;
+    }
+
+    const plantInstanceId = checkoutItems.find(
+      (item) => Number.isInteger(item.plantInstanceId)
+    )?.plantInstanceId;
+
+    const cartIdsFromCheckoutItems = checkoutItems
+      .map((item) => item.cartItemId)
+      .filter((id): id is number => Number.isInteger(id));
+
+    const fallbackCartItemIds = cartItems
+      .map((item) => item.id)
+      .filter((id) => Number.isInteger(id));
+
+    const cartItemIds = plantInstanceId
+      ? []
+      : cartIdsFromCheckoutItems.length > 0
+        ? cartIdsFromCheckoutItems
+        : fallbackCartItemIds;
+
+    if (!plantInstanceId && cartItemIds.length === 0) {
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        t('checkout.invalidCheckoutItems', {
+          defaultValue: 'Cannot resolve cart items for order creation.',
+        })
+      );
+      return;
+    }
+
+    const orderType: 1 | 2 = plantInstanceId ? 2 : 1;
+
+    const createOrderPayload: CreateOrderRequest = {
+      address: trimmedAddress,
+      phone: trimmedPhone,
+      customerName: trimmedCustomerName,
+      note: trimmedNote || undefined,
+      paymentStrategy: 1,
+      orderType,
+      cartItemIds,
+      plantInstanceId: plantInstanceId ?? 0,
+    };
+
+    try {
+      setIsSubmittingOrder(true);
+
+      const createdOrder = await orderService.createOrder(createOrderPayload);
+      const invoiceId = createdOrder.invoices?.[0]?.id;
+
+      if (!invoiceId) {
+        throw new Error('Missing invoice id from create order response');
+      }
+
+      const payment = await paymentService.createPayment({ invoiceId });
+
+      if (!payment?.paymentUrl) {
+        throw new Error('Missing payment URL');
+      }
+
+      navigation.navigate('PaymentWebView', {
+        paymentUrl: payment.paymentUrl,
+        orderId: createdOrder.id,
+      });
+    } catch (error: any) {
+      const apiMessage = error?.response?.data?.message;
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        typeof apiMessage === 'string' && apiMessage.trim().length > 0
+          ? apiMessage
+          : t('checkout.createOrderFailed', {
+              defaultValue: 'Unable to create order or payment. Please try again.',
+            })
+      );
+    } finally {
+      setIsSubmittingOrder(false);
     }
   };
 
@@ -384,6 +560,25 @@ export default function CheckoutScreen() {
           )}
         </View>
 
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>
+            {t('checkout.noteLabel', { defaultValue: 'Order note' })}
+          </Text>
+          <TextInput
+            style={styles.noteInput}
+            value={orderNote}
+            onChangeText={setOrderNote}
+            placeholder={t('checkout.notePlaceholder', {
+              defaultValue: 'Add a note for nursery or shipper (optional)',
+            })}
+            placeholderTextColor={COLORS.gray500}
+            multiline
+            numberOfLines={3}
+            textAlignVertical="top"
+            editable={!isSubmittingOrder}
+          />
+        </View>
+
         <Text style={styles.sectionHeading}>{t('checkout.paymentMethod')}</Text>
 
         <View style={[styles.paymentCard, styles.paymentCardActive]}>
@@ -413,11 +608,19 @@ export default function CheckoutScreen() {
         </View>
 
         <TouchableOpacity
-          style={[styles.checkoutBtn, checkoutItems.length === 0 && styles.checkoutBtnDisabled]}
+          style={[
+            styles.checkoutBtn,
+            (checkoutItems.length === 0 || isSubmittingOrder) && styles.checkoutBtnDisabled,
+          ]}
           activeOpacity={0.85}
-          disabled={checkoutItems.length === 0}
+          disabled={checkoutItems.length === 0 || isSubmittingOrder}
+          onPress={handleCheckout}
         >
-          <Text style={styles.checkoutBtnText}>{t('checkout.checkoutButton')}</Text>
+          <Text style={styles.checkoutBtnText}>
+            {isSubmittingOrder
+              ? t('checkout.processing', { defaultValue: 'Processing...' })
+              : t('checkout.checkoutButton')}
+          </Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
@@ -514,6 +717,17 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm,
     color: COLORS.textPrimary,
     fontSize: FONTS.sizes.lg,
+    backgroundColor: COLORS.white,
+  },
+  noteInput: {
+    minHeight: 92,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    color: COLORS.textPrimary,
+    fontSize: FONTS.sizes.md,
     backgroundColor: COLORS.white,
   },
   addressActions: {

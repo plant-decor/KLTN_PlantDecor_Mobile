@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
+import { RouteProp, useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, SPACING, RADIUS, SHADOWS } from '../../constants';
 import { usePlantStore, useCartStore, useAuthStore, useWishlistStore } from '../../stores';
@@ -59,6 +59,7 @@ function AttributeCard({ icon, iconColor, iconBg, label, value }: AttributeProps
 export default function PlantDetailScreen() {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
+  const isFocused = useIsFocused();
   const route = useRoute<ScreenRouteProp>();
   const { plantId: plantId } = route.params;
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
@@ -84,6 +85,7 @@ export default function PlantDetailScreen() {
   const [extraNurseryHeight, setExtraNurseryHeight] = useState(0);
   const [selectedNurseryId, setSelectedNurseryId] = useState<number | null>(null);
   const [selectedQuantity, setSelectedQuantity] = useState(1);
+  const [isResolvingPlant, setIsResolvingPlant] = useState(false);
   const wishlistStatus = useWishlistStore((state) => state.statusByKey);
   const ensureWishlistStatus = useWishlistStore((state) => state.ensureStatus);
   const toggleWishlist = useWishlistStore((state) => state.toggleWishlist);
@@ -91,8 +93,32 @@ export default function PlantDetailScreen() {
   const nurseryExtraAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    fetchPlantDetail(plantId);
-  }, [fetchPlantDetail, plantId]);
+    if (!isFocused) {
+      return;
+    }
+
+    const isCurrentPlantSelected =
+      selectedPlant != null && String(selectedPlant.id) === String(plantId);
+
+    if (isCurrentPlantSelected) {
+      setIsResolvingPlant(false);
+      return;
+    }
+
+    let isActive = true;
+    setIsResolvingPlant(true);
+
+    void (async () => {
+      await fetchPlantDetail(plantId);
+      if (isActive) {
+        setIsResolvingPlant(false);
+      }
+    })();
+
+    return () => {
+      isActive = false;
+    };
+  }, [fetchPlantDetail, isFocused, plantId, selectedPlant]);
 
   useEffect(() => {
     if (plants.length === 0) {
@@ -110,7 +136,10 @@ export default function PlantDetailScreen() {
     }
   }, [clearWishlistStatus, isAuthenticated]);
 
-  const plant = selectedPlant;
+  const plant =
+    selectedPlant && String(selectedPlant.id) === String(plantId)
+      ? selectedPlant
+      : null;
 
   // Related plants from store (exclude current)
   const relatedPlants = useMemo(() => {
@@ -174,7 +203,7 @@ export default function PlantDetailScreen() {
     : null;
 
   useEffect(() => {
-    if (!plant) {
+    if (!isFocused || !plant) {
       return;
     }
 
@@ -186,6 +215,7 @@ export default function PlantDetailScreen() {
 
     fetchNurseriesGotCommonPlantByPlantId(targetPlantId);
   }, [
+    isFocused,
     plant,
     plantId,
     fetchNurseriesGotPlantInstances,
@@ -275,33 +305,73 @@ export default function PlantDetailScreen() {
   };
 
   const handleBuyNow = () => {
-    requireAuth(() => {
-      if (!plant) {
-        navigation.navigate('Checkout');
-        return;
-      }
+    if (!requireAuth()) {
+      return;
+    }
 
+    if (!plant) {
+      navigation.navigate('Checkout');
+      return;
+    }
+
+    void (async () => {
       const checkoutQuantity = plant.isUniqueInstance ? 1 : selectedQuantity;
-      const checkoutItem: CheckoutItem = {
+      const baseCheckoutItem: CheckoutItem = {
         id: `buy_now_${plant.id}`,
         name: plant.name,
         size: plant.sizeName || t('common.updating', { defaultValue: 'Updating' }),
         image: plant.images?.[0] ?? undefined,
         price: selectedNursery?.minPrice || plant.basePrice || 0,
         quantity: checkoutQuantity,
+        isUniqueInstance: plant.isUniqueInstance,
       };
 
-      if (!plant.isUniqueInstance) {
-        addToCart(plant, checkoutQuantity, {
-          commonPlantId: selectedNursery?.commonPlantId ?? undefined,
+      if (plant.isUniqueInstance) {
+        const parsedPlantInstanceId = Number(plant.id);
+        if (!Number.isInteger(parsedPlantInstanceId)) {
+          notify({
+            message: t('cart.addFailed', {
+              defaultValue: 'Unable to continue checkout.',
+            }),
+          });
+          return;
+        }
+
+        navigation.navigate('Checkout', {
+          source: 'buy-now',
+          items: [
+            {
+              ...baseCheckoutItem,
+              plantInstanceId: parsedPlantInstanceId,
+            },
+          ],
         });
+        return;
+      }
+
+      const createdCartItem = await addToCart(plant, checkoutQuantity, {
+        commonPlantId: selectedNursery?.commonPlantId ?? undefined,
+      });
+
+      if (!createdCartItem) {
+        notify({
+          message: t('cart.addFailed', {
+            defaultValue: 'Unable to add to cart.',
+          }),
+        });
+        return;
       }
 
       navigation.navigate('Checkout', {
         source: 'buy-now',
-        items: [checkoutItem],
+        items: [
+          {
+            ...baseCheckoutItem,
+            cartItemId: createdCartItem.id,
+          },
+        ],
       });
-    });
+    })();
   };
 
   const handleAddToCart = (
@@ -317,10 +387,15 @@ export default function PlantDetailScreen() {
       return;
     }
 
-    addToCart(targetPlant, quantity, {
+    void addToCart(targetPlant, quantity, {
       commonPlantId: overrideCommonPlantId,
+    }).then((payload) => {
+      notify({
+        message: payload
+          ? t('cart.addedMessage', { defaultValue: 'Added to cart.' })
+          : t('cart.addFailed', { defaultValue: 'Unable to add to cart.' }),
+      });
     });
-    notify({ message: t('cart.addedMessage', { defaultValue: 'Added to cart.' }) });
   };
 
   const handleToggleWishlist = async (targetPlant: Plant) => {
@@ -442,6 +517,46 @@ export default function PlantDetailScreen() {
     return typeof plant.size === 'string' ? plant.size : String(plant.size);
   };
 
+  const getFengShuiElementLabel = () => {
+    if (!plant) {
+      return '';
+    }
+
+    if (
+      typeof plant.fengShuiElementName === 'string' &&
+      plant.fengShuiElementName.trim().length > 0
+    ) {
+      return plant.fengShuiElementName;
+    }
+
+    const rawElement = plant.fengShuiElement;
+    const numericElement =
+      typeof rawElement === 'number'
+        ? rawElement
+        : Number.parseInt(String(rawElement), 10);
+
+    if (Number.isInteger(numericElement)) {
+      switch (numericElement) {
+        case 1:
+          return t('catalog.fengShuiMetal', { defaultValue: 'Metal' });
+        case 2:
+          return t('catalog.fengShuiWood', { defaultValue: 'Wood' });
+        case 3:
+          return t('catalog.fengShuiWater', { defaultValue: 'Water' });
+        case 4:
+          return t('catalog.fengShuiFire', { defaultValue: 'Fire' });
+        case 5:
+          return t('catalog.fengShuiEarth', { defaultValue: 'Earth' });
+        default:
+          break;
+      }
+    }
+
+    return rawElement ? String(rawElement) : '';
+  };
+
+  const fengShuiElementLabel = getFengShuiElementLabel();
+
   const formatNurseryPrice = (minPrice: number, maxPrice: number) => {
     if (!minPrice && !maxPrice) {
       return t('plantDetail.priceContact', { defaultValue: 'Contact' });
@@ -497,7 +612,7 @@ export default function PlantDetailScreen() {
   };
 
   // ---------- loading / empty state ----------
-  if (isLoading && !plant) {
+  if ((isLoading || isResolvingPlant) && !plant) {
     return (
       <View style={styles.loaderContainer}>
         <ActivityIndicator size="large" color={COLORS.primary} />
@@ -690,13 +805,13 @@ export default function PlantDetailScreen() {
           </View>
 
           {/* ===== Feng Shui Section (if available) ===== */}
-          {(plant.fengShuiElement || plant.fengShuiMeaning) && (
+          {(fengShuiElementLabel || plant.fengShuiMeaning) && (
             <View style={styles.sectionWrap}>
               <Text style={styles.sectionTitle}>
                 {t('plantDetail.fengShui')}
               </Text>
               <View style={styles.fengShuiCard}>
-                {plant.fengShuiElement && (
+                {fengShuiElementLabel && (
                   <View style={styles.fengShuiRow}>
                     <Ionicons name="planet-outline" size={20} color="#CA8A04" />
                     <View style={{ flex: 1 }}>
@@ -704,7 +819,7 @@ export default function PlantDetailScreen() {
                         {t('plantDetail.fengShuiElement')}
                       </Text>
                       <Text style={styles.fengShuiValue}>
-                        {plant.fengShuiElement}
+                        {fengShuiElementLabel}
                       </Text>
                     </View>
                   </View>

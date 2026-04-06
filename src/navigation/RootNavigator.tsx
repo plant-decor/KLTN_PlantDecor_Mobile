@@ -6,6 +6,7 @@ import {
   PlantDetailScreen,
   CartScreen,
   CheckoutScreen,
+  PaymentWebViewScreen,
   VerifyCodeScreen,
   AIDesignScreen,
   LoginScreen,
@@ -13,6 +14,8 @@ import {
   CatalogScreen,
   WishlistScreen,
   EditProfileScreen,
+  OrderHistoryScreen,
+  OrderDetailScreen,
 } from '../screens';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -30,17 +33,18 @@ export default function RootNavigator() {
       <Stack.Screen name="Cart" component={CartScreen} />
       <Stack.Screen name="Wishlist" component={WishlistScreen} />
       <Stack.Screen name="Checkout" component={CheckoutScreen} />
+      <Stack.Screen name="PaymentWebView" component={PaymentWebViewScreen} />
       <Stack.Screen name="VerifyCode" component={VerifyCodeScreen} options={{ animation: 'fade_from_bottom' }} />
       <Stack.Screen name="AIDesign" component={AIDesignScreen} />
       <Stack.Screen name="Login" component={LoginScreen} options={{ animation: 'fade_from_bottom' }} />
       <Stack.Screen name="Register" component={RegisterScreen} options={{ animation: 'fade_from_bottom' }} />
       <Stack.Screen name="Catalog" component={CatalogScreen} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{ animation: 'fade_from_bottom' }} />
+      <Stack.Screen name="OrderHistory" component={OrderHistoryScreen} />
+      <Stack.Screen name="OrderDetail" component={OrderDetailScreen} />
       {/* Add more stack screens as needed:
         <Stack.Screen name="Checkout" component={CheckoutScreen} />
         <Stack.Screen name="Search" component={SearchScreen} />
-        <Stack.Screen name="OrderDetail" component={OrderDetailScreen} />
-        <Stack.Screen name="OrderHistory" component={OrderHistoryScreen} />
         <Stack.Screen name="CategoryPlants" component={CategoryPlantsScreen} />
         <Stack.Screen name="AIDesignResult" component={AIDesignResultScreen} />
       */}

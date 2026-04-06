@@ -159,14 +159,14 @@ export const API = {
     // Plants
     PLANTS: "/shop/plants/search",
     COMMON_PLANTS: "/shop/common-plants/search",
-    PLANT_DETAIL: (id: string) => `/shop/plants/${id}`,
+    PLANT_DETAIL: (id: string | number) => `/shop/plants/${id}`,
     NURSERIES_GOT_COMMON_PLANT_BY_PLANT_ID: (plantId: string | number) => `/shop/plants/${plantId}/common-nurseries`,
     COMMON_PLANTS_BY_NURSERY: (nurseryId: string) => `/shop/nurseries/${nurseryId}/common-plants/search`,
     INSTANCE_PLANTS_BY_NURSERY: (nurseryId: string) => `/shop/nurseries/${nurseryId}/plant-instances/search`,
-    NURSERIES_GOT_PLANT_INSTANCES: (plantId: string) => `/plants/${plantId}/nurseries`,
-    INSTANCE_DETAIL: (id: string) => `/shop/plant-instances/${id}`,
-    COMMON_DETAIL: (id: string) => `/shop/common-plants/${id}`,
-    
+    NURSERIES_GOT_PLANT_INSTANCES: (plantId: string | number) => `/plants/${plantId}/nurseries`,
+    INSTANCE_DETAIL: (id: number) => `/shop/plant-instances/${id}`,
+    COMMON_DETAIL: (id: number) => `/shop/common-plants/${id}`,
+
     NURSERIES: "/shop/nurseries/search",
 
     // Cart
@@ -178,10 +178,16 @@ export const API = {
 
     // Orders
     ORDER: "/Order",
-    ORDER_DETAIL: (id: string) => `/Order/${id}`,
+    ORDER_DETAIL: (id: number) => `/Order/${id}`,
     ORDERS: "/Order/my",
-    ORDER_CANCEL: (id: string) => `/Order/${id}/cancel`,
-    ORDER_DELIVERED: (id: string) => `/Order/${id}/delivered`,
+    ORDER_CANCEL: (id: number) => `/Order/${id}/cancel`,
+    ORDER_DELIVERED: (id: number) => `/Order/${id}/delivered`,
+
+    // Payment
+    PAYMENT_CREATE: "/Payment/create",
+    PAYMENT_RETRY: (id: number) => `/Payment/${id}/retry`,
+    PAYMENT_CALLBACK: "/Payment/Checkout/PaymentCallbackVnpay",
+    PAYMENT_IPN: "/Payment/Checkout/IpnVnpay",
 
     // AI Design
     // AI_DESIGN: '/ai/design',

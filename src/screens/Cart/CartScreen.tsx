@@ -301,6 +301,7 @@ export default function CartScreen() {
                 image: item.image,
                 price: item.price,
                 quantity: item.quantity,
+                cartItemId: Number(item.id),
               }));
 
             navigation.navigate('Checkout', {
