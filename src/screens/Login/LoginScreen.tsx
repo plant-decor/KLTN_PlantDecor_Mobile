@@ -32,12 +32,16 @@ const TOP_IMAGE =
   'https://images.unsplash.com/photo-1614594975525-e45190c55d0b?auto=format&fit=crop&w=1400&q=80';
 
 export default function LoginScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
   const { login, isLoading } = useAuthStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [deviceId, setDeviceId] = useState('');
+
+  const registerLabel = i18n.language?.startsWith('vi')
+    ? 'Đăng\u00A0ký'
+    : t('common.register', { defaultValue: 'Register' });
 
   useEffect(() => {
     const resolveDeviceId = async () => {
@@ -98,8 +102,9 @@ export default function LoginScreen() {
     }
 
     try {
-      await login(email.trim(), password, deviceId || 'unknown-device');
-      navigation.navigate('MainTabs');
+      const loggedInUser = await login(email.trim(), password, deviceId || 'unknown-device');
+      const isShipper = loggedInUser?.role?.toLowerCase() === 'shipper';
+      navigation.replace(isShipper ? 'ShipperHome' : 'MainTabs');
     } catch (err) {
       Alert.alert(t('common.error', { defaultValue: 'Error' }), getLoginErrorMessage(err));
     }
@@ -148,13 +153,17 @@ export default function LoginScreen() {
 
             <View style={styles.switchRow}>
               <TouchableOpacity style={[styles.switchBtn, styles.switchBtnActive]}>
-                <Text style={[styles.switchText, styles.switchTextActive]}>{t('common.login')}</Text>
+                <Text style={[styles.switchText, styles.switchTextActive]} allowFontScaling={false}>
+                  {t('common.login')}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.switchBtn}
                 onPress={() => navigation.navigate('Register')}
               >
-                <Text style={styles.switchText}>{t('common.register')}</Text>
+                <Text style={styles.switchText} allowFontScaling={false}>
+                  {registerLabel}
+                </Text>
               </TouchableOpacity>
             </View>
 

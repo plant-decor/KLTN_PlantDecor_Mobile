@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -19,39 +19,27 @@ import { COLORS, FONTS, RADIUS, SHADOWS, SPACING } from '../../constants';
 import {
   RootStackParamList,
   UpdateProfileRequest,
-  UserGender,
   UserGenderCode,
 } from '../../types';
-import { useAuthStore } from '../../stores';
+import { useAuthStore, useEnumStore } from '../../stores';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'EditProfile'>;
 
 const CURRENT_YEAR = new Date().getFullYear();
 const MIN_BIRTH_YEAR = 1900;
 
-const GENDER_OPTIONS: {
-  value: UserGenderCode;
-  labelKey: 'profile.editFormGenderMale' | 'profile.editFormGenderFemale' | 'profile.editFormGenderOther';
-}[] = [
-  { value: 1, labelKey: 'profile.editFormGenderMale' },
-  { value: 2, labelKey: 'profile.editFormGenderFemale' },
-  { value: 3, labelKey: 'profile.editFormGenderOther' },
-];
-
-const mapGenderToCode = (gender?: UserGender): UserGenderCode => {
-  if (gender === 'Female') {
-    return 2;
-  }
-  if (gender === 'Other') {
-    return 3;
-  }
-  return 1;
-};
-
 const normalizeGenderCode = (rawCode: unknown): UserGenderCode | null => {
-  if (rawCode === 1 || rawCode === 2 || rawCode === 3) {
+  if (typeof rawCode === 'number' && Number.isInteger(rawCode)) {
     return rawCode;
   }
+
+  if (typeof rawCode === 'string' && /^-?\d+$/.test(rawCode.trim())) {
+    const numeric = Number(rawCode.trim());
+    if (Number.isInteger(numeric)) {
+      return numeric;
+    }
+  }
+
   return null;
 };
 
@@ -62,6 +50,73 @@ export default function EditProfileScreen() {
   const user = useAuthStore((state) => state.user);
   const updateProfile = useAuthStore((state) => state.updateProfile);
   const isLoading = useAuthStore((state) => state.isLoading);
+  const loadEnumResource = useEnumStore((state) => state.loadResource);
+  const getEnumValues = useEnumStore((state) => state.getEnumValues);
+  const enumGroups = useEnumStore((state) => state.groups);
+
+  useEffect(() => {
+    void loadEnumResource('users');
+  }, [loadEnumResource]);
+
+  const genderOptions = useMemo(() => {
+    const values = getEnumValues(['Gender']);
+
+    return values
+      .map((option) => {
+        const normalizedCode = normalizeGenderCode(option.value);
+        if (normalizedCode === null) {
+          return null;
+        }
+
+        const normalizedName = option.name.trim().toLowerCase();
+        let label = option.name;
+
+        if (normalizedName === 'male') {
+          label = t('profile.editFormGenderMale', { defaultValue: option.name });
+        } else if (normalizedName === 'female') {
+          label = t('profile.editFormGenderFemale', { defaultValue: option.name });
+        } else if (normalizedName === 'other') {
+          label = t('profile.editFormGenderOther', { defaultValue: option.name });
+        }
+
+        return {
+          value: normalizedCode,
+          label,
+          rawName: option.name,
+        };
+      })
+      .filter(
+        (
+          option
+        ): option is {
+          value: UserGenderCode;
+          label: string;
+          rawName: string;
+        } => Boolean(option)
+      );
+  }, [enumGroups, getEnumValues, t]);
+
+  const preferredGenderCode = useMemo(() => {
+    const normalizedCode = normalizeGenderCode(user?.genderCode);
+    if (normalizedCode !== null) {
+      return normalizedCode;
+    }
+
+    if (typeof user?.gender !== 'string') {
+      return null;
+    }
+
+    const normalizedGenderName = user.gender.trim().toLowerCase();
+    if (!normalizedGenderName) {
+      return null;
+    }
+
+    const matchedOption = genderOptions.find(
+      (option) => option.rawName.trim().toLowerCase() === normalizedGenderName
+    );
+
+    return matchedOption?.value ?? null;
+  }, [genderOptions, user?.gender, user?.genderCode]);
 
   const [username, setUsername] = useState(user?.username ?? '');
   const [fullName, setFullName] = useState(user?.fullName ?? '');
@@ -71,12 +126,28 @@ export default function EditProfileScreen() {
   const [birthYear, setBirthYear] = useState(
     typeof user?.birthYear === 'number' ? String(user.birthYear) : ''
   );
-  const [gender, setGender] = useState<UserGenderCode>(
-    normalizeGenderCode(user?.genderCode) ?? mapGenderToCode(user?.gender)
+  const [gender, setGender] = useState<UserGenderCode>(() =>
+    normalizeGenderCode(user?.genderCode) ?? 1
   );
   const [receiveNotifications, setReceiveNotifications] = useState(
     user?.receiveNotifications ?? user?.receiveNotification ?? false
   );
+
+  useEffect(() => {
+    if (preferredGenderCode !== null) {
+      setGender(preferredGenderCode);
+      return;
+    }
+
+    if (genderOptions.length === 0) {
+      return;
+    }
+
+    const hasCurrentGender = genderOptions.some((option) => option.value === gender);
+    if (!hasCurrentGender) {
+      setGender(genderOptions[0].value);
+    }
+  }, [gender, genderOptions, preferredGenderCode]);
 
   const handleUpdateProfile = async () => {
     const trimmedUsername = username.trim();
@@ -228,7 +299,7 @@ export default function EditProfileScreen() {
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>{t('profile.editFormGender')}</Text>
               <View style={styles.genderRow}>
-                {GENDER_OPTIONS.map((option) => {
+                {genderOptions.map((option) => {
                   const isSelected = gender === option.value;
 
                   return (
@@ -247,7 +318,7 @@ export default function EditProfileScreen() {
                           isSelected && styles.genderOptionTextSelected,
                         ]}
                       >
-                        {t(option.labelKey)}
+                        {option.label}
                       </Text>
                     </TouchableOpacity>
                   );

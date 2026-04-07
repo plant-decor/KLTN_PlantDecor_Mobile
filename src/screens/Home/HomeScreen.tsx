@@ -19,7 +19,7 @@ import { CompositeNavigationProp, useNavigation } from '@react-navigation/native
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, SPACING, RADIUS, SHADOWS } from '../../constants';
-import { usePlantStore, useCartStore, useAuthStore, useWishlistStore } from '../../stores';
+import { usePlantStore, useCartStore, useAuthStore, useWishlistStore, useEnumStore } from '../../stores';
 import { MainTabParamList, RootStackParamList, Plant } from '../../types';
 import { getWishlistKey, notify, resolveWishlistTarget } from '../../utils';
 
@@ -39,6 +39,37 @@ type HomePlant = {
 
 type HomeSortKey = 'newest' | 'priceAsc' | 'priceDesc';
 
+const parseSortDescriptor = (
+  value: unknown
+): { sortBy: string; sortDirection: 'asc' | 'desc' } | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const directMatch = trimmed.match(/^([a-zA-Z][\w]*)[\s._:-](asc|desc)$/i);
+  if (directMatch) {
+    return {
+      sortBy: directMatch[1],
+      sortDirection: directMatch[2].toLowerCase() as 'asc' | 'desc',
+    };
+  }
+
+  const camelCaseMatch = trimmed.match(/^([a-zA-Z][\w]*?)(Asc|Desc)$/);
+  if (camelCaseMatch) {
+    return {
+      sortBy: camelCaseMatch[1],
+      sortDirection: camelCaseMatch[2].toLowerCase() as 'asc' | 'desc',
+    };
+  }
+
+  return null;
+};
+
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - SPACING.lg * 3) / 2 - 2;
 
@@ -46,6 +77,9 @@ export default function HomeScreen() {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
   const { plants, fetchPlants } = usePlantStore();
+  const loadEnumResource = useEnumStore((state) => state.loadResource);
+  const getEnumValues = useEnumStore((state) => state.getEnumValues);
+  const enumGroups = useEnumStore((state) => state.groups);
   const totalItems = useCartStore((state) => state.totalItems);
   const addToCart = useCartStore((state) => state.addToCart);
   const { isAuthenticated } = useAuthStore();
@@ -60,25 +94,63 @@ export default function HomeScreen() {
   const toggleWishlist = useWishlistStore((state) => state.toggleWishlist);
   const clearWishlistStatus = useWishlistStore((state) => state.clearStatus);
 
-  const sortOptions: Array<{ key: HomeSortKey; label: string }> = [
-    { key: 'newest', label: 'Newest' },
-    { key: 'priceAsc', label: 'Price Low-High' },
-    { key: 'priceDesc', label: 'Price High-Low' },
-  ];
+  useEffect(() => {
+    void loadEnumResource('plant-sort');
+  }, [loadEnumResource]);
+
+  const sortConfig = useMemo(
+    () => {
+      const fallbackConfig: Record<
+        HomeSortKey,
+        { sortBy: string; sortDirection: 'asc' | 'desc' }
+      > = {
+        newest: { sortBy: 'createdAt', sortDirection: 'desc' },
+        priceAsc: { sortBy: 'basePrice', sortDirection: 'asc' },
+        priceDesc: { sortBy: 'basePrice', sortDirection: 'desc' },
+      };
+
+      const enumValues = getEnumValues(['PlantSort', 'plantSort', 'sortBy']);
+
+      enumValues.forEach((item) => {
+        const parsed = parseSortDescriptor(item.value) ?? parseSortDescriptor(item.name);
+        if (!parsed) {
+          return;
+        }
+
+        const normalized = `${item.name} ${String(item.value)}`.toLowerCase();
+        if (normalized.includes('new') || normalized.includes('create') || normalized.includes('latest')) {
+          fallbackConfig.newest = parsed;
+          return;
+        }
+
+        if (
+          (normalized.includes('price') && normalized.includes('asc')) ||
+          normalized.includes('low')
+        ) {
+          fallbackConfig.priceAsc = parsed;
+          return;
+        }
+
+        if (
+          (normalized.includes('price') && normalized.includes('desc')) ||
+          normalized.includes('high')
+        ) {
+          fallbackConfig.priceDesc = parsed;
+        }
+      });
+
+      return fallbackConfig;
+    },
+    [enumGroups, getEnumValues]
+  );
 
   useEffect(() => {
-    if (selectedSort === 'priceAsc') {
-      fetchPlants({ sortBy: 'basePrice', sortDirection: 'asc' });
-      return;
-    }
-
-    if (selectedSort === 'priceDesc') {
-      fetchPlants({ sortBy: 'basePrice', sortDirection: 'desc' });
-      return;
-    }
-
-    fetchPlants({ sortBy: 'createdAt', sortDirection: 'desc' });
-  }, [fetchPlants, selectedSort]);
+    const selectedSortConfig = sortConfig[selectedSort] ?? sortConfig.newest;
+    fetchPlants({
+      sortBy: selectedSortConfig.sortBy,
+      sortDirection: selectedSortConfig.sortDirection,
+    });
+  }, [fetchPlants, selectedSort, sortConfig]);
 
   const homePlants = useMemo<HomePlant[]>(() => {
     if (plants.length === 0) {

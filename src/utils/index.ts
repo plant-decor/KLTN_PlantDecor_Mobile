@@ -50,3 +50,4 @@ export function isValidPhone(phone: string): boolean {
 
 export { notify } from './notify';
 export { getWishlistKey, resolveWishlistTarget } from './wishlist';
+export { getOrderStatusColors, getOrderStatusLabel } from './orderStatus';

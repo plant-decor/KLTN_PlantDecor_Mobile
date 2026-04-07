@@ -189,6 +189,10 @@ export const API = {
     PAYMENT_CALLBACK: "/Payment/Checkout/PaymentCallbackVnpay",
     PAYMENT_IPN: "/Payment/Checkout/IpnVnpay",
 
+    // System Enums
+    SYSTEM_ENUMS: "/system/enums",
+    SYSTEM_ENUM_BY_NAME: (enumName: string) => `/system/enums/${enumName}`,
+
     // AI Design
     // AI_DESIGN: '/ai/design',
     // AI_DESIGN_RESULT: (id: string) => `/ai/design/${id}`,

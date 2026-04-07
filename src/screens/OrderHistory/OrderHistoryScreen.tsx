@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -16,85 +16,20 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, RADIUS, SHADOWS, SPACING } from '../../constants';
 import { orderService } from '../../services';
-import { useAuthStore } from '../../stores';
-import { OrderPayload, OrderStatusFilter, RootStackParamList } from '../../types';
+import { useAuthStore, useEnumStore } from '../../stores';
+import { OrderPayload, RootStackParamList } from '../../types';
+import { getOrderStatusColors, getOrderStatusLabel } from '../../utils';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'OrderHistory'>;
-type StatusFilter = 'all' | OrderStatusFilter;
-
-const ORDER_STATUS_FILTERS: StatusFilter[] = [
-  'all',
-  'Pending',
-  'Paid',
-  'Shipping',
-  'Delivered',
-  'Cancelled',
-  'Failed',
-];
-
-const statusColorMap: Record<string, { backgroundColor: string; textColor: string }> = {
-  Pending: {
-    backgroundColor: '#FFF4CC',
-    textColor: '#8A6D1F',
-  },
-  DepositPaid: {
-    backgroundColor: '#E5F9EB',
-    textColor: '#1A7F37',
-  },
-  Paid: {
-    backgroundColor: '#DFF7E9',
-    textColor: '#19743A',
-  },
-  Assigned: {
-    backgroundColor: '#EAF4FF',
-    textColor: '#0B63B6',
-  },
-  Shipping: {
-    backgroundColor: '#EAF2FF',
-    textColor: '#2958A5',
-  },
-  Delivered: {
-    backgroundColor: '#E7F8EF',
-    textColor: '#1B7F46',
-  },
-  RemainingPaymentPending: {
-    backgroundColor: '#FFF3E5',
-    textColor: '#995200',
-  },
-  Completed: {
-    backgroundColor: '#E7F8EF',
-    textColor: '#1B7F46',
-  },
-  Cancelled: {
-    backgroundColor: '#F3F4F6',
-    textColor: '#6B7280',
-  },
-  Failed: {
-    backgroundColor: '#FDEBEC',
-    textColor: '#B42318',
-  },
-  RefundRequested: {
-    backgroundColor: '#F3ECFF',
-    textColor: '#7A3DD4',
-  },
-  Refunded: {
-    backgroundColor: '#EFEAFE',
-    textColor: '#6D32C8',
-  },
-  Rejected: {
-    backgroundColor: '#FDEBEC',
-    textColor: '#B42318',
-  },
-  PendingConfirmation: {
-    backgroundColor: '#FFF3CC',
-    textColor: '#8A6D1F',
-  },
-};
+type StatusFilter = 'all' | string;
 
 export default function OrderHistoryScreen() {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
   const { isAuthenticated } = useAuthStore();
+  const loadEnumResource = useEnumStore((state) => state.loadResource);
+  const getEnumValues = useEnumStore((state) => state.getEnumValues);
+  const enumGroups = useEnumStore((state) => state.groups);
 
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
 
@@ -104,31 +39,77 @@ export default function OrderHistoryScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const statusLabelMap = useMemo(
-    () => ({
-      all: t('orderHistory.status.all', { defaultValue: 'All' }),
-      Pending: t('orderHistory.status.pending', { defaultValue: 'Pending' }),
-      DepositPaid: t('orderHistory.status.depositPaid', { defaultValue: 'Deposit paid' }),
-      Paid: t('orderHistory.status.paid', { defaultValue: 'Paid' }),
-      Assigned: t('orderHistory.status.assigned', { defaultValue: 'Assigned' }),
-      Shipping: t('orderHistory.status.shipping', { defaultValue: 'Shipping' }),
-      Delivered: t('orderHistory.status.delivered', { defaultValue: 'Delivered' }),
-      RemainingPaymentPending: t('orderHistory.status.remainingPaymentPending', {
-        defaultValue: 'Remaining payment pending',
-      }),
-      Completed: t('orderHistory.status.completed', { defaultValue: 'Completed' }),
-      Cancelled: t('orderHistory.status.cancelled', { defaultValue: 'Cancelled' }),
-      Failed: t('orderHistory.status.failed', { defaultValue: 'Failed' }),
-      RefundRequested: t('orderHistory.status.refundRequested', {
-        defaultValue: 'Refund requested',
-      }),
-      Refunded: t('orderHistory.status.refunded', { defaultValue: 'Refunded' }),
-      Rejected: t('orderHistory.status.rejected', { defaultValue: 'Rejected' }),
-      PendingConfirmation: t('orderHistory.status.pendingConfirmation', {
-        defaultValue: 'Pending confirmation',
-      }),
-    }),
-    [t]
+  useFocusEffect(
+    useCallback(() => {
+      void loadEnumResource('orders');
+    }, [loadEnumResource])
+  );
+
+  const statusFilters = useMemo<StatusFilter[]>(() => {
+    const enumValues = getEnumValues(['OrderStatus', 'orderStatus']);
+    const dynamicStatuses = enumValues
+      .map((item) => {
+        if (typeof item.value === 'string' && item.value.trim().length > 0) {
+          return item.value.trim();
+        }
+
+        if (typeof item.name === 'string' && item.name.trim().length > 0) {
+          return item.name.trim();
+        }
+
+        return null;
+      })
+      .filter((status): status is string => Boolean(status));
+
+    const uniqueStatuses = Array.from(new Set(dynamicStatuses));
+
+    return ['all', ...uniqueStatuses];
+  }, [enumGroups, getEnumValues]);
+
+  const enumStatusLabelMap = useMemo(() => {
+    const enumValues = getEnumValues(['OrderStatus', 'orderStatus']);
+
+    return enumValues.reduce<Record<string, string>>((accumulator, item) => {
+      const keyFromValue =
+        typeof item.value === 'string' && item.value.trim().length > 0
+          ? item.value.trim()
+          : null;
+      const keyFromName =
+        typeof item.name === 'string' && item.name.trim().length > 0
+          ? item.name.trim()
+          : null;
+
+      const finalKey = keyFromValue ?? keyFromName;
+      if (!finalKey || !keyFromName) {
+        return accumulator;
+      }
+
+      accumulator[finalKey] = keyFromName;
+      return accumulator;
+    }, {});
+  }, [enumGroups, getEnumValues]);
+
+  useEffect(() => {
+    if (activeFilter === 'all') {
+      return;
+    }
+
+    if (statusFilters.includes(activeFilter)) {
+      return;
+    }
+
+    setActiveFilter('all');
+  }, [activeFilter, statusFilters]);
+
+  const getStatusLabel = useCallback(
+    (status: string) => {
+      if (status === 'all') {
+        return t('orderHistory.status.all', { defaultValue: 'All' });
+      }
+
+      return getOrderStatusLabel(status, t, enumStatusLabelMap[status]);
+    },
+    [enumStatusLabelMap, t]
   );
 
   const formatCurrency = useCallback(
@@ -217,7 +198,7 @@ export default function OrderHistoryScreen() {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.filterScrollContent}
       >
-        {ORDER_STATUS_FILTERS.map((filter) => {
+        {statusFilters.map((filter) => {
           const isActive = activeFilter === filter;
           return (
             <TouchableOpacity
@@ -231,7 +212,7 @@ export default function OrderHistoryScreen() {
                   isActive && styles.filterChipTextActive,
                 ]}
               >
-                {statusLabelMap[filter] ?? filter}
+                {getStatusLabel(filter)}
               </Text>
             </TouchableOpacity>
           );
@@ -241,11 +222,7 @@ export default function OrderHistoryScreen() {
   );
 
   const renderOrderItem = ({ item }: { item: OrderPayload }) => {
-    const statusColors =
-      statusColorMap[item.statusName] ?? {
-        backgroundColor: '#F3F4F6',
-        textColor: '#4B5563',
-      };
+    const statusColors = getOrderStatusColors(item.statusName);
     const firstInvoice = item.invoices?.[0];
 
     return (
@@ -263,7 +240,7 @@ export default function OrderHistoryScreen() {
             ]}
           >
             <Text style={[styles.statusText, { color: statusColors.textColor }]}>
-              {statusLabelMap[item.statusName as OrderStatusFilter] ?? item.statusName}
+              {getStatusLabel(item.statusName)}
             </Text>
           </View>
         </View>

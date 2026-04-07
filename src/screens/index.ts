@@ -8,8 +8,10 @@ export { default as PaymentWebViewScreen } from './PaymentWebView/PaymentWebView
 export { default as VerifyCodeScreen } from './VerifyCode/VerifyCodeScreen';
 export { default as LoginScreen } from './Login/LoginScreen';
 export { default as RegisterScreen } from './Register/RegisterScreen';
+export { default as ForgotPasswordScreen } from './ForgotPassword/ForgotPasswordScreen';
 export { default as CatalogScreen } from './Catalog/CatalogScreen';
 export { default as WishlistScreen } from './Wishlist/WishlistScreen';
 export { default as EditProfileScreen } from './EditProfile/EditProfileScreen';
 export { default as OrderHistoryScreen } from './OrderHistory/OrderHistoryScreen';
 export { default as OrderDetailScreen } from './OrderDetail/OrderDetailScreen';
+export { default as ShipperHomeScreen } from './ShipperHome/ShipperHomeScreen';

@@ -21,8 +21,8 @@ export interface User {
   role?: string;
 }
 
-export type UserGender = 'Male' | 'Female' | 'Other';
-export type UserGenderCode = 1 | 2 | 3;
+export type UserGender = string;
+export type UserGenderCode = number;
 
 export interface UpdateProfileRequest {
   username: string;
@@ -129,6 +129,38 @@ export interface VerifyOTPResponse {
   payload: {
     success: boolean;
     message: string;
+  };
+}
+
+export interface SendPasswordResetOTPRequest {
+  email: string;
+}
+
+export interface SendPasswordResetOTPResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload?: {
+    success?: boolean;
+    message?: string;
+    expiresAt?: string;
+  };
+}
+
+export interface ResetPasswordRequest {
+  email: string;
+  otpCode: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
+export interface ResetPasswordResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload?: {
+    success?: boolean;
+    message?: string;
   };
 }
 
@@ -489,11 +521,7 @@ export interface CheckoutItem {
 }
 
 // ==================== Wishlist ====================
-export type WishlistItemType =
-  | 'CommonPlant'
-  | 'PlantInstance'
-  | 'NurseryPlantCombo'
-  | 'NurseryMaterial';
+export type WishlistItemType = string;
 
 export interface WishlistItem {
   id: number;
@@ -551,24 +579,31 @@ export interface CheckWishlistResponse {
   payload: boolean;
 }
 
+// ==================== System Enums ====================
+export type SystemEnumPrimitive = string | number;
+
+export interface SystemEnumValue {
+  value: SystemEnumPrimitive;
+  name: string;
+}
+
+export interface SystemEnumGroup {
+  enumName: string;
+  values: SystemEnumValue[];
+}
+
+export interface SystemEnumsResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload?: SystemEnumGroup[] | SystemEnumGroup | SystemEnumValue[];
+  data?: SystemEnumGroup[] | SystemEnumGroup | SystemEnumValue[];
+}
+
 // ==================== Order & Payment ====================
-export type OrderType = 1 | 2 | 3;
-export type PaymentStrategy = 1 | 2;
-export type OrderStatusFilter =
-  | 'Pending'
-  | 'DepositPaid'
-  | 'Paid'
-  | 'Assigned'
-  | 'Shipping'
-  | 'Delivered'
-  | 'RemainingPaymentPending'
-  | 'Completed'
-  | 'Cancelled'
-  | 'Failed'
-  | 'RefundRequested'
-  | 'Refunded'
-  | 'Rejected'
-  | 'PendingConfirmation';
+export type OrderType = number;
+export type PaymentStrategy = number;
+export type OrderStatusFilter = string;
 
 export interface CreateOrderRequest {
   address: string;
@@ -734,6 +769,7 @@ export interface PaginatedResponse<T> {
 // ==================== Navigation ====================
 export type RootStackParamList = {
   MainTabs: undefined;
+  ShipperHome: undefined;
   PlantDetail: { plantId: string };
   AIDesign: undefined;
   AIDesignResult: { resultId: string };
@@ -750,6 +786,7 @@ export type RootStackParamList = {
     orderId: number;
   };
   VerifyCode: { email: string; password: string };
+  ForgotPassword: { email?: string } | undefined;
   OrderDetail: { orderId: number };
   Login: undefined;
   Register: undefined;

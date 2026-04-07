@@ -38,22 +38,26 @@ export default function WishlistScreen() {
   const [pageNumber, setPageNumber] = useState(1);
   const [hasNext, setHasNext] = useState(false);
 
+  const humanizeType = useCallback((value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return value;
+    }
+
+    return trimmed
+      .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+      .replace(/[_-]+/g, ' ');
+  }, []);
+
   const getItemTypeLabel = useCallback(
     (itemType: WishlistItemType) => {
-      switch (itemType) {
-        case 'CommonPlant':
-          return t('wishlist.typeCommonPlant', { defaultValue: 'Common plant' });
-        case 'PlantInstance':
-          return t('wishlist.typePlantInstance', { defaultValue: 'Plant instance' });
-        case 'NurseryPlantCombo':
-          return t('wishlist.typeNurseryPlantCombo', { defaultValue: 'Nursery combo' });
-        case 'NurseryMaterial':
-          return t('wishlist.typeNurseryMaterial', { defaultValue: 'Nursery material' });
-        default:
-          return itemType;
-      }
+      const translationKeySuffix = itemType.trim();
+
+      return t(`wishlist.type${translationKeySuffix}`, {
+        defaultValue: humanizeType(itemType),
+      });
     },
-    [t]
+    [humanizeType, t]
   );
 
   const fetchWishlist = useCallback(

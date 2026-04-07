@@ -23,11 +23,9 @@ import {
   CreateOrderRequest,
   RootStackParamList,
   UpdateProfileRequest,
-  UserGender,
-  UserGenderCode,
 } from '../../types';
 import { orderService, paymentService } from '../../services';
-import { useAuthStore, useCartStore } from '../../stores';
+import { useAuthStore, useCartStore, useEnumStore } from '../../stores';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type ScreenRouteProp = RouteProp<RootStackParamList, 'Checkout'>;
@@ -61,20 +59,18 @@ const mapLocalCartItems = (
     isUniqueInstance: item.plant.isUniqueInstance,
   }));
 
-const mapGenderToCode = (gender?: UserGender): UserGenderCode => {
-  if (gender === 'Female') {
-    return 2;
-  }
-  if (gender === 'Other') {
-    return 3;
-  }
-  return 1;
-};
-
-const normalizeGenderCode = (rawCode: unknown): UserGenderCode | null => {
-  if (rawCode === 1 || rawCode === 2 || rawCode === 3) {
+const normalizeEnumCode = (rawCode: unknown): number | null => {
+  if (typeof rawCode === 'number' && Number.isInteger(rawCode)) {
     return rawCode;
   }
+
+  if (typeof rawCode === 'string' && /^-?\d+$/.test(rawCode.trim())) {
+    const numeric = Number(rawCode.trim());
+    if (Number.isInteger(numeric)) {
+      return numeric;
+    }
+  }
+
   return null;
 };
 
@@ -82,8 +78,159 @@ export default function CheckoutScreen() {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<ScreenRouteProp>();
-  const paymentMethod: 'vnpay' = 'vnpay';
   const { isAuthenticated, user, updateProfile } = useAuthStore();
+  const loadEnumResource = useEnumStore((state) => state.loadResource);
+  const getEnumValues = useEnumStore((state) => state.getEnumValues);
+  const enumGroups = useEnumStore((state) => state.groups);
+
+  useEffect(() => {
+    void Promise.all([
+      loadEnumResource('users'),
+      loadEnumResource('orders'),
+      loadEnumResource('payments'),
+    ]);
+  }, [loadEnumResource]);
+
+  const genderEnumValues = useMemo(() => getEnumValues(['Gender']), [enumGroups, getEnumValues]);
+  const orderTypeEnumValues = useMemo(() => getEnumValues(['OrderType']), [enumGroups, getEnumValues]);
+  const paymentStrategyEnumValues = useMemo(
+    () => getEnumValues(['PaymentStrategy']),
+    [enumGroups, getEnumValues]
+  );
+
+  const paymentOptions = useMemo(() => {
+    const options = paymentStrategyEnumValues
+      .map((item) => {
+        const value = normalizeEnumCode(item.value);
+        if (value === null) {
+          return null;
+        }
+
+        const normalizedName = item.name.trim().toLowerCase();
+        const isVNPay = normalizedName.includes('vnpay');
+
+        return {
+          value,
+          title: isVNPay
+            ? t('checkout.paymentVNPayTitle', { defaultValue: item.name })
+            : item.name,
+          subtitle: isVNPay
+            ? t('checkout.paymentVNPaySub', {
+                defaultValue: 'Quick and secure online payment',
+              })
+            : t('checkout.paymentMethodGenericSub', {
+                defaultValue: 'Available payment method',
+              }),
+          iconText: item.name.trim().charAt(0).toUpperCase() || 'P',
+          normalizedName,
+        };
+      })
+      .filter(
+        (
+          option
+        ): option is {
+          value: number;
+          title: string;
+          subtitle: string;
+          iconText: string;
+          normalizedName: string;
+        } => Boolean(option)
+      );
+
+    if (options.length > 0) {
+      return options;
+    }
+
+    return [
+      {
+        value: 1,
+        title: t('checkout.paymentVNPayTitle', { defaultValue: 'VNPay wallet' }),
+        subtitle: t('checkout.paymentVNPaySub', {
+          defaultValue: 'Quick and secure online payment',
+        }),
+        iconText: 'V',
+        normalizedName: 'vnpay',
+      },
+    ];
+  }, [paymentStrategyEnumValues, t]);
+
+  const [selectedPaymentStrategy, setSelectedPaymentStrategy] = useState<number>(
+    () => paymentOptions[0]?.value ?? 1
+  );
+
+  useEffect(() => {
+    if (paymentOptions.length === 0) {
+      return;
+    }
+
+    const hasSelectedOption = paymentOptions.some(
+      (option) => option.value === selectedPaymentStrategy
+    );
+
+    if (hasSelectedOption) {
+      return;
+    }
+
+    const preferredVNPay = paymentOptions.find((option) =>
+      option.normalizedName.includes('vnpay')
+    );
+
+    setSelectedPaymentStrategy(preferredVNPay?.value ?? paymentOptions[0].value);
+  }, [paymentOptions, selectedPaymentStrategy]);
+
+  const resolvedGenderCode = useMemo(() => {
+    const normalizedCode = normalizeEnumCode(user?.genderCode);
+    if (normalizedCode !== null) {
+      return normalizedCode;
+    }
+
+    if (typeof user?.gender === 'string' && user.gender.trim().length > 0) {
+      const normalizedGenderName = user.gender.trim().toLowerCase();
+      const matchedGender = genderEnumValues.find(
+        (item) => item.name.trim().toLowerCase() === normalizedGenderName
+      );
+      const matchedCode = normalizeEnumCode(matchedGender?.value);
+      if (matchedCode !== null) {
+        return matchedCode;
+      }
+    }
+
+    const firstGenderCode = normalizeEnumCode(genderEnumValues[0]?.value);
+    if (firstGenderCode !== null) {
+      return firstGenderCode;
+    }
+
+    return 1;
+  }, [genderEnumValues, user?.gender, user?.genderCode]);
+
+  const resolveOrderType = (isPlantInstanceOrder: boolean): number => {
+    const fallbackOrderType = isPlantInstanceOrder ? 2 : 1;
+
+    const normalizedFallbackOption = orderTypeEnumValues.find(
+      (item) => normalizeEnumCode(item.value) === fallbackOrderType
+    );
+    const normalizedFallbackCode = normalizeEnumCode(normalizedFallbackOption?.value);
+    if (normalizedFallbackCode !== null) {
+      return normalizedFallbackCode;
+    }
+
+    const semanticOption = orderTypeEnumValues.find((item) => {
+      const normalizedName = item.name.trim().toLowerCase();
+      if (isPlantInstanceOrder) {
+        return normalizedName.includes('instance');
+      }
+      return normalizedName.includes('cart') || normalizedName.includes('common');
+    });
+
+    const semanticCode = normalizeEnumCode(semanticOption?.value);
+    if (semanticCode !== null) {
+      return semanticCode;
+    }
+
+    const firstOrderTypeCode = normalizeEnumCode(orderTypeEnumValues[0]?.value);
+    return firstOrderTypeCode ?? fallbackOrderType;
+  };
+
   const {
     cartItems,
     items: localCartItems,
@@ -259,7 +406,7 @@ export default function CheckoutScreen() {
       phoneNumber: trimmedPhone || user.phone?.trim() || undefined,
       address: trimmedAddress,
       birthYear,
-      gender: normalizeGenderCode(user.genderCode) ?? mapGenderToCode(user.gender),
+      gender: resolvedGenderCode,
       receiveNotifications:
         user.receiveNotifications ?? user.receiveNotification ?? false,
     };
@@ -373,14 +520,14 @@ export default function CheckoutScreen() {
       return;
     }
 
-    const orderType: 1 | 2 = plantInstanceId ? 2 : 1;
+    const orderType = resolveOrderType(Boolean(plantInstanceId));
 
     const createOrderPayload: CreateOrderRequest = {
       address: trimmedAddress,
       phone: trimmedPhone,
       customerName: trimmedCustomerName,
       note: trimmedNote || undefined,
-      paymentStrategy: 1,
+      paymentStrategy: selectedPaymentStrategy,
       orderType,
       cartItemIds,
       plantInstanceId: plantInstanceId ?? 0,
@@ -581,18 +728,30 @@ export default function CheckoutScreen() {
 
         <Text style={styles.sectionHeading}>{t('checkout.paymentMethod')}</Text>
 
-        <View style={[styles.paymentCard, styles.paymentCardActive]}>
-          <View style={[styles.radioOuter, styles.radioOuterActive]}>
-            {paymentMethod === 'vnpay' && <View style={styles.radioInner} />}
-          </View>
-          <View style={styles.paymentInfo}>
-            <Text style={styles.paymentTitle}>{t('checkout.paymentVNPayTitle')}</Text>
-            <Text style={styles.paymentSub}>{t('checkout.paymentVNPaySub')}</Text>
-          </View>
-          <View style={styles.payIconWrap}>
-            <Text style={styles.payIconText}>e</Text>
-          </View>
-        </View>
+        {paymentOptions.map((option) => {
+          const isSelected = selectedPaymentStrategy === option.value;
+
+          return (
+            <TouchableOpacity
+              key={option.value}
+              style={[styles.paymentCard, isSelected && styles.paymentCardActive]}
+              activeOpacity={0.85}
+              disabled={isSubmittingOrder}
+              onPress={() => setSelectedPaymentStrategy(option.value)}
+            >
+              <View style={[styles.radioOuter, isSelected && styles.radioOuterActive]}>
+                {isSelected && <View style={styles.radioInner} />}
+              </View>
+              <View style={styles.paymentInfo}>
+                <Text style={styles.paymentTitle}>{option.title}</Text>
+                <Text style={styles.paymentSub}>{option.subtitle}</Text>
+              </View>
+              <View style={styles.payIconWrap}>
+                <Text style={styles.payIconText}>{option.iconText}</Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
 
         <Text style={styles.sectionHeading}>{t('checkout.paymentDetail')}</Text>
         <View style={styles.card}>

@@ -14,8 +14,12 @@ import {
   RegisterResponse,
   SendOTPRequest,
   SendOTPResponse,
+  SendPasswordResetOTPRequest,
+  SendPasswordResetOTPResponse,
   VerifyOTPRequest,
   VerifyOTPResponse,
+  ResetPasswordRequest,
+  ResetPasswordResponse,
 } from '../types';
 import api from './api';
 import {
@@ -48,42 +52,31 @@ const normalizeBirthYear = (rawBirthYear: unknown): number | undefined => {
   return undefined;
 };
 
-const GENDER_BY_CODE: Partial<Record<number, UserGender>> = {
-  1: 'Male',
-  2: 'Female',
-  3: 'Other',
-};
-
 const normalizeGender = (
   rawGender: unknown
 ): { gender?: UserGender; genderCode?: number } => {
   if (typeof rawGender === 'number' && Number.isInteger(rawGender)) {
     return {
-      gender: GENDER_BY_CODE[rawGender],
       genderCode: rawGender,
     };
   }
 
   if (typeof rawGender === 'string') {
-    const normalized = rawGender.trim().toLowerCase();
-
-    if (normalized === 'male') {
-      return { gender: 'Male', genderCode: 1 };
-    }
-    if (normalized === 'female') {
-      return { gender: 'Female', genderCode: 2 };
-    }
-    if (normalized === 'other') {
-      return { gender: 'Other', genderCode: 3 };
+    const trimmed = rawGender.trim();
+    if (trimmed.length === 0) {
+      return {};
     }
 
-    const parsed = Number(rawGender);
+    const parsed = Number(trimmed);
     if (Number.isInteger(parsed)) {
       return {
-        gender: GENDER_BY_CODE[parsed],
         genderCode: parsed,
       };
     }
+
+    return {
+      gender: trimmed,
+    };
   }
 
   return {};
@@ -249,10 +242,34 @@ export const authService = {
     return response.data;
   },
 
+  sendPasswordResetOTP: async (email: string) => {
+    const request: SendPasswordResetOTPRequest = { email };
+    const response = await api.post<SendPasswordResetOTPResponse>(
+      API.ENDPOINTS.SEND_OTP_PASSWORD_RESET,
+      request
+    );
+    return response.data;
+  },
+
   verifyOTP: async (email: string, otpCode: string) => {
     const request: VerifyOTPRequest = { email, otpCode };
     const response = await api.post<VerifyOTPResponse>(
       API.ENDPOINTS.VERIFY_OTP_EMAIL,
+      request
+    );
+    return response.data;
+  },
+
+  resetPassword: async (data: ResetPasswordRequest) => {
+    const request: ResetPasswordRequest & { otp?: string; password?: string } = {
+      ...data,
+      // Keep aliases for backend naming variants to improve compatibility.
+      otp: data.otpCode,
+      password: data.newPassword,
+    };
+
+    const response = await api.post<ResetPasswordResponse>(
+      API.ENDPOINTS.RESET_PASSWORD,
       request
     );
     return response.data;

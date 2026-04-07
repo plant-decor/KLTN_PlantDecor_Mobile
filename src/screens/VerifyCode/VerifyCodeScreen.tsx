@@ -130,10 +130,11 @@ export default function VerifyCodeScreen() {
       await authService.verifyOTP(email, otpCode);
 
       // Then auto-login
-      await login(email, password, deviceId || 'unknown-device');
+      const loggedInUser = await login(email, password, deviceId || 'unknown-device');
 
       // Navigate to main app
-      navigation.navigate('MainTabs');
+      const isShipper = loggedInUser?.role?.toLowerCase() === 'shipper';
+      navigation.replace(isShipper ? 'ShipperHome' : 'MainTabs');
     } catch (error: any) {
       const errorMessage = error?.response?.data?.message || 'Verification or login failed';
       Alert.alert(t('common.error'), errorMessage);

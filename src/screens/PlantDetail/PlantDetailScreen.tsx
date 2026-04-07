@@ -18,7 +18,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp, useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, SPACING, RADIUS, SHADOWS } from '../../constants';
-import { usePlantStore, useCartStore, useAuthStore, useWishlistStore } from '../../stores';
+import { usePlantStore, useCartStore, useAuthStore, useWishlistStore, useEnumStore } from '../../stores';
 import { RootStackParamList, Plant, CheckoutItem } from '../../types';
 import { getWishlistKey, notify, resolveWishlistTarget } from '../../utils';
 
@@ -31,6 +31,52 @@ const ATTR_CARD_WIDTH = (width - SPACING.xl * 2 - 12) / 2;
 const RELATED_CARD_WIDTH = 196;
 const RELATED_CARD_GAP = 16;
 const RELATED_IMAGE_HEIGHT = 215;
+
+const normalizeEnumCode = (rawCode: unknown): number | null => {
+  if (typeof rawCode === 'number' && Number.isInteger(rawCode)) {
+    return rawCode;
+  }
+
+  if (typeof rawCode === 'string' && /^-?\d+$/.test(rawCode.trim())) {
+    const numeric = Number(rawCode.trim());
+    if (Number.isInteger(numeric)) {
+      return numeric;
+    }
+  }
+
+  return null;
+};
+
+const parseSortDescriptor = (
+  value: unknown
+): { sortBy: string; sortDirection: 'asc' | 'desc' } | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const directMatch = trimmed.match(/^([a-zA-Z][\w]*)[\s._:-](asc|desc)$/i);
+  if (directMatch) {
+    return {
+      sortBy: directMatch[1],
+      sortDirection: directMatch[2].toLowerCase() as 'asc' | 'desc',
+    };
+  }
+
+  const camelCaseMatch = trimmed.match(/^([a-zA-Z][\w]*?)(Asc|Desc)$/);
+  if (camelCaseMatch) {
+    return {
+      sortBy: camelCaseMatch[1],
+      sortDirection: camelCaseMatch[2].toLowerCase() as 'asc' | 'desc',
+    };
+  }
+
+  return null;
+};
 
 // ---------- Attribute card helper ----------
 type AttributeProps = {
@@ -61,6 +107,9 @@ export default function PlantDetailScreen() {
   const navigation = useNavigation<NavigationProp>();
   const isFocused = useIsFocused();
   const route = useRoute<ScreenRouteProp>();
+  const loadEnumResource = useEnumStore((state) => state.loadResource);
+  const getEnumValues = useEnumStore((state) => state.getEnumValues);
+  const enumGroups = useEnumStore((state) => state.groups);
   const { plantId: plantId } = route.params;
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
 
@@ -121,10 +170,54 @@ export default function PlantDetailScreen() {
   }, [fetchPlantDetail, isFocused, plantId, selectedPlant]);
 
   useEffect(() => {
-    if (plants.length === 0) {
-      fetchPlants({ page: 1, sortBy: 'createdAt', sortDirection: 'desc' });
+    void loadEnumResource('plants');
+    void loadEnumResource('plant-sort');
+  }, [loadEnumResource]);
+
+  const fengShuiEnumValues = useMemo(
+    () => getEnumValues(['FengShuiElement', 'fengShuiElement']),
+    [enumGroups, getEnumValues]
+  );
+
+  const careLevelEnumValues = useMemo(
+    () => getEnumValues(['CareLevelType', 'careLevelType']),
+    [enumGroups, getEnumValues]
+  );
+
+  const relatedPlantsSort = useMemo(() => {
+    const sortEnumValues = getEnumValues(['PlantSort', 'plantSort', 'sortBy']);
+
+    for (const item of sortEnumValues) {
+      const parsed = parseSortDescriptor(item.value) ?? parseSortDescriptor(item.name);
+      if (!parsed) {
+        continue;
+      }
+
+      const normalizedName = `${item.name} ${String(item.value)}`.toLowerCase();
+      if (
+        normalizedName.includes('new') ||
+        normalizedName.includes('create') ||
+        normalizedName.includes('latest')
+      ) {
+        return parsed;
+      }
     }
-  }, [fetchPlants, plants.length]);
+
+    return {
+      sortBy: 'createdAt',
+      sortDirection: 'desc' as const,
+    };
+  }, [enumGroups, getEnumValues]);
+
+  useEffect(() => {
+    if (plants.length === 0) {
+      fetchPlants({
+        page: 1,
+        sortBy: relatedPlantsSort.sortBy,
+        sortDirection: relatedPlantsSort.sortDirection,
+      });
+    }
+  }, [fetchPlants, plants.length, relatedPlantsSort]);
 
   useEffect(() => {
     setSelectedQuantity(1);
@@ -487,17 +580,34 @@ export default function PlantDetailScreen() {
     if (plant.careLevelTypeName) {
       return plant.careLevelTypeName;
     }
-    // Fallback to care level string
-    switch (plant.careLevel?.toLowerCase()) {
-      case 'easy':
-        return t('plantDetail.careEasy');
-      case 'medium':
-        return t('plantDetail.careMedium');
-      case 'hard':
-        return t('plantDetail.careHard');
-      default:
-        return plant.careLevel;
+
+    const matchedByCode = careLevelEnumValues.find(
+      (item) => normalizeEnumCode(item.value) === plant.careLevelType
+    );
+    if (matchedByCode) {
+      const normalizedName = matchedByCode.name.trim().toLowerCase();
+      if (normalizedName === 'easy') {
+        return t('plantDetail.careEasy', { defaultValue: matchedByCode.name });
+      }
+      if (normalizedName === 'medium') {
+        return t('plantDetail.careMedium', { defaultValue: matchedByCode.name });
+      }
+      if (normalizedName === 'hard') {
+        return t('plantDetail.careHard', { defaultValue: matchedByCode.name });
+      }
+
+      return matchedByCode.name;
     }
+
+    const rawCareLevel = plant.careLevel?.trim() || '';
+    const matchedByName = careLevelEnumValues.find(
+      (item) => item.name.trim().toLowerCase() === rawCareLevel.toLowerCase()
+    );
+    if (matchedByName) {
+      return matchedByName.name;
+    }
+
+    return rawCareLevel;
   };
 
   const getLightLabel = () => {
@@ -536,19 +646,35 @@ export default function PlantDetailScreen() {
         : Number.parseInt(String(rawElement), 10);
 
     if (Number.isInteger(numericElement)) {
-      switch (numericElement) {
-        case 1:
-          return t('catalog.fengShuiMetal', { defaultValue: 'Metal' });
-        case 2:
-          return t('catalog.fengShuiWood', { defaultValue: 'Wood' });
-        case 3:
-          return t('catalog.fengShuiWater', { defaultValue: 'Water' });
-        case 4:
-          return t('catalog.fengShuiFire', { defaultValue: 'Fire' });
-        case 5:
-          return t('catalog.fengShuiEarth', { defaultValue: 'Earth' });
-        default:
-          break;
+      const matchedEnum = fengShuiEnumValues.find((item) => {
+        const enumValue =
+          typeof item.value === 'number'
+            ? item.value
+            : Number.parseInt(String(item.value), 10);
+
+        return Number.isInteger(enumValue) && enumValue === numericElement;
+      });
+
+      if (matchedEnum) {
+        const normalizedName = matchedEnum.name.trim().toLowerCase();
+
+        if (normalizedName === 'metal') {
+          return t('catalog.fengShuiMetal', { defaultValue: matchedEnum.name });
+        }
+        if (normalizedName === 'wood') {
+          return t('catalog.fengShuiWood', { defaultValue: matchedEnum.name });
+        }
+        if (normalizedName === 'water') {
+          return t('catalog.fengShuiWater', { defaultValue: matchedEnum.name });
+        }
+        if (normalizedName === 'fire') {
+          return t('catalog.fengShuiFire', { defaultValue: matchedEnum.name });
+        }
+        if (normalizedName === 'earth') {
+          return t('catalog.fengShuiEarth', { defaultValue: matchedEnum.name });
+        }
+
+        return matchedEnum.name;
       }
     }
 

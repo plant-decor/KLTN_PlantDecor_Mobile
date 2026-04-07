@@ -26,7 +26,7 @@ import {
   NurseryPlantInstanceAvailability,
   CheckoutItem,
 } from '../../types';
-import { usePlantStore, useCartStore, useAuthStore, useWishlistStore } from '../../stores';
+import { usePlantStore, useCartStore, useAuthStore, useWishlistStore, useEnumStore } from '../../stores';
 import { plantService } from '../../services/plantService';
 import { getWishlistKey, notify, resolveWishlistTarget } from '../../utils';
 
@@ -35,14 +35,73 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - SPACING.lg * 3) / 2;
 
-// Enum types matching API
-type PlacementTypeEnum = 1 | 2 | 3; // 1=Indoor, 2=Outdoor, 3=SemiShade
-type CareLevelTypeEnum = 1 | 2 | 3 | 4; // 1=Easy, 2=Medium, 3=Hard, 4=Expert
+const normalizeEnumCode = (rawCode: unknown): number | null => {
+  if (typeof rawCode === 'number' && Number.isInteger(rawCode)) {
+    return rawCode;
+  }
+
+  if (typeof rawCode === 'string' && /^-?\d+$/.test(rawCode.trim())) {
+    const numeric = Number(rawCode.trim());
+    if (Number.isInteger(numeric)) {
+      return numeric;
+    }
+  }
+
+  return null;
+};
+
+const parseSortFromText = (
+  value: unknown
+): { sortBy: string; sortDirection: 'asc' | 'desc' } | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const directMatch = trimmed.match(/^([a-zA-Z][\w]*)[\s._:-](asc|desc)$/i);
+  if (directMatch) {
+    return {
+      sortBy: directMatch[1],
+      sortDirection: directMatch[2].toLowerCase() as 'asc' | 'desc',
+    };
+  }
+
+  const camelCaseMatch = trimmed.match(/^([a-zA-Z][\w]*?)(Asc|Desc)$/);
+  if (camelCaseMatch) {
+    return {
+      sortBy: camelCaseMatch[1],
+      sortDirection: camelCaseMatch[2].toLowerCase() as 'asc' | 'desc',
+    };
+  }
+
+  if (trimmed.toLowerCase().includes('asc')) {
+    return {
+      sortBy: trimmed.replace(/asc/gi, '').replace(/[^a-zA-Z0-9]/g, '') || 'name',
+      sortDirection: 'asc',
+    };
+  }
+
+  if (trimmed.toLowerCase().includes('desc')) {
+    return {
+      sortBy: trimmed.replace(/desc/gi, '').replace(/[^a-zA-Z0-9]/g, '') || 'name',
+      sortDirection: 'desc',
+    };
+  }
+
+  return null;
+};
 
 export default function CatalogScreen() {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
   const { plants, isLoading, error, searchShopPlants } = usePlantStore();
+  const loadEnumResource = useEnumStore((state) => state.loadResource);
+  const getEnumValues = useEnumStore((state) => state.getEnumValues);
+  const enumGroups = useEnumStore((state) => state.groups);
   const addToCart = useCartStore((state) => state.addToCart);
   const { isAuthenticated } = useAuthStore();
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
@@ -52,8 +111,8 @@ export default function CatalogScreen() {
   const [priceRange, setPriceRange] = useState({ min: 0, max: 200000000 });
   const [minPriceInput, setMinPriceInput] = useState('0');
   const [maxPriceInput, setMaxPriceInput] = useState('200000000');
-  const [selectedCareLevel, setSelectedCareLevel] = useState<CareLevelTypeEnum | null>(null);
-  const [selectedPlacement, setSelectedPlacement] = useState<PlacementTypeEnum | null>(null);
+  const [selectedCareLevel, setSelectedCareLevel] = useState<number | null>(null);
+  const [selectedPlacement, setSelectedPlacement] = useState<number | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [toxicity, setToxicity] = useState<boolean>(false);
   const [airPurifying, setAirPurifying] = useState<boolean>(false);
@@ -83,6 +142,106 @@ export default function CatalogScreen() {
   useEffect(() => {
     loadPlants();
   }, []);
+
+  useEffect(() => {
+    void Promise.all([loadEnumResource('plants'), loadEnumResource('plant-sort')]);
+  }, [loadEnumResource]);
+
+  const careLevelOptions = useMemo(() => {
+    const values = getEnumValues(['CareLevelType', 'careLevelType']);
+
+    return values
+      .map((item) => {
+        const value = normalizeEnumCode(item.value);
+        if (value === null) {
+          return null;
+        }
+
+        const normalizedName = item.name.trim().toLowerCase();
+        let label = item.name;
+
+        if (normalizedName === 'easy') {
+          label = t('catalog.careEasy', { defaultValue: item.name });
+        } else if (normalizedName === 'medium') {
+          label = t('catalog.careMedium', { defaultValue: item.name });
+        } else if (normalizedName === 'hard') {
+          label = t('catalog.careHard', { defaultValue: item.name });
+        } else if (normalizedName === 'expert') {
+          label = t('catalog.careExpert', { defaultValue: item.name });
+        }
+
+        return {
+          value,
+          label,
+        };
+      })
+      .filter((option): option is { value: number; label: string } => Boolean(option));
+  }, [enumGroups, getEnumValues, t]);
+
+  const placementOptions = useMemo(() => {
+    const values = getEnumValues(['PlacementType', 'placementType']);
+
+    return values
+      .map((item) => {
+        const value = normalizeEnumCode(item.value);
+        if (value === null) {
+          return null;
+        }
+
+        const normalizedName = item.name.trim().toLowerCase();
+        const hasIndoor = normalizedName.includes('indoor');
+        const hasOutdoor = normalizedName.includes('outdoor');
+        const hasSemiShade =
+          normalizedName.includes('semishade') ||
+          normalizedName.includes('semi-shade') ||
+          normalizedName.includes('semi shade');
+
+        let label = item.name;
+        let icon = 'leaf-outline';
+
+        if (hasIndoor) {
+          label = t('catalog.placementIndoor', { defaultValue: item.name });
+          icon = 'home';
+        } else if (hasOutdoor) {
+          label = t('catalog.placementOutdoor', { defaultValue: item.name });
+          icon = 'leaf';
+        } else if (hasSemiShade) {
+          label = t('catalog.placementSemiShade', { defaultValue: item.name });
+          icon = 'partly-sunny';
+        }
+
+        return {
+          value,
+          label,
+          icon,
+        };
+      })
+      .filter(
+        (option): option is { value: number; label: string; icon: string } =>
+          Boolean(option)
+      );
+  }, [enumGroups, getEnumValues, t]);
+
+  const defaultSort = useMemo(() => {
+    const values = getEnumValues(['PlantSort', 'plantSort', 'sortBy']);
+
+    for (const item of values) {
+      const fromValue = parseSortFromText(item.value);
+      if (fromValue) {
+        return fromValue;
+      }
+
+      const fromName = parseSortFromText(item.name);
+      if (fromName) {
+        return fromName;
+      }
+    }
+
+    return {
+      sortBy: 'name',
+      sortDirection: 'asc' as const,
+    };
+  }, [enumGroups, getEnumValues]);
 
   // Animate filter panel
   useEffect(() => {
@@ -194,8 +353,8 @@ export default function CatalogScreen() {
       categoryIds: categoryIds.length > 0 ? categoryIds : undefined,
       tagIds: tagIds.length > 0 ? tagIds : undefined,
       nurseryId,
-      sortBy: 'name',
-      sortDirection: 'asc',
+      sortBy: defaultSort.sortBy,
+      sortDirection: defaultSort.sortDirection,
     });
   }, [
     keyword,
@@ -211,6 +370,7 @@ export default function CatalogScreen() {
     categoryIds,
     tagIds,
     nurseryId,
+    defaultSort,
     searchShopPlants,
   ]);
 
@@ -277,12 +437,7 @@ export default function CatalogScreen() {
       <View style={styles.filterSection}>
         <Text style={styles.sectionTitle}>{t('catalog.careLevel')}</Text>
         <View style={styles.chipContainer}>
-          {[
-            { value: 1 as CareLevelTypeEnum, label: t('catalog.careEasy') },
-            { value: 2 as CareLevelTypeEnum, label: t('catalog.careMedium') },
-            { value: 3 as CareLevelTypeEnum, label: t('catalog.careHard') },
-            { value: 4 as CareLevelTypeEnum, label: t('catalog.careExpert') },
-          ].map((level) => (
+          {careLevelOptions.map((level) => (
             <TouchableOpacity
               key={level.value}
               style={[
@@ -310,11 +465,7 @@ export default function CatalogScreen() {
       <View style={styles.filterSection}>
         <Text style={styles.sectionTitle}>{t('catalog.placement')}</Text>
         <View style={styles.chipContainer}>
-          {[
-            { value: 1 as PlacementTypeEnum, icon: 'home', label: t('catalog.placementIndoor') },
-            { value: 2 as PlacementTypeEnum, icon: 'leaf', label: t('catalog.placementOutdoor') },
-            { value: 3 as PlacementTypeEnum, icon: 'partly-sunny', label: t('catalog.placementSemiShade') },
-          ].map((item) => (
+          {placementOptions.map((item) => (
             <TouchableOpacity
               key={item.value}
               style={[

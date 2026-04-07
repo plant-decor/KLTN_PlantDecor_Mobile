@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
 import BottomTabNavigator from './BottomTabNavigator';
+import { useEnumStore } from '../stores';
 import {
   PlantDetailScreen,
   CartScreen,
@@ -11,16 +12,24 @@ import {
   AIDesignScreen,
   LoginScreen,
   RegisterScreen,
+  ForgotPasswordScreen,
   CatalogScreen,
   WishlistScreen,
   EditProfileScreen,
   OrderHistoryScreen,
   OrderDetailScreen,
+  ShipperHomeScreen,
 } from '../screens';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function RootNavigator() {
+  const preloadResources = useEnumStore((state) => state.preloadResources);
+
+  useEffect(() => {
+    void preloadResources(['plants', 'plant-sort', 'users', 'orders', 'payments']);
+  }, [preloadResources]);
+
   return (
     <Stack.Navigator
       screenOptions={{
@@ -29,6 +38,7 @@ export default function RootNavigator() {
       }}
     >
       <Stack.Screen name="MainTabs" component={BottomTabNavigator} />
+      <Stack.Screen name="ShipperHome" component={ShipperHomeScreen} />
       <Stack.Screen name="PlantDetail" component={PlantDetailScreen} />
       <Stack.Screen name="Cart" component={CartScreen} />
       <Stack.Screen name="Wishlist" component={WishlistScreen} />
@@ -38,6 +48,7 @@ export default function RootNavigator() {
       <Stack.Screen name="AIDesign" component={AIDesignScreen} />
       <Stack.Screen name="Login" component={LoginScreen} options={{ animation: 'fade_from_bottom' }} />
       <Stack.Screen name="Register" component={RegisterScreen} options={{ animation: 'fade_from_bottom' }} />
+      <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} options={{ animation: 'fade_from_bottom' }} />
       <Stack.Screen name="Catalog" component={CatalogScreen} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{ animation: 'fade_from_bottom' }} />
       <Stack.Screen name="OrderHistory" component={OrderHistoryScreen} />

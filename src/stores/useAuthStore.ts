@@ -11,7 +11,7 @@ interface AuthState {
   error: string | null;
 
   // Actions
-  login: (email: string, password: string, deviceId?: string) => Promise<void>;
+  login: (email: string, password: string, deviceId?: string) => Promise<User | null>;
   register: (data: RegisterRequest) => Promise<{ message: string }>;
   logout: () => Promise<void>;
   fetchProfile: () => Promise<void>;
@@ -56,6 +56,8 @@ export const useAuthStore = create<AuthState>((set) => {
           .catch(() => {
             // Keep token-based bootstrap user on transient profile fetch errors.
           });
+
+        return user ?? null;
       } catch (error) {
         const message =
           error instanceof Error && "response" in error
