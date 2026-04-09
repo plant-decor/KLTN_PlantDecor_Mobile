@@ -5,6 +5,7 @@ import BottomTabNavigator from './BottomTabNavigator';
 import { useEnumStore } from '../stores';
 import {
   PlantDetailScreen,
+  PlantInstanceDetailScreen,
   CartScreen,
   CheckoutScreen,
   PaymentWebViewScreen,
@@ -14,6 +15,8 @@ import {
   RegisterScreen,
   ForgotPasswordScreen,
   CatalogScreen,
+  MaterialDetailScreen,
+  ComboDetailScreen,
   WishlistScreen,
   EditProfileScreen,
   OrderHistoryScreen,
@@ -40,6 +43,9 @@ export default function RootNavigator() {
       <Stack.Screen name="MainTabs" component={BottomTabNavigator} />
       <Stack.Screen name="ShipperHome" component={ShipperHomeScreen} />
       <Stack.Screen name="PlantDetail" component={PlantDetailScreen} />
+      <Stack.Screen name="PlantInstanceDetail" component={PlantInstanceDetailScreen} />
+      <Stack.Screen name="MaterialDetail" component={MaterialDetailScreen} />
+      <Stack.Screen name="ComboDetail" component={ComboDetailScreen} />
       <Stack.Screen name="Cart" component={CartScreen} />
       <Stack.Screen name="Wishlist" component={WishlistScreen} />
       <Stack.Screen name="Checkout" component={CheckoutScreen} />

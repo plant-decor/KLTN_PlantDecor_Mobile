@@ -1,95 +1,187 @@
-import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
+  ActivityIndicator,
+  Alert,
+  Animated,
+  Dimensions,
   FlatList,
   Image,
-  Dimensions,
-  ActivityIndicator,
-  TextInput,
-  Animated,
-  Alert,
   Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
+import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
 import { useTranslation } from 'react-i18next';
-import { COLORS, FONTS, SPACING, RADIUS, SHADOWS } from '../../constants';
+import { COLORS, FONTS, RADIUS, SHADOWS, SPACING } from '../../constants';
 import {
-  RootStackParamList,
-  Plant,
-  NurseryPlantInstanceAvailability,
+  AddCartItemRequest,
   CheckoutItem,
+  NurseryPlantInstanceAvailability,
+  RootStackParamList,
+  ShopSearchConfigGroup,
+  ShopSearchItem,
+  ShopSearchMaterialSummary,
+  ShopSearchPlantSummary,
+  ShopSearchComboSummary,
+  ShopSearchRequest,
+  WishlistItemType,
 } from '../../types';
-import { usePlantStore, useCartStore, useAuthStore, useWishlistStore, useEnumStore } from '../../stores';
-import { plantService } from '../../services/plantService';
-import { getWishlistKey, notify, resolveWishlistTarget } from '../../utils';
+import { useAuthStore, useWishlistStore } from '../../stores';
+import { cartService, plantService } from '../../services';
+import { getWishlistKey, notify } from '../../utils';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+type NumberOption = { value: number; label: string };
+type StringOption = { value: string; label: string };
+type WishlistTarget = { itemType: WishlistItemType; itemId: number };
+type PageToken = number | 'left-ellipsis' | 'right-ellipsis';
+type FilterSectionKey =
+  | 'productTypes'
+  | 'priceRange'
+  | 'sort'
+  | 'careLevel'
+  | 'placement'
+  | 'size'
+  | 'fengShui'
+  | 'combo'
+  | 'features'
+  | 'categories'
+  | 'tags'
+  | 'nursery';
 
 const { width } = Dimensions.get('window');
-const CARD_WIDTH = (width - SPACING.lg * 3) / 2;
+const CARD_WIDTH = (width - SPACING.lg * 3) / 2;``
+const PAGE_SIZE_OPTIONS = [10, 20, 40, 80];
+const DEFAULT_PAGE_SIZE = 20;
+const DEFAULT_SORT_BY_OPTIONS: StringOption[] = [
+  { value: 'Name', label: 'Name' },
+  { value: 'Price', label: 'Price' },
+  { value: 'Size', label: 'Size' },
+  { value: 'AvailableInstances', label: 'Available' },
+  { value: 'CreatedAt', label: 'Newest' },
+];
+const DEFAULT_SORT_DIRECTION_OPTIONS: StringOption[] = [
+  { value: 'Asc', label: 'Asc' },
+  { value: 'Desc', label: 'Desc' },
+];
+const PLACEHOLDER_IMAGE = 'https://via.placeholder.com/320x320?text=PlantDecor';
+const FLOATING_TAB_BAR_OFFSET = 12;
+const MIN_FLOATING_TAB_BAR_HEIGHT = 64;
 
-const normalizeEnumCode = (rawCode: unknown): number | null => {
-  if (typeof rawCode === 'number' && Number.isInteger(rawCode)) {
-    return rawCode;
+const normalizeLookup = (value: string): string =>
+  value.replace(/[^a-z0-9]/gi, '').toLowerCase();
+
+const toPositiveInt = (value: unknown): number | null => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || !Number.isInteger(numeric) || numeric <= 0) {
+    return null;
+  }
+  return numeric;
+};
+
+const findGroup = (
+  groups: ShopSearchConfigGroup[],
+  aliases: string[]
+): ShopSearchConfigGroup | undefined => {
+  const normalizedAliases = aliases.map(normalizeLookup);
+  return groups.find((group) => normalizedAliases.includes(normalizeLookup(group.groupName)));
+};
+
+const toNumberOptions = (group?: ShopSearchConfigGroup): NumberOption[] => {
+  if (!group) {
+    return [];
   }
 
-  if (typeof rawCode === 'string' && /^-?\d+$/.test(rawCode.trim())) {
-    const numeric = Number(rawCode.trim());
-    if (Number.isInteger(numeric)) {
-      return numeric;
+  return group.values
+    .map((entry) => {
+      const value = Number(entry.value);
+      if (!Number.isFinite(value)) {
+        return null;
+      }
+
+      return {
+        value,
+        label: entry.name,
+      };
+    })
+    .filter((entry): entry is NumberOption => Boolean(entry));
+};
+
+const toStringOptions = (group?: ShopSearchConfigGroup): StringOption[] => {
+  if (!group) {
+    return [];
+  }
+
+  return group.values
+    .map((entry) => {
+      const value = String(entry.name || entry.value).trim();
+      if (!value) {
+        return null;
+      }
+
+      return {
+        value,
+        label: entry.name,
+      };
+    })
+    .filter((entry): entry is StringOption => Boolean(entry));
+};
+
+const formatMoney = (amount: number, locale: string): string =>
+  `${Math.max(0, amount).toLocaleString(locale)}₫`;
+
+const getItemKey = (item: ShopSearchItem, index: number): string => {
+  if (item.type === 'Plant') {
+    return `Plant-${item.plant?.id ?? index}`;
+  }
+
+  if (item.type === 'Material') {
+    return `Material-${item.material?.id ?? index}`;
+  }
+
+  return `Combo-${item.combo?.id ?? index}`;
+};
+
+const resolveWishlistTarget = (item: ShopSearchItem): WishlistTarget | null => {
+  if (item.type === 'Plant' && item.plant) {
+    const entityId = toPositiveInt(item.plant.id);
+    const commonPlantId = toPositiveInt(item.plant.commonPlantId);
+    const shouldUsePlantInstanceTarget =
+      item.plant.isUniqueInstance ||
+      (entityId !== null && commonPlantId !== null && entityId !== commonPlantId);
+
+    if (shouldUsePlantInstanceTarget && entityId) {
+      return { itemType: 'PlantInstance', itemId: entityId };
+    }
+
+    const plantId = commonPlantId ?? entityId;
+    if (plantId) {
+      return { itemType: 'Plant', itemId: plantId };
+    }
+
+    return null;
+  }
+
+  if (item.type === 'Material' && item.material) {
+    const materialId = toPositiveInt(item.material.materialId ?? item.material.id);
+    if (materialId) {
+      return { itemType: 'Material', itemId: materialId };
     }
   }
 
-  return null;
-};
-
-const parseSortFromText = (
-  value: unknown
-): { sortBy: string; sortDirection: 'asc' | 'desc' } | null => {
-  if (typeof value !== 'string') {
-    return null;
-  }
-
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  const directMatch = trimmed.match(/^([a-zA-Z][\w]*)[\s._:-](asc|desc)$/i);
-  if (directMatch) {
-    return {
-      sortBy: directMatch[1],
-      sortDirection: directMatch[2].toLowerCase() as 'asc' | 'desc',
-    };
-  }
-
-  const camelCaseMatch = trimmed.match(/^([a-zA-Z][\w]*?)(Asc|Desc)$/);
-  if (camelCaseMatch) {
-    return {
-      sortBy: camelCaseMatch[1],
-      sortDirection: camelCaseMatch[2].toLowerCase() as 'asc' | 'desc',
-    };
-  }
-
-  if (trimmed.toLowerCase().includes('asc')) {
-    return {
-      sortBy: trimmed.replace(/asc/gi, '').replace(/[^a-zA-Z0-9]/g, '') || 'name',
-      sortDirection: 'asc',
-    };
-  }
-
-  if (trimmed.toLowerCase().includes('desc')) {
-    return {
-      sortBy: trimmed.replace(/desc/gi, '').replace(/[^a-zA-Z0-9]/g, '') || 'name',
-      sortDirection: 'desc',
-    };
+  if (item.type === 'Combo' && item.combo) {
+    const comboId = toPositiveInt(item.combo.id);
+    if (comboId) {
+      return { itemType: 'PlantCombo', itemId: comboId };
+    }
   }
 
   return null;
@@ -98,157 +190,131 @@ const parseSortFromText = (
 export default function CatalogScreen() {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
-  const { plants, isLoading, error, searchShopPlants } = usePlantStore();
-  const loadEnumResource = useEnumStore((state) => state.loadResource);
-  const getEnumValues = useEnumStore((state) => state.getEnumValues);
-  const enumGroups = useEnumStore((state) => state.groups);
-  const addToCart = useCartStore((state) => state.addToCart);
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
   const { isAuthenticated } = useAuthStore();
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
+  const effectiveTabBarHeight = useMemo(() => {
+    if (tabBarHeight <= 0) {
+      return 0;
+    }
 
-  // Filter states
-  const [keyword, setKeyword] = useState('');
-  const [priceRange, setPriceRange] = useState({ min: 0, max: 200000000 });
-  const [minPriceInput, setMinPriceInput] = useState('0');
-  const [maxPriceInput, setMaxPriceInput] = useState('200000000');
-  const [selectedCareLevel, setSelectedCareLevel] = useState<number | null>(null);
-  const [selectedPlacement, setSelectedPlacement] = useState<number | null>(null);
-  const [showFilters, setShowFilters] = useState(false);
-  const [toxicity, setToxicity] = useState<boolean>(false);
-  const [airPurifying, setAirPurifying] = useState<boolean>(false);
-  const [hasFlower, setHasFlower] = useState<boolean>(false);
-  const [petSafe, setPetSafe] = useState<boolean>(false);
-  const [childSafe, setChildSafe] = useState<boolean>(false);
-  const [isUniqueInstance, setIsUniqueInstance] = useState<boolean>(false);
-  const [categoryIds, setCategoryIds] = useState<number[]>([]);
-  const [tagIds, setTagIds] = useState<number[]>([]);
-  const [nurseryId, setNurseryId] = useState<number | undefined>(undefined);
-  const [isNurseryPickerVisible, setIsNurseryPickerVisible] = useState(false);
-  const [isNurseryPickerLoading, setIsNurseryPickerLoading] = useState(false);
-  const [pendingCartPlant, setPendingCartPlant] = useState<Plant | null>(null);
-  const [nurseryOptions, setNurseryOptions] = useState<NurseryPlantInstanceAvailability[]>([]);
-  const [selectedNurseryOptionId, setSelectedNurseryOptionId] = useState<number | null>(null);
-  const [selectedCartQuantity, setSelectedCartQuantity] = useState(1);
+    return Math.max(tabBarHeight + FLOATING_TAB_BAR_OFFSET, MIN_FLOATING_TAB_BAR_HEIGHT);
+  }, [tabBarHeight]);
+  const bottomContentInset = useMemo(
+    () => effectiveTabBarHeight + insets.bottom + SPACING.sm,
+    [effectiveTabBarHeight, insets.bottom]
+  );
+  const filterFooterPaddingBottom = useMemo(
+    () => effectiveTabBarHeight + insets.bottom + SPACING.lg,
+    [effectiveTabBarHeight, insets.bottom]
+  );
+
   const wishlistStatus = useWishlistStore((state) => state.statusByKey);
   const ensureWishlistStatus = useWishlistStore((state) => state.ensureStatus);
   const toggleWishlist = useWishlistStore((state) => state.toggleWishlist);
   const clearWishlistStatus = useWishlistStore((state) => state.clearStatus);
 
-  // Animation
+  const [shopItems, setShopItems] = useState<ShopSearchItem[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [pageNumber, setPageNumber] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [plantTotalCount, setPlantTotalCount] = useState(0);
+  const [materialTotalCount, setMaterialTotalCount] = useState(0);
+  const [comboTotalCount, setComboTotalCount] = useState(0);
+
+  const [keyword, setKeyword] = useState('');
+  const [priceRange, setPriceRange] = useState({ min: 0, max: 0 });
+  const [minPriceInput, setMinPriceInput] = useState('');
+  const [maxPriceInput, setMaxPriceInput] = useState('');
+  const [selectedCareLevel, setSelectedCareLevel] = useState<number | null>(null);
+  const [selectedPlacement, setSelectedPlacement] = useState<number | null>(null);
+  const [selectedSizes, setSelectedSizes] = useState<number[]>([]);
+  const [selectedFengShuiElement, setSelectedFengShuiElement] = useState<number | null>(null);
+  const [selectedComboType, setSelectedComboType] = useState<number | null>(null);
+  const [selectedComboSeason, setSelectedComboSeason] = useState<number | null>(null);
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<number[]>([]);
+  const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
+  const [selectedNurseryId, setSelectedNurseryId] = useState<number | null>(null);
+  const [sortBy, setSortBy] = useState(DEFAULT_SORT_BY_OPTIONS[0].value);
+  const [sortDirection, setSortDirection] = useState(DEFAULT_SORT_DIRECTION_OPTIONS[0].value);
+
+  const [toxicity, setToxicity] = useState(false);
+  const [airPurifying, setAirPurifying] = useState(false);
+  const [hasFlower, setHasFlower] = useState(false);
+  const [petSafe, setPetSafe] = useState(false);
+  const [childSafe, setChildSafe] = useState(false);
+  const [isUniqueInstance, setIsUniqueInstance] = useState(false);
+
+  const [includePlants, setIncludePlants] = useState(true);
+  const [includeMaterials, setIncludeMaterials] = useState(true);
+  const [includeCombos, setIncludeCombos] = useState(true);
+
+  const [placementOptions, setPlacementOptions] = useState<NumberOption[]>([]);
+  const [careLevelOptions, setCareLevelOptions] = useState<NumberOption[]>([]);
+  const [sizeOptions, setSizeOptions] = useState<NumberOption[]>([]);
+  const [fengShuiOptions, setFengShuiOptions] = useState<NumberOption[]>([]);
+  const [comboTypeOptions, setComboTypeOptions] = useState<NumberOption[]>([]);
+  const [comboSeasonOptions, setComboSeasonOptions] = useState<NumberOption[]>([]);
+  const [categoryOptions, setCategoryOptions] = useState<NumberOption[]>([]);
+  const [tagOptions, setTagOptions] = useState<NumberOption[]>([]);
+  const [nurseryFilterOptions, setNurseryFilterOptions] = useState<NumberOption[]>([]);
+  const [sortByOptions, setSortByOptions] = useState<StringOption[]>(DEFAULT_SORT_BY_OPTIONS);
+  const [sortDirectionOptions, setSortDirectionOptions] = useState<StringOption[]>(
+    DEFAULT_SORT_DIRECTION_OPTIONS
+  );
+
+  const [showFilters, setShowFilters] = useState(false);
+  const [isFilterDataLoading, setIsFilterDataLoading] = useState(false);
+  const [expandedSections, setExpandedSections] = useState<
+    Record<FilterSectionKey, boolean>
+  >({
+    productTypes: true,
+    priceRange: true,
+    sort: true,
+    careLevel: true,
+    placement: true,
+    size: true,
+    fengShui: true,
+    combo: true,
+    features: true,
+    categories: true,
+    tags: true,
+    nursery: true,
+  });
+
+  const [isNurseryPickerVisible, setIsNurseryPickerVisible] = useState(false);
+  const [isNurseryPickerLoading, setIsNurseryPickerLoading] = useState(false);
+  const [pendingCartPlant, setPendingCartPlant] = useState<ShopSearchPlantSummary | null>(null);
+  const [availableNurseryOptions, setAvailableNurseryOptions] =
+    useState<NurseryPlantInstanceAvailability[]>([]);
+  const [selectedCartNurseryId, setSelectedCartNurseryId] = useState<number | null>(null);
+  const [selectedCartQuantity, setSelectedCartQuantity] = useState(1);
+
   const filterHeight = useRef(new Animated.Value(0)).current;
   const filterOpacity = useRef(new Animated.Value(0)).current;
+  const hasLoadedInitialRef = useRef(false);
 
-  // Load initial plants
-  useEffect(() => {
-    loadPlants();
-  }, []);
+  const toggleArrayValue = (
+    value: number,
+    setState: React.Dispatch<React.SetStateAction<number[]>>
+  ) => {
+    setState((previous) =>
+      previous.includes(value)
+        ? previous.filter((currentValue) => currentValue !== value)
+        : [...previous, value]
+    );
+  };
 
-  useEffect(() => {
-    void Promise.all([loadEnumResource('plants'), loadEnumResource('plant-sort')]);
-  }, [loadEnumResource]);
-
-  const careLevelOptions = useMemo(() => {
-    const values = getEnumValues(['CareLevelType', 'careLevelType']);
-
-    return values
-      .map((item) => {
-        const value = normalizeEnumCode(item.value);
-        if (value === null) {
-          return null;
-        }
-
-        const normalizedName = item.name.trim().toLowerCase();
-        let label = item.name;
-
-        if (normalizedName === 'easy') {
-          label = t('catalog.careEasy', { defaultValue: item.name });
-        } else if (normalizedName === 'medium') {
-          label = t('catalog.careMedium', { defaultValue: item.name });
-        } else if (normalizedName === 'hard') {
-          label = t('catalog.careHard', { defaultValue: item.name });
-        } else if (normalizedName === 'expert') {
-          label = t('catalog.careExpert', { defaultValue: item.name });
-        }
-
-        return {
-          value,
-          label,
-        };
-      })
-      .filter((option): option is { value: number; label: string } => Boolean(option));
-  }, [enumGroups, getEnumValues, t]);
-
-  const placementOptions = useMemo(() => {
-    const values = getEnumValues(['PlacementType', 'placementType']);
-
-    return values
-      .map((item) => {
-        const value = normalizeEnumCode(item.value);
-        if (value === null) {
-          return null;
-        }
-
-        const normalizedName = item.name.trim().toLowerCase();
-        const hasIndoor = normalizedName.includes('indoor');
-        const hasOutdoor = normalizedName.includes('outdoor');
-        const hasSemiShade =
-          normalizedName.includes('semishade') ||
-          normalizedName.includes('semi-shade') ||
-          normalizedName.includes('semi shade');
-
-        let label = item.name;
-        let icon = 'leaf-outline';
-
-        if (hasIndoor) {
-          label = t('catalog.placementIndoor', { defaultValue: item.name });
-          icon = 'home';
-        } else if (hasOutdoor) {
-          label = t('catalog.placementOutdoor', { defaultValue: item.name });
-          icon = 'leaf';
-        } else if (hasSemiShade) {
-          label = t('catalog.placementSemiShade', { defaultValue: item.name });
-          icon = 'partly-sunny';
-        }
-
-        return {
-          value,
-          label,
-          icon,
-        };
-      })
-      .filter(
-        (option): option is { value: number; label: string; icon: string } =>
-          Boolean(option)
-      );
-  }, [enumGroups, getEnumValues, t]);
-
-  const defaultSort = useMemo(() => {
-    const values = getEnumValues(['PlantSort', 'plantSort', 'sortBy']);
-
-    for (const item of values) {
-      const fromValue = parseSortFromText(item.value);
-      if (fromValue) {
-        return fromValue;
-      }
-
-      const fromName = parseSortFromText(item.name);
-      if (fromName) {
-        return fromName;
-      }
-    }
-
-    return {
-      sortBy: 'name',
-      sortDirection: 'asc' as const,
-    };
-  }, [enumGroups, getEnumValues]);
-
-  // Animate filter panel
   useEffect(() => {
     Animated.parallel([
       Animated.timing(filterHeight, {
         toValue: showFilters ? 1 : 0,
-        duration: 300,
+        duration: 280,
         useNativeDriver: false,
       }),
       Animated.timing(filterOpacity, {
@@ -257,570 +323,778 @@ export default function CatalogScreen() {
         useNativeDriver: false,
       }),
     ]).start();
-  }, [showFilters]);
+  }, [filterHeight, filterOpacity, showFilters]);
 
-  // Update price range when inputs change
-  const handleMinPriceChange = (text: string) => {
-    setMinPriceInput(text);
-    const value = parseInt(text.replace(/[^0-9]/g, ''), 10);
-    if (!isNaN(value)) {
-      setPriceRange(prev => ({ ...prev, min: value }));
-    }
-  };
+  const loadFilterSources = useCallback(async () => {
+    setIsFilterDataLoading(true);
+    try {
+      const [config, categoriesPayload, tagsPayload, nurseryPayload] = await Promise.all([
+        plantService.getShopUnifiedSearchConfig(),
+        plantService.getAdminCategories({ pageNumber: 1, pageSize: 200 }),
+        plantService.getAdminTags({ pageNumber: 1, pageSize: 200 }),
+        plantService.searchNurseries({
+          pagination: {
+            pageNumber: 1,
+            pageSize: 200,
+          },
+        }),
+      ]);
 
-  const handleMaxPriceChange = (text: string) => {
-    setMaxPriceInput(text);
-    const value = parseInt(text.replace(/[^0-9]/g, ''), 10);
-    if (!isNaN(value)) {
-      setPriceRange(prev => ({ ...prev, max: value }));
+      const filterGroups = config.filterEnums ?? [];
+      const sortGroups = config.sortEnums ?? [];
+
+      const nextPlacementOptions = toNumberOptions(
+        findGroup(filterGroups, ['PlacementType', 'placementType'])
+      );
+      const nextCareLevelOptions = toNumberOptions(
+        findGroup(filterGroups, ['CareLevelType', 'careLevelType'])
+      );
+      const nextSizeOptions = toNumberOptions(findGroup(filterGroups, ['PlantSize', 'plantSize']));
+      const nextFengShuiOptions = toNumberOptions(
+        findGroup(filterGroups, ['FengShuiElement', 'fengShuiElement'])
+      );
+      const nextComboTypeOptions = toNumberOptions(
+        findGroup(filterGroups, ['ComboType', 'comboType'])
+      );
+      const nextComboSeasonOptions = toNumberOptions(
+        findGroup(filterGroups, ['SeasonType', 'seasonType', 'comboSeason'])
+      );
+
+      const nextSortByOptions = toStringOptions(
+        findGroup(sortGroups, ['UnifiedSearchSortBy', 'sortBy'])
+      );
+      const nextSortDirectionOptions = toStringOptions(
+        findGroup(sortGroups, ['SortDirection', 'sortDirection'])
+      );
+
+      setPlacementOptions(nextPlacementOptions);
+      setCareLevelOptions(nextCareLevelOptions);
+      setSizeOptions(nextSizeOptions);
+      setFengShuiOptions(nextFengShuiOptions);
+      setComboTypeOptions(nextComboTypeOptions);
+      setComboSeasonOptions(nextComboSeasonOptions);
+      setSortByOptions(nextSortByOptions.length > 0 ? nextSortByOptions : DEFAULT_SORT_BY_OPTIONS);
+      setSortDirectionOptions(
+        nextSortDirectionOptions.length > 0
+          ? nextSortDirectionOptions
+          : DEFAULT_SORT_DIRECTION_OPTIONS
+      );
+
+      setSortBy((previous) =>
+        previous ||
+        nextSortByOptions[0]?.value ||
+        DEFAULT_SORT_BY_OPTIONS[0].value
+      );
+      setSortDirection((previous) =>
+        previous ||
+        nextSortDirectionOptions[0]?.value ||
+        DEFAULT_SORT_DIRECTION_OPTIONS[0].value
+      );
+
+      setCategoryOptions(
+        (categoriesPayload.items ?? [])
+          .map((category) => {
+            const value = Number(category.id);
+            if (!Number.isFinite(value)) {
+              return null;
+            }
+
+            return {
+              value,
+              label: category.name,
+            };
+          })
+          .filter((option): option is NumberOption => Boolean(option))
+      );
+
+      setTagOptions(
+        (tagsPayload.items ?? [])
+          .map((tag) => ({
+            value: tag.id,
+            label: tag.tagName,
+          }))
+          .filter((option) => Number.isFinite(option.value))
+      );
+
+      setNurseryFilterOptions(
+        (nurseryPayload.items ?? []).map((nursery) => ({
+          value: nursery.id,
+          label: nursery.name,
+        }))
+      );
+    } catch (loadError) {
+      console.warn('Catalog filter source load failed:', loadError);
+      notify({
+        message: t('catalog.filterConfigLoadFailed', {
+          defaultValue: 'Could not load all filter options. Fallback values will be used.',
+        }),
+      });
+    } finally {
+      setIsFilterDataLoading(false);
     }
-  };
+  }, [t]);
+
+  useEffect(() => {
+    void loadFilterSources();
+  }, [loadFilterSources]);
+
+  const buildSearchRequest = useCallback(
+    (targetPage: number, targetPageSize: number): ShopSearchRequest => ({
+      pagination: {
+        pageNumber: targetPage,
+        pageSize: targetPageSize,
+      },
+      keyword: keyword.trim() || undefined,
+      minPrice: priceRange.min > 0 ? priceRange.min : undefined,
+      maxPrice: priceRange.max > 0 ? priceRange.max : undefined,
+      categoryIds: selectedCategoryIds.length > 0 ? selectedCategoryIds : undefined,
+      tagIds: selectedTagIds.length > 0 ? selectedTagIds : undefined,
+      petSafe: petSafe ? true : undefined,
+      childSafe: childSafe ? true : undefined,
+      comboSeason: selectedComboSeason || undefined,
+      comboType: selectedComboType || undefined,
+      placementType: selectedPlacement || undefined,
+      careLevelType: selectedCareLevel || undefined,
+      toxicity: toxicity ? true : undefined,
+      airPurifying: airPurifying ? true : undefined,
+      hasFlower: hasFlower ? true : undefined,
+      isUniqueInstance: isUniqueInstance ? true : undefined,
+      sizes: selectedSizes.length > 0 ? selectedSizes : undefined,
+      fengShuiElement: selectedFengShuiElement || undefined,
+      nurseryId: selectedNurseryId || undefined,
+      sortBy: sortBy || undefined,
+      sortDirection: sortDirection || undefined,
+      includePlants,
+      includeMaterials,
+      includeCombos,
+    }),
+    [
+      airPurifying,
+      childSafe,
+      includeCombos,
+      includeMaterials,
+      includePlants,
+      hasFlower,
+      isUniqueInstance,
+      keyword,
+      petSafe,
+      priceRange.max,
+      priceRange.min,
+      selectedCareLevel,
+      selectedCategoryIds,
+      selectedComboSeason,
+      selectedComboType,
+      selectedFengShuiElement,
+      selectedNurseryId,
+      selectedPlacement,
+      selectedSizes,
+      selectedTagIds,
+      sortBy,
+      sortDirection,
+      toxicity,
+    ]
+  );
+
+  const performSearch = useCallback(
+    async (request: ShopSearchRequest, fallbackPage: number, fallbackPageSize: number) => {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const payload = await plantService.searchShop(request);
+        const itemsPayload = payload.items;
+
+        setShopItems(itemsPayload?.items ?? []);
+        setTotalCount(itemsPayload?.totalCount ?? 0);
+        setPageNumber(itemsPayload?.pageNumber ?? fallbackPage);
+        setPageSize(itemsPayload?.pageSize ?? fallbackPageSize);
+        setTotalPages(itemsPayload?.totalPages ?? 1);
+        setPlantTotalCount(payload.plantTotalCount ?? 0);
+        setMaterialTotalCount(payload.materialTotalCount ?? 0);
+        setComboTotalCount(payload.comboTotalCount ?? 0);
+      } catch (searchError: any) {
+        const message =
+          searchError?.response?.data?.message ||
+          t('catalog.searchFailed', {
+            defaultValue: 'Unable to search products right now.',
+          });
+
+        setError(message);
+        setShopItems([]);
+        setTotalCount(0);
+        setTotalPages(1);
+        setPlantTotalCount(0);
+        setMaterialTotalCount(0);
+        setComboTotalCount(0);
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [t]
+  );
+
+  const executeSearch = useCallback(
+    async (targetPage: number, targetPageSize: number) => {
+      const request = buildSearchRequest(targetPage, targetPageSize);
+      await performSearch(request, targetPage, targetPageSize);
+    },
+    [buildSearchRequest, performSearch]
+  );
+
+  useEffect(() => {
+    if (hasLoadedInitialRef.current) {
+      return;
+    }
+
+    hasLoadedInitialRef.current = true;
+    void executeSearch(1, DEFAULT_PAGE_SIZE);
+  }, [executeSearch]);
+
+  const requireAuth = useCallback(
+    (onSuccess?: () => void): boolean => {
+      if (isAuthenticated) {
+        onSuccess?.();
+        return true;
+      }
+
+      Alert.alert(
+        t('common.loginRequiredTitle', { defaultValue: 'Login required' }),
+        t('common.loginRequiredMessage', {
+          defaultValue: 'Please login to continue.',
+        }),
+        [
+          { text: t('common.cancel', { defaultValue: 'Cancel' }), style: 'cancel' },
+          {
+            text: t('common.login', { defaultValue: 'Login' }),
+            onPress: () => navigation.navigate('Login'),
+          },
+        ]
+      );
+      return false;
+    },
+    [isAuthenticated, navigation, t]
+  );
 
   const wishlistTargets = useMemo(
     () =>
-      plants
-        .map(resolveWishlistTarget)
-        .filter(
-          (target): target is NonNullable<ReturnType<typeof resolveWishlistTarget>> =>
-            target !== null
-        ),
-    [plants]
+      shopItems
+        .map((item) => resolveWishlistTarget(item))
+        .filter((target): target is WishlistTarget => Boolean(target)),
+    [shopItems]
   );
 
   useEffect(() => {
     if (!isAuthenticated) {
       clearWishlistStatus();
+      return;
     }
-  }, [clearWishlistStatus, isAuthenticated]);
 
-  const formatPriceInput = (value: number) => {
-    return value.toLocaleString(locale);
-  };
+    void ensureWishlistStatus(wishlistTargets);
+  }, [clearWishlistStatus, ensureWishlistStatus, isAuthenticated, wishlistTargets]);
 
-  const loadPlants = useCallback(() => {
-    console.log('CatalogScreen: Loading plants...');
-    searchShopPlants({
-      pagination: {
-        pageNumber: 1,
-        pageSize: 20,
-      },
-      isActive: true,
-    });
-  }, [searchShopPlants]);
+  const isWishlisted = useCallback(
+    (item: ShopSearchItem): boolean => {
+      const target = resolveWishlistTarget(item);
+      if (!target) {
+        return false;
+      }
+
+      return wishlistStatus[getWishlistKey(target.itemType, target.itemId)] ?? false;
+    },
+    [wishlistStatus]
+  );
+
+  const handleToggleWishlist = useCallback(
+    async (item: ShopSearchItem) => {
+      if (!requireAuth()) {
+        return;
+      }
+
+      const target = resolveWishlistTarget(item);
+      if (!target) {
+        notify({
+          message: t('wishlist.invalidItem', {
+            defaultValue: 'Unable to add this item to wishlist.',
+          }),
+        });
+        return;
+      }
+
+      const key = getWishlistKey(target.itemType, target.itemId);
+      const wasInWishlist = wishlistStatus[key] ?? false;
+
+      try {
+        await toggleWishlist(target.itemType, target.itemId);
+        notify({
+          message: wasInWishlist
+            ? t('wishlist.removeSuccess', { defaultValue: 'Removed from wishlist.' })
+            : t('wishlist.addedMessage', { defaultValue: 'Added to wishlist.' }),
+        });
+      } catch (wishlistError: any) {
+        const apiMessage = wishlistError?.response?.data?.message;
+        notify({
+          message:
+            apiMessage ||
+            (wasInWishlist
+              ? t('wishlist.removeFailed', {
+                  defaultValue: 'Unable to remove from wishlist.',
+                })
+              : t('wishlist.addFailed', {
+                  defaultValue: 'Unable to add to wishlist.',
+                })),
+        });
+      }
+    },
+    [requireAuth, t, toggleWishlist, wishlistStatus]
+  );
+
+  const submitAddToCart = useCallback(
+    async (request: AddCartItemRequest) => {
+      if (!requireAuth()) {
+        return null;
+      }
+
+      try {
+        return await cartService.addCartItem(request);
+      } catch (cartError: any) {
+        notify({
+          message:
+            cartError?.response?.data?.message ||
+            t('cart.addFailed', {
+              defaultValue: 'Unable to add to cart.',
+            }),
+        });
+        return null;
+      }
+    },
+    [requireAuth, t]
+  );
+
+  const handleAddMaterialToCart = useCallback(
+    async (material: ShopSearchMaterialSummary) => {
+      const payload = await submitAddToCart({
+        commonPlantId: null,
+        nurseryPlantComboId: null,
+        nurseryMaterialId: material.id,
+        quantity: 1,
+      });
+
+      if (payload) {
+        notify({
+          message: t('cart.addedMessage', { defaultValue: 'Added to cart.' }),
+        });
+      }
+    },
+    [submitAddToCart, t]
+  );
+
+  const handleAddComboToCart = useCallback(
+    async (combo: ShopSearchComboSummary) => {
+      const payload = await submitAddToCart({
+        commonPlantId: null,
+        nurseryPlantComboId: combo.id,
+        nurseryMaterialId: null,
+        quantity: 1,
+      });
+
+      if (payload) {
+        notify({
+          message: t('cart.addedMessage', { defaultValue: 'Added to cart.' }),
+        });
+      }
+    },
+    [submitAddToCart, t]
+  );
+
+  const closeNurseryPicker = useCallback(() => {
+    setIsNurseryPickerVisible(false);
+    setIsNurseryPickerLoading(false);
+    setPendingCartPlant(null);
+    setAvailableNurseryOptions([]);
+    setSelectedCartNurseryId(null);
+    setSelectedCartQuantity(1);
+  }, []);
+
+  const handleSelectNurseryForCart = useCallback(
+    async (plant: ShopSearchPlantSummary) => {
+      if (!requireAuth()) {
+        return;
+      }
+
+      if (plant.isUniqueInstance) {
+        notify({
+          message: t('catalog.uniquePlantCannotCart', {
+            defaultValue: 'Unique plants cannot be added to cart directly.',
+          }),
+        });
+        return;
+      }
+
+      setPendingCartPlant(plant);
+      setIsNurseryPickerVisible(true);
+      setIsNurseryPickerLoading(true);
+      setAvailableNurseryOptions([]);
+      setSelectedCartNurseryId(null);
+      setSelectedCartQuantity(1);
+
+      try {
+        const options = await plantService.getNurseriesGotCommonPlantByPlantId(plant.id);
+        setAvailableNurseryOptions(options ?? []);
+        setSelectedCartNurseryId(options?.[0]?.nurseryId ?? null);
+      } catch (pickerError: any) {
+        notify({
+          message:
+            pickerError?.response?.data?.message ||
+            t('catalog.loadNurseryFailed', {
+              defaultValue: 'Unable to load available nurseries.',
+            }),
+        });
+        closeNurseryPicker();
+      } finally {
+        setIsNurseryPickerLoading(false);
+      }
+    },
+    [closeNurseryPicker, requireAuth, t]
+  );
+
+  const formatNurseryPrice = useCallback(
+    (minPrice: number, maxPrice: number) => {
+      if (!minPrice && !maxPrice) {
+        return t('plantDetail.priceContact', { defaultValue: 'Contact' });
+      }
+
+      if (minPrice === maxPrice) {
+        return formatMoney(minPrice, locale);
+      }
+
+      return `${formatMoney(minPrice, locale)} - ${formatMoney(maxPrice, locale)}`;
+    },
+    [locale, t]
+  );
+
+  const handleConfirmNurseryAdd = useCallback(
+    async (goToCheckout = false) => {
+      if (!pendingCartPlant || selectedCartNurseryId === null) {
+        return;
+      }
+
+      const selectedNursery = availableNurseryOptions.find(
+        (option) => option.nurseryId === selectedCartNurseryId
+      );
+
+      if (!selectedNursery || selectedNursery.commonPlantId == null) {
+        notify({
+          message: t('cart.addFailed', {
+            defaultValue: 'Unable to add to cart.',
+          }),
+        });
+        return;
+      }
+
+      const quantity = Math.max(1, selectedCartQuantity);
+      const payload = await submitAddToCart({
+        commonPlantId: selectedNursery.commonPlantId,
+        nurseryPlantComboId: null,
+        nurseryMaterialId: null,
+        quantity,
+      });
+
+      if (!payload) {
+        return;
+      }
+
+      if (goToCheckout) {
+        const checkoutItem: CheckoutItem = {
+          id: `buy_now_${pendingCartPlant.id}_${selectedNursery.nurseryId}`,
+          name: pendingCartPlant.name,
+          image: pendingCartPlant.primaryImageUrl ?? undefined,
+          price: selectedNursery.minPrice || pendingCartPlant.basePrice,
+          quantity,
+          cartItemId: payload.id,
+          isUniqueInstance: false,
+        };
+
+        closeNurseryPicker();
+        navigation.navigate('Checkout', {
+          source: 'buy-now',
+          items: [checkoutItem],
+        });
+        return;
+      }
+
+      notify({
+        message: t('cart.addedMessage', { defaultValue: 'Added to cart.' }),
+      });
+      closeNurseryPicker();
+    },
+    [
+      availableNurseryOptions,
+      closeNurseryPicker,
+      navigation,
+      pendingCartPlant,
+      selectedCartNurseryId,
+      selectedCartQuantity,
+      submitAddToCart,
+      t,
+    ]
+  );
+
+  const handleSearch = useCallback(() => {
+    void executeSearch(1, pageSize);
+  }, [executeSearch, pageSize]);
+
+  const applyFilters = useCallback(() => {
+    setShowFilters(false);
+    void executeSearch(1, pageSize);
+  }, [executeSearch, pageSize]);
 
   const resetFilters = useCallback(() => {
+    const resetSortBy = sortByOptions[0]?.value ?? DEFAULT_SORT_BY_OPTIONS[0].value;
+    const resetSortDirection =
+      sortDirectionOptions[0]?.value ?? DEFAULT_SORT_DIRECTION_OPTIONS[0].value;
+
     setKeyword('');
-    setPriceRange({ min: 0, max: 200000000 });
-    setMinPriceInput('0');
-    setMaxPriceInput('200000000');
+    setPriceRange({ min: 0, max: 0 });
+    setMinPriceInput('');
+    setMaxPriceInput('');
     setSelectedCareLevel(null);
     setSelectedPlacement(null);
+    setSelectedSizes([]);
+    setSelectedFengShuiElement(null);
+    setSelectedComboType(null);
+    setSelectedComboSeason(null);
+    setSelectedCategoryIds([]);
+    setSelectedTagIds([]);
+    setSelectedNurseryId(null);
+    setSortBy(resetSortBy);
+    setSortDirection(resetSortDirection);
     setToxicity(false);
     setAirPurifying(false);
     setHasFlower(false);
     setPetSafe(false);
     setChildSafe(false);
     setIsUniqueInstance(false);
-    setCategoryIds([]);
-    setTagIds([]);
-    setNurseryId(undefined);
+    setIncludePlants(true);
+    setIncludeMaterials(true);
+    setIncludeCombos(true);
+    setPageSize(DEFAULT_PAGE_SIZE);
 
-    loadPlants();
-  }, [loadPlants]);
-
-  const applyFilters = useCallback(() => {
-    setShowFilters(false);
-
-    // Build the request based on selected filters
-    // Only send boolean filters when they are true
-    searchShopPlants({
+    const request: ShopSearchRequest = {
       pagination: {
         pageNumber: 1,
-        pageSize: 20,
+        pageSize: DEFAULT_PAGE_SIZE,
       },
-      keyword: keyword || undefined,
-      isActive: true,
-      placementType: selectedPlacement || undefined,
-      careLevelType: selectedCareLevel || undefined,
-      toxicity: toxicity ? true : undefined,
-      airPurifying: airPurifying ? true : undefined,
-      hasFlower: hasFlower ? true : undefined,
-      petSafe: petSafe ? true : undefined,
-      childSafe: childSafe ? true : undefined,
-      isUniqueInstance: isUniqueInstance ? true : undefined,
-      minBasePrice: priceRange.min > 0 ? priceRange.min : undefined,
-      maxBasePrice: priceRange.max < 200000000 ? priceRange.max : undefined,
-      categoryIds: categoryIds.length > 0 ? categoryIds : undefined,
-      tagIds: tagIds.length > 0 ? tagIds : undefined,
-      nurseryId,
-      sortBy: defaultSort.sortBy,
-      sortDirection: defaultSort.sortDirection,
-    });
-  }, [
-    keyword,
-    selectedPlacement,
-    selectedCareLevel,
-    toxicity,
-    airPurifying,
-    hasFlower,
-    petSafe,
-    childSafe,
-    isUniqueInstance,
-    priceRange,
-    categoryIds,
-    tagIds,
-    nurseryId,
-    defaultSort,
-    searchShopPlants,
-  ]);
-
-  const handleSearch = useCallback(() => {
-    searchShopPlants({
-      pagination: {
-        pageNumber: 1,
-        pageSize: 20,
-      },
-      keyword: keyword,
-      isActive: true,
-    });
-  }, [keyword, searchShopPlants]);
-
-  const renderFilterSection = () => (
-    <ScrollView
-      style={styles.filtersContainer}
-      showsVerticalScrollIndicator={false}
-      nestedScrollEnabled={true}
-    >
-      {/* Header */}
-      <View style={styles.filterHeader}>
-        <Text style={styles.filterTitle}>{t('catalog.filters')}</Text>
-        <TouchableOpacity onPress={resetFilters}>
-          <Text style={styles.resetText}>{t('catalog.reset')}</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Price Range */}
-      <View style={styles.filterSection}>
-        <Text style={styles.sectionTitle}>{t('catalog.priceRange')}</Text>
-        <View style={styles.priceInputContainer}>
-          <View style={styles.priceInputWrapper}>
-            <Text style={styles.priceInputLabel}>{t('catalog.minPrice')}</Text>
-            <TextInput
-              style={styles.priceInput}
-              value={minPriceInput}
-              onChangeText={handleMinPriceChange}
-              keyboardType="numeric"
-              placeholder="100,000"
-            />
-            <Text style={styles.priceInputCurrency}>₫</Text>
-          </View>
-          <View style={styles.priceRangeSeparator}>
-            <View style={styles.priceRangeLine} />
-          </View>
-          <View style={styles.priceInputWrapper}>
-            <Text style={styles.priceInputLabel}>{t('catalog.maxPrice')}</Text>
-            <TextInput
-              style={styles.priceInput}
-              value={maxPriceInput}
-              onChangeText={handleMaxPriceChange}
-              keyboardType="numeric"
-              placeholder="200,000,000"
-            />
-            <Text style={styles.priceInputCurrency}>₫</Text>
-          </View>
-        </View>
-      </View>
-
-      <View style={styles.divider} />
-
-      {/* Care Level */}
-      <View style={styles.filterSection}>
-        <Text style={styles.sectionTitle}>{t('catalog.careLevel')}</Text>
-        <View style={styles.chipContainer}>
-          {careLevelOptions.map((level) => (
-            <TouchableOpacity
-              key={level.value}
-              style={[
-                styles.chip,
-                selectedCareLevel === level.value && styles.chipActive,
-              ]}
-              onPress={() => setSelectedCareLevel(selectedCareLevel === level.value ? null : level.value)}
-            >
-              <Text
-                style={[
-                  styles.chipText,
-                  selectedCareLevel === level.value && styles.chipTextActive,
-                ]}
-              >
-                {level.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-
-      <View style={styles.divider} />
-
-      {/* Placement Type */}
-      <View style={styles.filterSection}>
-        <Text style={styles.sectionTitle}>{t('catalog.placement')}</Text>
-        <View style={styles.chipContainer}>
-          {placementOptions.map((item) => (
-            <TouchableOpacity
-              key={item.value}
-              style={[
-                styles.chip,
-                selectedPlacement === item.value && styles.chipActive,
-              ]}
-              onPress={() => setSelectedPlacement(selectedPlacement === item.value ? null : item.value)}
-            >
-              <Ionicons
-                name={item.icon as any}
-                size={16}
-                color={selectedPlacement === item.value ? COLORS.black : COLORS.textSecondary}
-                style={{ marginRight: 6 }}
-              />
-              <Text
-                style={[
-                  styles.chipText,
-                  selectedPlacement === item.value && styles.chipTextActive,
-                ]}
-              >
-                {item.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-
-      <View style={styles.divider} />
-
-      {/* Features - Boolean Filters */}
-      <View style={styles.filterSection}>
-        <Text style={styles.sectionTitle}>{t('catalog.features')}</Text>
-        <View style={styles.featuresGrid}>
-          {[
-            { key: 'toxicity', label: t('catalog.toxicity'), icon: 'shield-checkmark', value: toxicity, setter: setToxicity },
-            { key: 'airPurifying', label: t('catalog.airPurifying'), icon: 'leaf', value: airPurifying, setter: setAirPurifying },
-            { key: 'hasFlower', label: t('catalog.hasFlower'), icon: 'flower', value: hasFlower, setter: setHasFlower },
-            { key: 'petSafe', label: t('catalog.petSafe'), icon: 'paw', value: petSafe, setter: setPetSafe },
-            { key: 'childSafe', label: t('catalog.childSafe'), icon: 'happy', value: childSafe, setter: setChildSafe },
-            { key: 'uniqueInstance', label: t('catalog.uniqueInstance'), icon: 'star', value: isUniqueInstance, setter: setIsUniqueInstance },
-          ].map((feature) => (
-            <TouchableOpacity
-              key={feature.key}
-              style={[
-                styles.featureChip,
-                feature.value && styles.featureChipActive,
-              ]}
-              onPress={() => feature.setter(!feature.value)}
-            >
-              <Ionicons
-                name={feature.icon as any}
-                size={18}
-                color={feature.value ? COLORS.white : COLORS.primary}
-              />
-              <Text
-                style={[
-                  styles.featureText,
-                  feature.value && styles.featureTextActive,
-                ]}
-              >
-                {feature.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-
-      {/* Apply Button */}
-      <View style={styles.applyButtonContainer}>
-        <TouchableOpacity style={styles.applyButton} onPress={applyFilters}>
-          <Text style={styles.applyButtonText}>{t('catalog.applyFilters')}</Text>
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
-  );
-
-  const requireAuth = (onSuccess?: () => void) => {
-    if (isAuthenticated) {
-      onSuccess?.();
-      return true;
-    }
-
-    Alert.alert(
-      t('common.loginRequiredTitle', { defaultValue: 'Login required' }),
-      t('common.loginRequiredMessage', { defaultValue: 'Please login to continue.' }),
-      [
-        { text: t('common.cancel', { defaultValue: 'Cancel' }), style: 'cancel' },
-        {
-          text: t('common.login', { defaultValue: 'Login' }),
-          onPress: () => navigation.navigate('Login'),
-        },
-      ],
-    );
-    return false;
-  };
-
-  const closeNurseryPicker = useCallback(() => {
-    setIsNurseryPickerVisible(false);
-    setIsNurseryPickerLoading(false);
-    setPendingCartPlant(null);
-    setNurseryOptions([]);
-    setSelectedNurseryOptionId(null);
-    setSelectedCartQuantity(1);
-  }, []);
-
-  const formatNurseryPrice = useCallback((minPrice: number, maxPrice: number) => {
-    if (!minPrice && !maxPrice) {
-      return t('plantDetail.priceContact', { defaultValue: 'Contact' });
-    }
-
-    if (minPrice === maxPrice) {
-      return `${minPrice.toLocaleString(locale)}₫`;
-    }
-
-    return `${minPrice.toLocaleString(locale)}₫ - ${maxPrice.toLocaleString(locale)}₫`;
-  }, [locale, t]);
-
-  const handleAddToCart = async (
-    targetPlant: Plant,
-    overrideCommonPlantId?: number,
-    quantity = 1,
-  ) => {
-    if (!requireAuth()) {
-      return null;
-    }
-
-    if (targetPlant.isUniqueInstance) {
-      return null;
-    }
-
-    return addToCart(targetPlant, quantity, {
-      commonPlantId: overrideCommonPlantId,
-    });
-  };
-
-  const handleSelectNurseryForCart = async (targetPlant: Plant) => {
-    if (!requireAuth()) {
-      return;
-    }
-
-    if (targetPlant.isUniqueInstance) {
-      return;
-    }
-
-    setPendingCartPlant(targetPlant);
-    setIsNurseryPickerVisible(true);
-    setIsNurseryPickerLoading(true);
-    setNurseryOptions([]);
-    setSelectedNurseryOptionId(null);
-    setSelectedCartQuantity(1);
-
-    try {
-      const result = await plantService.getNurseriesGotCommonPlantByPlantId(targetPlant.id);
-      const options = result ?? [];
-      setNurseryOptions(options);
-      setSelectedNurseryOptionId(options[0]?.nurseryId ?? null);
-    } catch (error) {
-      const apiMessage = (error as { response?: { data?: { message?: string } } })?.response
-        ?.data?.message;
-      notify({
-        message:
-          apiMessage ||
-          t('catalog.loadNurseryFailed', {
-            defaultValue: 'Unable to load available nurseries.',
-          }),
-      });
-      closeNurseryPicker();
-    } finally {
-      setIsNurseryPickerLoading(false);
-    }
-  };
-
-  const handleConfirmNurseryAdd = async (goToCheckout = false) => {
-    if (!pendingCartPlant || selectedNurseryOptionId === null) {
-      return;
-    }
-
-    const selectedNursery = nurseryOptions.find(
-      (nursery) => nursery.nurseryId === selectedNurseryOptionId
-    );
-
-    if (!selectedNursery || selectedNursery.commonPlantId == null) {
-      notify({
-        message: t('cart.addFailed', {
-          defaultValue: 'Unable to add to cart.',
-        }),
-      });
-      return;
-    }
-
-    const checkoutQuantity = Math.max(1, selectedCartQuantity);
-
-    const createdCartItem = await handleAddToCart(
-      pendingCartPlant,
-      selectedNursery.commonPlantId,
-      checkoutQuantity,
-    );
-
-    if (!createdCartItem) {
-      notify({
-        message: t('cart.addFailed', {
-          defaultValue: 'Unable to add to cart.',
-        }),
-      });
-      return;
-    }
-
-    if (!goToCheckout) {
-      notify({ message: t('cart.addedMessage', { defaultValue: 'Added to cart.' }) });
-    }
-
-    const checkoutItem: CheckoutItem = {
-      id: `buy_now_${pendingCartPlant.id}_${selectedNursery.nurseryId}`,
-      name: pendingCartPlant.name,
-      size: pendingCartPlant.sizeName || t('common.updating', { defaultValue: 'Updating' }),
-      image: pendingCartPlant.images?.[0] ?? undefined,
-      price: selectedNursery.minPrice || pendingCartPlant.basePrice || 0,
-      quantity: checkoutQuantity,
-      cartItemId: createdCartItem.id,
-      isUniqueInstance: false,
+      sortBy: resetSortBy,
+      sortDirection: resetSortDirection,
+      includePlants: true,
+      includeMaterials: true,
+      includeCombos: true,
     };
 
-    closeNurseryPicker();
+    setShowFilters(false);
+    void performSearch(request, 1, DEFAULT_PAGE_SIZE);
+  }, [performSearch, sortByOptions, sortDirectionOptions]);
 
-    if (goToCheckout) {
-      navigation.navigate('Checkout', {
-        source: 'buy-now',
-        items: [checkoutItem],
-      });
+  const handlePageSizeChange = useCallback(
+    (nextPageSize: number) => {
+      setPageSize(nextPageSize);
+      void executeSearch(1, nextPageSize);
+    },
+    [executeSearch]
+  );
+
+  const handlePrevPage = useCallback(() => {
+    if (pageNumber <= 1 || isLoading) {
+      return;
     }
-  };
+
+    void executeSearch(pageNumber - 1, pageSize);
+  }, [executeSearch, isLoading, pageNumber, pageSize]);
+
+  const handleNextPage = useCallback(() => {
+    if (pageNumber >= totalPages || isLoading) {
+      return;
+    }
+
+    void executeSearch(pageNumber + 1, pageSize);
+  }, [executeSearch, isLoading, pageNumber, pageSize, totalPages]);
+
+  const handlePageSelect = useCallback(
+    (targetPage: number) => {
+      if (isLoading || targetPage === pageNumber || targetPage < 1 || targetPage > totalPages) {
+        return;
+      }
+
+      void executeSearch(targetPage, pageSize);
+    },
+    [executeSearch, isLoading, pageNumber, pageSize, totalPages]
+  );
+
+  const visiblePageTokens = useMemo<PageToken[]>(() => {
+    const normalizedTotalPages = Math.max(1, totalPages);
+
+    if (normalizedTotalPages <= 7) {
+      return Array.from({ length: normalizedTotalPages }, (_, index) => index + 1);
+    }
+
+    const tokens: PageToken[] = [1];
+    const startPage = Math.max(2, pageNumber - 1);
+    const endPage = Math.min(normalizedTotalPages - 1, pageNumber + 1);
+
+    if (startPage > 2) {
+      tokens.push('left-ellipsis');
+    }
+
+    for (let nextPage = startPage; nextPage <= endPage; nextPage += 1) {
+      tokens.push(nextPage);
+    }
+
+    if (endPage < normalizedTotalPages - 1) {
+      tokens.push('right-ellipsis');
+    }
+
+    tokens.push(normalizedTotalPages);
+    return tokens;
+  }, [pageNumber, totalPages]);
+
+  const handleMinPriceChange = useCallback((text: string) => {
+    setMinPriceInput(text);
+    const numeric = Number(text.replace(/[^0-9]/g, ''));
+    if (Number.isFinite(numeric)) {
+      setPriceRange((previous) => ({ ...previous, min: numeric }));
+      return;
+    }
+
+    setPriceRange((previous) => ({ ...previous, min: 0 }));
+  }, []);
+
+  const handleMaxPriceChange = useCallback((text: string) => {
+    setMaxPriceInput(text);
+    const numeric = Number(text.replace(/[^0-9]/g, ''));
+    if (Number.isFinite(numeric)) {
+      setPriceRange((previous) => ({ ...previous, max: numeric }));
+      return;
+    }
+
+    setPriceRange((previous) => ({ ...previous, max: 0 }));
+  }, []);
 
   const isNurseryActionDisabled =
     isNurseryPickerLoading ||
-    nurseryOptions.length === 0 ||
-    selectedNurseryOptionId === null;
+    availableNurseryOptions.length === 0 ||
+    selectedCartNurseryId === null;
 
-  useEffect(() => {
-    if (!isAuthenticated) {
-      return;
-    }
-    void ensureWishlistStatus(wishlistTargets);
-  }, [ensureWishlistStatus, isAuthenticated, wishlistTargets]);
-
-  const handleToggleWishlist = async (targetPlant: Plant) => {
-    if (!requireAuth()) {
-      return;
-    }
-
-    const wishlistTarget = resolveWishlistTarget(targetPlant);
-    if (!wishlistTarget) {
-      notify({
-        message: t('wishlist.invalidItem', {
-          defaultValue: 'Unable to add this item to wishlist.',
-        }),
-      });
-      return;
-    }
-
-    const wishlistKey = getWishlistKey(wishlistTarget.itemType, wishlistTarget.itemId);
-    const wasInWishlist = wishlistStatus[wishlistKey] ?? false;
-
-    try {
-      await toggleWishlist(wishlistTarget.itemType, wishlistTarget.itemId);
-      notify({
-        message: wasInWishlist
-          ? t('wishlist.removeSuccess', { defaultValue: 'Removed from wishlist.' })
-          : t('wishlist.addedMessage', { defaultValue: 'Added to wishlist.' }),
-      });
-    } catch (error) {
-      const apiMessage = (error as { response?: { data?: { message?: string } } })?.response
-        ?.data?.message;
-      notify({
-        message:
-          apiMessage ||
-          (wasInWishlist
-            ? t('wishlist.removeFailed', {
-                defaultValue: 'Unable to remove from wishlist.',
-              })
-            : t('wishlist.addFailed', {
-                defaultValue: 'Unable to add to wishlist.',
-              })),
-      });
-    }
-  };
-
-  const isWishlisted = useCallback(
-    (targetPlant: Plant) => {
-      const wishlistTarget = resolveWishlistTarget(targetPlant);
-      if (!wishlistTarget) {
-        return false;
-      }
-      const wishlistKey = getWishlistKey(wishlistTarget.itemType, wishlistTarget.itemId);
-      return wishlistStatus[wishlistKey] ?? false;
-    },
-    [wishlistStatus]
+  const renderChip = (
+    option: NumberOption,
+    isActive: boolean,
+    onPress: () => void
+  ) => (
+    <TouchableOpacity
+      key={option.value}
+      style={[styles.filterChip, isActive && styles.filterChipActive]}
+      onPress={onPress}
+    >
+      <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>
+        {option.label}
+      </Text>
+    </TouchableOpacity>
   );
 
-  const renderPlantCard = ({ item }: { item: Plant }) => {
-    const imageUrl = item.images && item.images.length > 0
-      ? item.images[0]
-      : 'https://via.placeholder.com/200';
+  const renderStringChip = (
+    option: StringOption,
+    isActive: boolean,
+    onPress: () => void
+  ) => (
+    <TouchableOpacity
+      key={option.value}
+      style={[styles.filterChip, isActive && styles.filterChipActive]}
+      onPress={onPress}
+    >
+      <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>
+        {option.label}
+      </Text>
+    </TouchableOpacity>
+  );
+
+  const toggleSection = useCallback((sectionKey: FilterSectionKey) => {
+    setExpandedSections((previous) => ({
+      ...previous,
+      [sectionKey]: !previous[sectionKey],
+    }));
+  }, []);
+
+  const renderCollapsibleSection = useCallback(
+    (sectionKey: FilterSectionKey, title: string, content: React.ReactNode) => (
+      <View style={styles.filterSection}>
+        <TouchableOpacity
+          style={styles.sectionHeader}
+          onPress={() => toggleSection(sectionKey)}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.sectionHeaderTitle}>{title}</Text>
+          <Ionicons
+            name={expandedSections[sectionKey] ? 'chevron-up' : 'chevron-down'}
+            size={18}
+            color={COLORS.textSecondary}
+          />
+        </TouchableOpacity>
+
+        {expandedSections[sectionKey] ? (
+          <View style={styles.sectionBody}>{content}</View>
+        ) : null}
+      </View>
+    ),
+    [expandedSections, toggleSection]
+  );
+
+  const renderPlantCard = (item: ShopSearchItem, plant: ShopSearchPlantSummary) => {
+    const imageUrl = plant.primaryImageUrl || PLACEHOLDER_IMAGE;
 
     return (
       <TouchableOpacity
-        style={styles.plantCard}
-        onPress={() => navigation.navigate('PlantDetail', { plantId: String(item.id) })}
+        style={styles.productCard}
+        onPress={() => navigation.navigate('PlantDetail', { plantId: String(plant.id) })}
       >
-        <View style={styles.plantImageContainer}>
-          <Image
-            source={{ uri: imageUrl }}
-            style={styles.plantImage}
-            resizeMode="cover"
-          />
-          <TouchableOpacity
-            style={styles.favoriteButton}
-            onPress={() => handleToggleWishlist(item)}
-          >
-            <Ionicons
-              name={isWishlisted(item) ? 'heart' : 'heart-outline'}
-              size={20}
-              color={isWishlisted(item) ? COLORS.error : COLORS.white}
-            />
-          </TouchableOpacity>
-          <View style={styles.ratingBadge}>
-            <Ionicons name="star" size={12} color="#FACC15" />
-            <Text style={styles.ratingText}>4.8</Text>
+        <View style={styles.productImageContainer}>
+          <Image source={{ uri: imageUrl }} style={styles.productImage} resizeMode="cover" />
+          {!plant.isUniqueInstance && (
+            <TouchableOpacity
+              style={styles.favoriteButton}
+              onPress={(event) => {
+                event.stopPropagation();
+                void handleToggleWishlist(item);
+              }}
+            >
+              <Ionicons
+                name={isWishlisted(item) ? 'heart' : 'heart-outline'}
+                size={18}
+                color={isWishlisted(item) ? COLORS.error : COLORS.white}
+              />
+            </TouchableOpacity>
+          )}
+          <View style={styles.typeBadge}>
+            <Text style={styles.typeBadgeText}>{t('catalog.typePlant', { defaultValue: 'Plant' })}</Text>
           </View>
-          {/* {item.availableInstances === 0 && (
-            <View style={styles.soldOutOverlay}>
-              <View style={styles.soldOutBadge}>
-                <Text style={styles.soldOutText}>{t('cart.soldOut')}</Text>
-              </View>
-            </View>
-          )} */}
         </View>
-        <View style={styles.plantInfo}>
-          <Text style={styles.plantName} numberOfLines={1}>
-            {item.name}
+
+        <View style={styles.productInfo}>
+          <Text style={styles.productName} numberOfLines={1}>
+            {plant.name}
           </Text>
-          <Text style={styles.plantMeta}>
-            {item.careLevelTypeName || item.careLevel} • {item.sizeName}
+          <Text style={styles.productMeta} numberOfLines={1}>
+            {`${plant.careLevelTypeName || '-'} • ${plant.sizeName || '-'}`}
           </Text>
-          <View style={styles.plantFooter}>
-            <Text style={styles.plantPrice}>
-              {(item.basePrice || 0).toLocaleString(locale)}₫
-            </Text>
-            {!item.isUniqueInstance && (
+          <View style={styles.productFooter}>
+            <Text style={styles.productPrice}>{formatMoney(plant.basePrice, locale)}</Text>
+            {!plant.isUniqueInstance && (
               <TouchableOpacity
                 style={styles.addButton}
-                onPress={() => {
-                  void handleSelectNurseryForCart(item);
+                onPress={(event) => {
+                  event.stopPropagation();
+                  void handleSelectNurseryForCart(plant);
                 }}
               >
-                <Ionicons name="add" size={12} color={COLORS.black} />
+                <Ionicons name="add" size={14} color={COLORS.black} />
               </TouchableOpacity>
             )}
           </View>
@@ -829,9 +1103,431 @@ export default function CatalogScreen() {
     );
   };
 
-  if (isLoading && plants.length === 0) {
+  const renderMaterialCard = (item: ShopSearchItem, material: ShopSearchMaterialSummary) => {
+    const materialId = material.materialId || material.id;
+
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
+      <TouchableOpacity
+        style={styles.productCard}
+        onPress={() =>
+          navigation.navigate('MaterialDetail', {
+            materialId,
+            nurseryMaterialId: material.id,
+          })
+        }
+      >
+        <View style={[styles.productImageContainer, styles.materialImageContainer]}>
+          <Ionicons name="cube-outline" size={48} color={COLORS.primary} />
+          <TouchableOpacity
+            style={styles.favoriteButton}
+            onPress={(event) => {
+              event.stopPropagation();
+              void handleToggleWishlist(item);
+            }}
+          >
+            <Ionicons
+              name={isWishlisted(item) ? 'heart' : 'heart-outline'}
+              size={18}
+              color={isWishlisted(item) ? COLORS.error : COLORS.white}
+            />
+          </TouchableOpacity>
+          <View style={[styles.typeBadge, styles.typeBadgeMaterial]}>
+            <Text style={styles.typeBadgeText}>
+              {t('catalog.typeMaterial', { defaultValue: 'Material' })}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.productInfo}>
+          <Text style={styles.productName} numberOfLines={1}>
+            {material.materialName}
+          </Text>
+          <Text style={styles.productMeta} numberOfLines={1}>
+            {`${material.nurseryName} • ${t('catalog.stock', { defaultValue: 'Stock' })}: ${material.availableQuantity}`}
+          </Text>
+          <View style={styles.productFooter}>
+            <Text style={styles.productPrice}>{material.unit}</Text>
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={(event) => {
+                event.stopPropagation();
+                void handleAddMaterialToCart(material);
+              }}
+            >
+              <Ionicons name="add" size={14} color={COLORS.black} />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderComboCard = (item: ShopSearchItem, combo: ShopSearchComboSummary) => {
+    return (
+      <TouchableOpacity
+        style={styles.productCard}
+        onPress={() =>
+          navigation.navigate('ComboDetail', {
+            comboId: combo.id,
+            nurseryPlantComboId: combo.id,
+          })
+        }
+      >
+        <View style={[styles.productImageContainer, styles.comboImageContainer]}>
+          <Ionicons name="albums-outline" size={46} color={COLORS.primaryDark} />
+          <TouchableOpacity
+            style={styles.favoriteButton}
+            onPress={(event) => {
+              event.stopPropagation();
+              void handleToggleWishlist(item);
+            }}
+          >
+            <Ionicons
+              name={isWishlisted(item) ? 'heart' : 'heart-outline'}
+              size={18}
+              color={isWishlisted(item) ? COLORS.error : COLORS.white}
+            />
+          </TouchableOpacity>
+          <View style={[styles.typeBadge, styles.typeBadgeCombo]}>
+            <Text style={styles.typeBadgeText}>{t('catalog.typeCombo', { defaultValue: 'Combo' })}</Text>
+          </View>
+        </View>
+
+        <View style={styles.productInfo}>
+          <Text style={styles.productName} numberOfLines={1}>
+            {combo.name}
+          </Text>
+          <Text style={styles.productMeta} numberOfLines={1}>
+            {combo.comboTypeName || '-'}
+          </Text>
+          <View style={styles.productFooter}>
+            <Text style={styles.productPrice}>{formatMoney(combo.price, locale)}</Text>
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={(event) => {
+                event.stopPropagation();
+                void handleAddComboToCart(combo);
+              }}
+            >
+              <Ionicons name="add" size={14} color={COLORS.black} />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderResultCard = ({ item }: { item: ShopSearchItem }) => {
+    if (item.type === 'Plant' && item.plant) {
+      return renderPlantCard(item, item.plant);
+    }
+
+    if (item.type === 'Material' && item.material) {
+      return renderMaterialCard(item, item.material);
+    }
+
+    if (item.type === 'Combo' && item.combo) {
+      return renderComboCard(item, item.combo);
+    }
+
+    return <View style={styles.productCardPlaceholder} />;
+  };
+
+  const renderFilterSection = () => (
+    <View style={styles.filtersContainer}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        nestedScrollEnabled
+        contentContainerStyle={[
+          styles.filterContent,
+          {
+            paddingBottom: filterFooterPaddingBottom + SPACING['4xl'],
+          },
+        ]}
+      >
+        <View style={styles.filterHeader}>
+          <Text style={styles.filterTitle}>{t('catalog.filters')}</Text>
+          <TouchableOpacity onPress={resetFilters}>
+            <Text style={styles.resetText}>{t('catalog.reset')}</Text>
+          </TouchableOpacity>
+        </View>
+
+      {renderCollapsibleSection(
+        'productTypes',
+        t('catalog.productTypes', { defaultValue: 'Product types' }),
+        <View style={styles.chipWrap}>
+          <TouchableOpacity
+            style={[styles.filterChip, includePlants && styles.filterChipActive]}
+            onPress={() => setIncludePlants((previous) => !previous)}
+          >
+            <Text style={[styles.filterChipText, includePlants && styles.filterChipTextActive]}>
+              {t('catalog.typePlant', { defaultValue: 'Plant' })}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.filterChip, includeMaterials && styles.filterChipActive]}
+            onPress={() => setIncludeMaterials((previous) => !previous)}
+          >
+            <Text style={[styles.filterChipText, includeMaterials && styles.filterChipTextActive]}>
+              {t('catalog.typeMaterial', { defaultValue: 'Material' })}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.filterChip, includeCombos && styles.filterChipActive]}
+            onPress={() => setIncludeCombos((previous) => !previous)}
+          >
+            <Text style={[styles.filterChipText, includeCombos && styles.filterChipTextActive]}>
+              {t('catalog.typeCombo', { defaultValue: 'Combo' })}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {renderCollapsibleSection(
+        'priceRange',
+        t('catalog.priceRange'),
+        <View style={styles.priceInputContainer}>
+          <View style={styles.priceInputWrapper}>
+            <Text style={styles.priceInputLabel}>{t('catalog.minPrice')}</Text>
+            <TextInput
+              style={styles.priceInput}
+              value={minPriceInput}
+              onChangeText={handleMinPriceChange}
+              keyboardType="numeric"
+              placeholder="0"
+            />
+          </View>
+          <View style={styles.priceInputWrapper}>
+            <Text style={styles.priceInputLabel}>{t('catalog.maxPrice')}</Text>
+            <TextInput
+              style={styles.priceInput}
+              value={maxPriceInput}
+              onChangeText={handleMaxPriceChange}
+              keyboardType="numeric"
+              placeholder="0"
+            />
+          </View>
+        </View>
+      )}
+
+      {renderCollapsibleSection(
+        'sort',
+        t('catalog.sortBy'),
+        <>
+          <View style={styles.chipWrap}>
+            {sortByOptions.map((option) =>
+              renderStringChip(option, sortBy === option.value, () => setSortBy(option.value))
+            )}
+          </View>
+          <Text style={[styles.sectionTitle, styles.sectionSubTitle]}>
+            {t('catalog.sortDirection', { defaultValue: 'Sort direction' })}
+          </Text>
+          <View style={styles.chipWrap}>
+            {sortDirectionOptions.map((option) =>
+              renderStringChip(option, sortDirection === option.value, () =>
+                setSortDirection(option.value)
+              )
+            )}
+          </View>
+        </>
+      )}
+
+      {renderCollapsibleSection(
+        'careLevel',
+        t('catalog.careLevel'),
+        <View style={styles.chipWrap}>
+          {careLevelOptions.map((option) =>
+            renderChip(option, selectedCareLevel === option.value, () =>
+              setSelectedCareLevel((previous) =>
+                previous === option.value ? null : option.value
+              )
+            )
+          )}
+        </View>
+      )}
+
+      {renderCollapsibleSection(
+        'placement',
+        t('catalog.placement'),
+        <View style={styles.chipWrap}>
+          {placementOptions.map((option) =>
+            renderChip(option, selectedPlacement === option.value, () =>
+              setSelectedPlacement((previous) =>
+                previous === option.value ? null : option.value
+              )
+            )
+          )}
+        </View>
+      )}
+
+      {renderCollapsibleSection(
+        'size',
+        t('catalog.size', { defaultValue: 'Sizes' }),
+        <View style={styles.chipWrap}>
+          {sizeOptions.map((option) =>
+            renderChip(option, selectedSizes.includes(option.value), () =>
+              toggleArrayValue(option.value, setSelectedSizes)
+            )
+          )}
+        </View>
+      )}
+
+      {renderCollapsibleSection(
+        'fengShui',
+        t('catalog.fengShui'),
+        <View style={styles.chipWrap}>
+          {fengShuiOptions.map((option) =>
+            renderChip(option, selectedFengShuiElement === option.value, () =>
+              setSelectedFengShuiElement((previous) =>
+                previous === option.value ? null : option.value
+              )
+            )
+          )}
+        </View>
+      )}
+
+      {renderCollapsibleSection(
+        'combo',
+        t('catalog.comboType', { defaultValue: 'Combo type' }),
+        <>
+          <View style={styles.chipWrap}>
+            {comboTypeOptions.map((option) =>
+              renderChip(option, selectedComboType === option.value, () =>
+                setSelectedComboType((previous) =>
+                  previous === option.value ? null : option.value
+                )
+              )
+            )}
+          </View>
+
+          <Text style={[styles.sectionTitle, styles.sectionSubTitle]}>
+            {t('catalog.comboSeason', { defaultValue: 'Combo season' })}
+          </Text>
+          <View style={styles.chipWrap}>
+            {comboSeasonOptions.map((option) =>
+              renderChip(option, selectedComboSeason === option.value, () =>
+                setSelectedComboSeason((previous) =>
+                  previous === option.value ? null : option.value
+                )
+              )
+            )}
+          </View>
+        </>
+      )}
+
+      {renderCollapsibleSection(
+        'features',
+        t('catalog.features'),
+        <View style={styles.chipWrap}>
+          <TouchableOpacity
+            style={[styles.filterChip, toxicity && styles.filterChipActive]}
+            onPress={() => setToxicity((previous) => !previous)}
+          >
+            <Text style={[styles.filterChipText, toxicity && styles.filterChipTextActive]}>
+              {t('catalog.toxicity')}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.filterChip, airPurifying && styles.filterChipActive]}
+            onPress={() => setAirPurifying((previous) => !previous)}
+          >
+            <Text style={[styles.filterChipText, airPurifying && styles.filterChipTextActive]}>
+              {t('catalog.airPurifying')}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.filterChip, hasFlower && styles.filterChipActive]}
+            onPress={() => setHasFlower((previous) => !previous)}
+          >
+            <Text style={[styles.filterChipText, hasFlower && styles.filterChipTextActive]}>
+              {t('catalog.hasFlower')}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.filterChip, petSafe && styles.filterChipActive]}
+            onPress={() => setPetSafe((previous) => !previous)}
+          >
+            <Text style={[styles.filterChipText, petSafe && styles.filterChipTextActive]}>
+              {t('catalog.petSafe')}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.filterChip, childSafe && styles.filterChipActive]}
+            onPress={() => setChildSafe((previous) => !previous)}
+          >
+            <Text style={[styles.filterChipText, childSafe && styles.filterChipTextActive]}>
+              {t('catalog.childSafe')}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.filterChip, isUniqueInstance && styles.filterChipActive]}
+            onPress={() => setIsUniqueInstance((previous) => !previous)}
+          >
+            <Text style={[styles.filterChipText, isUniqueInstance && styles.filterChipTextActive]}>
+              {t('catalog.uniqueInstance')}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {renderCollapsibleSection(
+        'categories',
+        t('catalog.categories', { defaultValue: 'Categories' }),
+        <View style={styles.chipWrap}>
+          {categoryOptions.map((option) =>
+            renderChip(option, selectedCategoryIds.includes(option.value), () =>
+              toggleArrayValue(option.value, setSelectedCategoryIds)
+            )
+          )}
+        </View>
+      )}
+
+      {renderCollapsibleSection(
+        'tags',
+        t('catalog.tags', { defaultValue: 'Tags' }),
+        <View style={styles.chipWrap}>
+          {tagOptions.map((option) =>
+            renderChip(option, selectedTagIds.includes(option.value), () =>
+              toggleArrayValue(option.value, setSelectedTagIds)
+            )
+          )}
+        </View>
+      )}
+
+      {renderCollapsibleSection(
+        'nursery',
+        t('catalog.nursery', { defaultValue: 'Nursery' }),
+        <View style={styles.chipWrap}>
+          {nurseryFilterOptions.map((option) =>
+            renderChip(option, selectedNurseryId === option.value, () =>
+              setSelectedNurseryId((previous) =>
+                previous === option.value ? null : option.value
+              )
+            )
+          )}
+        </View>
+      )}
+
+      </ScrollView>
+
+      <View
+        style={[
+          styles.applyButtonContainer,
+          {
+            paddingBottom: filterFooterPaddingBottom,
+          },
+        ]}
+      >
+        <TouchableOpacity style={styles.applyButton} onPress={applyFilters}>
+          <Text style={styles.applyButtonText}>{t('catalog.applyFilters')}</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
+  if (isLoading && shopItems.length === 0) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <View style={styles.header}>
           <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
@@ -841,12 +1537,7 @@ export default function CatalogScreen() {
             style={styles.iconBtn}
             onPress={() => requireAuth(() => navigation.navigate('Cart'))}
           >
-            <View>
-              <Ionicons name="cart" size={24} color={COLORS.textPrimary} />
-              <View style={styles.cartBadge}>
-                <View style={styles.cartBadgeDot} />
-              </View>
-            </View>
+            <Ionicons name="cart" size={24} color={COLORS.textPrimary} />
           </TouchableOpacity>
         </View>
         <View style={styles.loaderContainer}>
@@ -856,10 +1547,9 @@ export default function CatalogScreen() {
     );
   }
 
-  // Show error state if there's an error
-  if (error && plants.length === 0) {
+  if (error && shopItems.length === 0) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <View style={styles.header}>
           <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
@@ -869,18 +1559,13 @@ export default function CatalogScreen() {
             style={styles.iconBtn}
             onPress={() => requireAuth(() => navigation.navigate('Cart'))}
           >
-            <View>
-              <Ionicons name="cart" size={24} color={COLORS.textPrimary} />
-              <View style={styles.cartBadge}>
-                <View style={styles.cartBadgeDot} />
-              </View>
-            </View>
+            <Ionicons name="cart" size={24} color={COLORS.textPrimary} />
           </TouchableOpacity>
         </View>
         <View style={styles.loaderContainer}>
-          <Ionicons name="alert-circle" size={64} color={COLORS.error} />
+          <Ionicons name="alert-circle" size={56} color={COLORS.error} />
           <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={loadPlants}>
+          <TouchableOpacity style={styles.retryButton} onPress={() => void executeSearch(1, pageSize)}>
             <Text style={styles.retryButtonText}>{t('common.retry')}</Text>
           </TouchableOpacity>
         </View>
@@ -889,8 +1574,7 @@ export default function CatalogScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Header */}
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.header}>
         <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
@@ -900,44 +1584,37 @@ export default function CatalogScreen() {
           style={styles.iconBtn}
           onPress={() => requireAuth(() => navigation.navigate('Cart'))}
         >
-          <View>
-            <Ionicons name="cart" size={24} color={COLORS.textPrimary} />
-            <View style={styles.cartBadge}>
-              <View style={styles.cartBadgeDot} />
-            </View>
-          </View>
+          <Ionicons name="cart" size={24} color={COLORS.textPrimary} />
         </TouchableOpacity>
       </View>
 
-      {/* Search Bar */}
       <View style={styles.searchContainer}>
         <View style={styles.searchBar}>
           <Ionicons name="search" size={20} color={COLORS.primary} />
           <TextInput
             style={styles.searchInput}
-            placeholder={t('catalog.searchPlaceholder')}
+            placeholder={t('catalog.searchPlaceholder', {
+              defaultValue: 'Search products...',
+            })}
             placeholderTextColor="#0DA84D"
             value={keyword}
             onChangeText={setKeyword}
             onSubmitEditing={handleSearch}
           />
         </View>
-        <TouchableOpacity
-          style={styles.filterToggle}
-          onPress={() => setShowFilters(!showFilters)}
-        >
+
+        <TouchableOpacity style={styles.filterToggle} onPress={() => setShowFilters((previous) => !previous)}>
           <Ionicons name="options" size={20} color={COLORS.primary} />
         </TouchableOpacity>
       </View>
 
-      {/* Filters Section */}
       <Animated.View
         style={[
           styles.filtersWrapper,
           {
             height: filterHeight.interpolate({
               inputRange: [0, 1],
-              outputRange: [0, 800],
+              outputRange: [0, 860],
             }),
             opacity: filterOpacity,
           },
@@ -947,29 +1624,148 @@ export default function CatalogScreen() {
         {renderFilterSection()}
       </Animated.View>
 
-      {/* Results Section */}
       {!showFilters && (
         <View style={styles.resultsContainer}>
           <View style={styles.resultsHeader}>
-            <Text style={styles.resultsTitle}>
-              {t('catalog.results', { count: plants.length })}
-            </Text>
-            <TouchableOpacity style={styles.sortButton}>
-              <Text style={styles.sortLabel}>{t('catalog.sortBy')}</Text>
-              <Text style={styles.sortValue}>{t('catalog.sortPopular')}</Text>
-              <Ionicons name="chevron-down" size={14} color={COLORS.textPrimary} />
-            </TouchableOpacity>
+            <View style={styles.resultsTopRow}>
+              <Text style={styles.resultsTitle}>{t('catalog.results', { count: totalCount })}</Text>
+
+              <Text style={styles.pageSizeLabel}>
+                {t('catalog.pageSize', { defaultValue: 'Page size' })}
+              </Text>
+            </View>
+
+            <View style={styles.resultsBottomRow}>
+              <Text style={styles.resultsBreakdown} numberOfLines={1}>
+                {t('catalog.resultBreakdown', {
+                  defaultValue: 'Plant: {{plant}} | Material: {{material}} | Combo: {{combo}}',
+                  plant: plantTotalCount,
+                  material: materialTotalCount,
+                  combo: comboTotalCount,
+                })}
+              </Text>
+
+              <View style={styles.pageSizeOptions}>
+                {PAGE_SIZE_OPTIONS.map((size) => (
+                  <TouchableOpacity
+                    key={size}
+                    style={[styles.pageSizeChip, pageSize === size && styles.pageSizeChipActive]}
+                    onPress={() => handlePageSizeChange(size)}
+                  >
+                    <Text
+                      style={[
+                        styles.pageSizeChipText,
+                        pageSize === size && styles.pageSizeChipTextActive,
+                      ]}
+                    >
+                      {size}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
           </View>
 
+          {isFilterDataLoading && (
+            <View style={styles.filterLoadingHint}>
+              <ActivityIndicator size="small" color={COLORS.primary} />
+              <Text style={styles.filterLoadingHintText}>
+                {t('catalog.loadingFilters', {
+                  defaultValue: 'Loading filter options...',
+                })}
+              </Text>
+            </View>
+          )}
+
           <FlatList
-            data={plants}
-            renderItem={renderPlantCard}
-            keyExtractor={(item) => String(item.id)}
+            style={styles.resultsList}
+            data={shopItems}
+            renderItem={renderResultCard}
+            keyExtractor={getItemKey}
             numColumns={2}
-            columnWrapperStyle={styles.plantRow}
-            contentContainerStyle={styles.plantList}
+            columnWrapperStyle={styles.productRow}
+            contentContainerStyle={[
+              styles.productList,
+              {
+                paddingBottom: bottomContentInset,
+              },
+            ]}
             showsVerticalScrollIndicator={false}
+            ListEmptyComponent={
+              !isLoading ? (
+                <View style={styles.emptyWrap}>
+                  <Ionicons name="search-outline" size={46} color={COLORS.textLight} />
+                  <Text style={styles.emptyText}>
+                    {t('catalog.noResults', {
+                      defaultValue: 'No products found for the current filters.',
+                    })}
+                  </Text>
+                </View>
+              ) : null
+            }
           />
+
+          <View style={styles.paginationRow}>
+            <View style={styles.paginationControl}>
+              <TouchableOpacity
+                style={[
+                  styles.paginationButton,
+                  (pageNumber <= 1 || isLoading) && styles.paginationButtonDisabled,
+                ]}
+                disabled={pageNumber <= 1 || isLoading}
+                onPress={handlePrevPage}
+              >
+                <Ionicons name="chevron-back" size={16} color={COLORS.textPrimary} />
+              </TouchableOpacity>
+
+              <View style={styles.pageNumberCenter}>
+                <ScrollView
+                  horizontal
+                  style={styles.pageNumberScroller}
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.pageNumberList}
+                >
+                  {visiblePageTokens.map((token, index) =>
+                    typeof token === 'number' ? (
+                      <TouchableOpacity
+                        key={`page-${token}`}
+                        style={[
+                          styles.pageNumberChip,
+                          token === pageNumber && styles.pageNumberChipActive,
+                        ]}
+                        onPress={() => handlePageSelect(token)}
+                        disabled={isLoading || token === pageNumber}
+                      >
+                        <Text
+                          style={[
+                            styles.pageNumberChipText,
+                            token === pageNumber && styles.pageNumberChipTextActive,
+                          ]}
+                        >
+                          {token}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <Text key={`ellipsis-${token}-${index}`} style={styles.pageNumberEllipsis}>
+                        ...
+                      </Text>
+                    )
+                  )}
+                </ScrollView>
+              </View>
+
+              <TouchableOpacity
+                style={[
+                  styles.paginationButton,
+                  (pageNumber >= totalPages || isLoading) && styles.paginationButtonDisabled,
+                ]}
+                disabled={pageNumber >= totalPages || isLoading}
+                onPress={handleNextPage}
+              >
+                <Ionicons name="chevron-forward" size={16} color={COLORS.textPrimary} />
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
       )}
 
@@ -985,6 +1781,7 @@ export default function CatalogScreen() {
             activeOpacity={1}
             onPress={closeNurseryPicker}
           />
+
           <View style={styles.nurseryPickerSheet}>
             <View style={styles.nurseryPickerHandle} />
             <View style={styles.nurseryPickerHeader}>
@@ -993,10 +1790,7 @@ export default function CatalogScreen() {
                   defaultValue: 'Select a nursery',
                 })}
               </Text>
-              <TouchableOpacity
-                style={styles.nurseryPickerCloseBtn}
-                onPress={closeNurseryPicker}
-              >
+              <TouchableOpacity style={styles.nurseryPickerCloseBtn} onPress={closeNurseryPicker}>
                 <Ionicons name="close" size={20} color={COLORS.textSecondary} />
               </TouchableOpacity>
             </View>
@@ -1011,7 +1805,7 @@ export default function CatalogScreen() {
               <View style={styles.nurseryPickerLoadingWrap}>
                 <ActivityIndicator size="small" color={COLORS.primary} />
               </View>
-            ) : nurseryOptions.length === 0 ? (
+            ) : availableNurseryOptions.length === 0 ? (
               <Text style={styles.nurseryPickerEmptyText}>
                 {t('catalog.noNurseryAvailable', {
                   defaultValue: 'No nursery is currently available for this plant.',
@@ -1022,8 +1816,8 @@ export default function CatalogScreen() {
                 style={styles.nurseryPickerList}
                 showsVerticalScrollIndicator={false}
               >
-                {nurseryOptions.map((nursery) => {
-                  const isSelected = nursery.nurseryId === selectedNurseryOptionId;
+                {availableNurseryOptions.map((nursery) => {
+                  const isSelected = nursery.nurseryId === selectedCartNurseryId;
 
                   return (
                     <TouchableOpacity
@@ -1032,16 +1826,15 @@ export default function CatalogScreen() {
                         styles.nurseryPickerItem,
                         isSelected && styles.nurseryPickerItemSelected,
                       ]}
-                      onPress={() => setSelectedNurseryOptionId(nursery.nurseryId)}
+                      onPress={() => setSelectedCartNurseryId(nursery.nurseryId)}
                     >
                       <View style={styles.nurseryPickerItemHeader}>
-                        <Text style={styles.nurseryPickerItemName}>
-                          {nursery.nurseryName}
-                        </Text>
+                        <Text style={styles.nurseryPickerItemName}>{nursery.nurseryName}</Text>
                         {isSelected && (
                           <Ionicons name="checkmark-circle" size={18} color="#13EC5B" />
                         )}
                       </View>
+
                       <Text style={styles.nurseryPickerItemAddress}>{nursery.address}</Text>
                       <View style={styles.nurseryPickerItemMetaRow}>
                         <Text style={styles.nurseryPickerItemMetaText}>
@@ -1060,7 +1853,7 @@ export default function CatalogScreen() {
               </ScrollView>
             )}
 
-            {!isNurseryPickerLoading && nurseryOptions.length > 0 && (
+            {!isNurseryPickerLoading && availableNurseryOptions.length > 0 && (
               <View style={styles.nurseryPickerQuantityRow}>
                 <Text style={styles.nurseryPickerQuantityLabel}>
                   {t('cart.quantity', { defaultValue: 'Quantity' })}
@@ -1078,7 +1871,9 @@ export default function CatalogScreen() {
                   >
                     <Ionicons name="remove" size={16} color={COLORS.textSecondary} />
                   </TouchableOpacity>
+
                   <Text style={styles.nurseryPickerQuantityValue}>{selectedCartQuantity}</Text>
+
                   <TouchableOpacity
                     style={styles.nurseryPickerQuantityBtn}
                     onPress={() =>
@@ -1098,7 +1893,7 @@ export default function CatalogScreen() {
                   isNurseryActionDisabled && styles.nurseryPickerConfirmBtnDisabled,
                 ]}
                 disabled={isNurseryActionDisabled}
-                onPress={() => handleConfirmNurseryAdd(true)}
+                onPress={() => void handleConfirmNurseryAdd(true)}
               >
                 <Text style={styles.nurseryPickerBuyNowText}>
                   {`${t('plantDetail.buyNow', { defaultValue: 'Buy now' })} x${selectedCartQuantity}`}
@@ -1111,7 +1906,7 @@ export default function CatalogScreen() {
                   isNurseryActionDisabled && styles.nurseryPickerConfirmBtnDisabled,
                 ]}
                 disabled={isNurseryActionDisabled}
-                onPress={() => handleConfirmNurseryAdd(false)}
+                onPress={() => void handleConfirmNurseryAdd(false)}
               >
                 <Text style={styles.nurseryPickerConfirmText}>
                   {`${t('plantDetail.addToCart', { defaultValue: 'Add to cart' })} x${selectedCartQuantity}`}
@@ -1130,31 +1925,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F6F8F6',
   },
-  loaderContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: SPACING.lg,
-  },
-  errorText: {
-    fontSize: FONTS.sizes.lg,
-    color: COLORS.textSecondary,
-    textAlign: 'center',
-    marginTop: SPACING.md,
-    paddingHorizontal: SPACING.xl,
-  },
-  retryButton: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: SPACING['3xl'],
-    paddingVertical: SPACING.md,
-    borderRadius: RADIUS.lg,
-    marginTop: SPACING.lg,
-  },
-  retryButtonText: {
-    fontSize: FONTS.sizes.lg,
-    fontWeight: '600',
-    color: COLORS.white,
-  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1163,8 +1933,8 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
   },
   iconBtn: {
-    width: 34,
-    height: 34,
+    width: 36,
+    height: 36,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1173,25 +1943,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.textPrimary,
   },
-  cartBadge: {
-    position: 'absolute',
-    right: -4,
-    top: -4,
-    width: 10,
-    height: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  cartBadgeDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#13EC5B',
-  },
   searchContainer: {
     flexDirection: 'row',
     paddingHorizontal: SPACING.lg,
-    paddingBottom: SPACING.md,
+    paddingBottom: SPACING.sm,
     gap: SPACING.sm,
   },
   searchBar: {
@@ -1212,11 +1967,6 @@ const styles = StyleSheet.create({
     color: '#0DA84D',
     padding: 0,
   },
-  searchPlaceholder: {
-    flex: 1,
-    fontSize: FONTS.sizes.md,
-    color: '#0DA84D',
-  },
   filterToggle: {
     width: 40,
     height: 40,
@@ -1227,13 +1977,16 @@ const styles = StyleSheet.create({
     borderWidth: 0.5,
     borderColor: '#0DA84D',
   },
+  filtersWrapper: {
+    overflow: 'hidden',
+    backgroundColor: '#F6F8F6',
+  },
   filtersContainer: {
     flex: 1,
     backgroundColor: '#F6F8F6',
   },
-  filtersWrapper: {
-    overflow: 'hidden',
-    backgroundColor: '#F6F8F6',
+  filterContent: {
+    paddingBottom: SPACING['4xl'],
   },
   filterHeader: {
     flexDirection: 'row',
@@ -1254,211 +2007,90 @@ const styles = StyleSheet.create({
   },
   filterSection: {
     paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#D7E4DB',
   },
-  sectionTitle: {
-    fontSize: FONTS.sizes.xl,
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  sectionHeaderTitle: {
+    flex: 1,
+    fontSize: FONTS.sizes.lg,
     fontWeight: '700',
     color: COLORS.textPrimary,
-    marginBottom: SPACING.md,
   },
-  priceRangeContainer: {
-    paddingVertical: SPACING.lg,
+  sectionBody: {
+    marginTop: SPACING.sm,
+  },
+  sectionTitle: {
+    fontSize: FONTS.sizes.lg,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    marginBottom: SPACING.sm,
+  },
+  sectionSubTitle: {
+    marginTop: SPACING.md,
+  },
+  chipWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+  },
+  filterChip: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: 20,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: '#D7E4DB',
+  },
+  filterChipActive: {
+    backgroundColor: '#13EC5B',
+    borderColor: '#13EC5B',
+  },
+  filterChipText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textPrimary,
+    fontWeight: '500',
+  },
+  filterChipTextActive: {
+    color: COLORS.white,
+    fontWeight: '700',
   },
   priceInputContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
+    gap: SPACING.sm,
   },
   priceInputWrapper: {
     flex: 1,
-    backgroundColor: COLORS.white,
-    borderRadius: RADIUS.md,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
     borderWidth: 1,
-    borderColor: '#DBEAFE',
+    borderColor: '#D7E4DB',
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.white,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.sm,
   },
   priceInputLabel: {
     fontSize: FONTS.sizes.xs,
     color: COLORS.textSecondary,
-    marginBottom: 4,
+    marginBottom: 2,
   },
   priceInput: {
-    fontSize: FONTS.sizes.lg,
-    fontWeight: '600',
+    fontSize: FONTS.sizes.md,
     color: COLORS.textPrimary,
+    fontWeight: '600',
     padding: 0,
   },
-  priceInputCurrency: {
-    fontSize: FONTS.sizes.sm,
-    color: COLORS.textSecondary,
-    position: 'absolute',
-    right: SPACING.md,
-    bottom: SPACING.sm + 2,
-  },
-  priceRangeSeparator: {
-    width: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  priceRangeLine: {
-    width: 12,
-    height: 2,
-    backgroundColor: COLORS.textSecondary,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#DBEAFE',
-    marginHorizontal: SPACING.lg,
-  },
-  chipContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.sm,
-  },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.xl,
-    paddingVertical: SPACING.sm,
-    backgroundColor: COLORS.white,
-    borderRadius: 24,
-  },
-  chipActive: {
-    backgroundColor: '#13EC5B',
-    ...SHADOWS.md,
-  },
-  chipText: {
-    fontSize: FONTS.sizes.md,
-    fontWeight: '500',
-    color: '#475569',
-  },
-  chipTextActive: {
-    fontWeight: '600',
-    color: COLORS.black,
-  },
-  featuresGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.sm,
-  },
-  featureChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm,
-    backgroundColor: '#E7FDF0',
-    borderRadius: 24,
-    gap: 6,
-    borderWidth: 1,
-    borderColor: '#0DA84D',
-  },
-  featureChipActive: {
-    backgroundColor: '#0DA84D',
-    borderColor: '#0DA84D',
-  },
-  featureText: {
-    fontSize: FONTS.sizes.sm,
-    fontWeight: '500',
-    color: COLORS.primary,
-  },
-  featureTextActive: {
-    fontWeight: '600',
-    color: COLORS.white,
-  },
-  iconChipContainer: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-  },
-  iconChipItem: {
-    alignItems: 'center',
-    minWidth: 80,
-    paddingHorizontal: SPACING.sm,
-    gap: SPACING.sm,
-  },
-  iconCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#E7F3EB',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  iconCircleActive: {
-    backgroundColor: 'rgba(19, 236, 91, 0.2)',
-    borderColor: '#13EC5B',
-  },
-  iconChipLabel: {
-    fontSize: FONTS.sizes.sm,
-    fontWeight: '500',
-    color: COLORS.textPrimary,
-    textAlign: 'center',
-  },
-  toggleContainer: {
-    backgroundColor: '#DBEAFE',
-    borderRadius: 24,
-    padding: 4,
-    flexDirection: 'row',
-  },
-  toggleButton: {
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: SPACING.sm,
-    borderRadius: 16,
-    gap: SPACING.sm,
-  },
-  toggleButtonActive: {
-    backgroundColor: COLORS.white,
-    ...SHADOWS.sm,
-  },
-  toggleText: {
-    fontSize: FONTS.sizes.md,
-    fontWeight: '500',
-    color: COLORS.textPrimary,
-  },
-  toggleTextActive: {
-    fontWeight: '600',
-  },
-  fengShuiChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm,
-    backgroundColor: '#DBEAFE',
-    borderRadius: 24,
-    gap: SPACING.sm,
-  },
-  fengShuiChipActive: {
-    backgroundColor: '#13EC5B',
-  },
-  fengShuiDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-  },
-  fengShuiDotActive: {
-    borderWidth: 1,
-    borderColor: COLORS.white,
-  },
-  fengShuiText: {
-    fontSize: FONTS.sizes.md,
-    fontWeight: '500',
-    color: COLORS.textPrimary,
-  },
-  fengShuiTextActive: {
-    color: COLORS.white,
-  },
   applyButtonContainer: {
-    padding: SPACING.lg,
-    paddingTop: SPACING.xl,
-    borderTopWidth: 1,
-    borderTopColor: '#DBEAFE',
-    ...SHADOWS.md,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.lg,
+    backgroundColor: '#F6F8F6',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#D7E4DB',
+    marginBottom: 64,
   },
   applyButton: {
     backgroundColor: '#13EC5B',
@@ -1471,59 +2103,217 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.white,
   },
+  loaderContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: SPACING.lg,
+    paddingHorizontal: SPACING.lg,
+  },
+  errorText: {
+    textAlign: 'center',
+    fontSize: FONTS.sizes.md,
+    color: COLORS.textSecondary,
+  },
+  retryButton: {
+    backgroundColor: COLORS.primary,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.sm,
+  },
+  retryButtonText: {
+    color: COLORS.white,
+    fontWeight: '700',
+  },
   resultsContainer: {
     flex: 1,
   },
+  resultsList: {
+    flex: 1,
+  },
   resultsHeader: {
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.xs,
+  },
+  resultsTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm,
+    gap: SPACING.sm,
+  },
+  resultsBottomRow: {
+    marginTop: 2,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: SPACING.sm,
   },
   resultsTitle: {
     fontSize: FONTS.sizes['2xl'],
     fontWeight: '700',
     color: COLORS.textPrimary,
+    flexShrink: 1,
   },
-  sortButton: {
+  resultsBreakdown: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+    flex: 1,
+  },
+  paginationRow: {
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.xs,
+    alignItems: 'center',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#D7E4DB',
+    backgroundColor: '#F6F8F6',
+  },
+  pageSizeLabel: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  pageSizeOptions: {
+    flexDirection: 'row',
+    gap: SPACING.xs,
+  },
+  pageSizeChip: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 6,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#D7E4DB',
+    backgroundColor: COLORS.white,
+  },
+  pageSizeChipActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: '#E7FDF0',
+  },
+  pageSizeChipText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textPrimary,
+    fontWeight: '500',
+  },
+  pageSizeChipTextActive: {
+    color: COLORS.primary,
+    fontWeight: '700',
+  },
+  paginationControl: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    justifyContent: 'space-between',
+    width: '100%',
   },
-  sortLabel: {
-    fontSize: FONTS.sizes.md,
-    color: '#4C9A66',
+  pageNumberCenter: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.sm,
   },
-  sortValue: {
-    fontSize: FONTS.sizes.md,
-    fontWeight: '600',
+  pageNumberScroller: {
+    maxWidth: '100%',
+  },
+  pageNumberList: {
+    flexGrow: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+  },
+  pageNumberChip: {
+    minWidth: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: '#D7E4DB',
+    backgroundColor: COLORS.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.xs,
+  },
+  pageNumberChipActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: '#E7FDF0',
+  },
+  pageNumberChipText: {
+    fontSize: FONTS.sizes.sm,
     color: COLORS.textPrimary,
+    fontWeight: '600',
   },
-  plantList: {
+  pageNumberChipTextActive: {
+    color: COLORS.primary,
+    fontWeight: '700',
+  },
+  pageNumberEllipsis: {
+    fontSize: FONTS.sizes.md,
+    color: COLORS.textSecondary,
+    paddingHorizontal: 2,
+  },
+  paginationButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: '#D7E4DB',
+  },
+  paginationButtonDisabled: {
+    opacity: 0.4,
+  },
+  paginationText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textPrimary,
+    fontWeight: '600',
+  },
+  filterLoadingHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
     paddingHorizontal: SPACING.lg,
-    paddingBottom: SPACING['3xl'],
+    paddingBottom: SPACING.sm,
   },
-  plantRow: {
+  filterLoadingHintText: {
+    color: COLORS.textSecondary,
+    fontSize: FONTS.sizes.sm,
+  },
+  productList: {
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.lg,
+  },
+  productRow: {
     justifyContent: 'space-between',
     marginBottom: SPACING.lg,
   },
-  plantCard: {
+  productCard: {
     width: CARD_WIDTH,
+    borderRadius: RADIUS.lg,
     backgroundColor: COLORS.white,
-    borderRadius: RADIUS.lg,
     padding: SPACING.sm,
+    ...SHADOWS.sm,
   },
-  plantImageContainer: {
+  productCardPlaceholder: {
+    width: CARD_WIDTH,
+    height: CARD_WIDTH,
+  },
+  productImageContainer: {
     width: '100%',
-    height: CARD_WIDTH * 1.25,
-    backgroundColor: '#F5F5F5',
-    borderRadius: RADIUS.lg,
+    height: CARD_WIDTH * 1.2,
+    borderRadius: RADIUS.md,
     overflow: 'hidden',
+    backgroundColor: '#E8ECEA',
     marginBottom: SPACING.sm,
-    position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  plantImage: {
+  materialImageContainer: {
+    backgroundColor: '#EEF7F1',
+  },
+  comboImageContainer: {
+    backgroundColor: '#F0F5FF',
+  },
+  productImage: {
     width: '100%',
     height: '100%',
   },
@@ -1531,82 +2321,75 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: SPACING.sm,
     right: SPACING.sm,
-    width: 32,
-    height: 32,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    borderRadius: 16,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.35)',
   },
-  ratingBadge: {
+  typeBadge: {
     position: 'absolute',
-    bottom: SPACING.sm,
     left: SPACING.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    bottom: SPACING.sm,
+    borderRadius: 12,
     paddingHorizontal: SPACING.sm,
     paddingVertical: 4,
-    borderRadius: RADIUS.sm,
-    gap: 4,
+    backgroundColor: 'rgba(0,0,0,0.45)',
   },
-  ratingText: {
-    fontSize: FONTS.sizes.sm,
-    fontWeight: '500',
+  typeBadgeMaterial: {
+    backgroundColor: 'rgba(45,106,79,0.85)',
+  },
+  typeBadgeCombo: {
+    backgroundColor: 'rgba(49,81,180,0.85)',
+  },
+  typeBadgeText: {
     color: COLORS.white,
-  },
-  soldOutOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.1)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  soldOutBadge: {
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 6,
-    borderRadius: RADIUS.lg,
-  },
-  soldOutText: {
-    fontSize: FONTS.sizes.sm,
+    fontSize: FONTS.sizes.xs,
     fontWeight: '700',
-    color: COLORS.white,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
   },
-  plantInfo: {
+  productInfo: {
     gap: 2,
   },
-  plantName: {
-    fontSize: FONTS.sizes.lg,
+  productName: {
+    fontSize: FONTS.sizes.md,
     fontWeight: '700',
     color: COLORS.textPrimary,
   },
-  plantMeta: {
+  productMeta: {
     fontSize: FONTS.sizes.sm,
-    color: '#4C9A66',
+    color: COLORS.textSecondary,
   },
-  plantFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  productFooter: {
     marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  plantPrice: {
-    fontSize: FONTS.sizes.lg,
+  productPrice: {
+    fontSize: FONTS.sizes.md,
     fontWeight: '700',
-    color: '#13EC5B',
+    color: '#13A454',
+    flex: 1,
   },
   addButton: {
-    width: 18,
-    height: 18,
-    backgroundColor: '#13EC5B',
-    borderRadius: 9,
-    justifyContent: 'center',
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#13EC5B',
   },
-  addButtonDisabled: {
-    opacity: 0.35,
+  emptyWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING['4xl'],
+    gap: SPACING.sm,
+  },
+  emptyText: {
+    textAlign: 'center',
+    color: COLORS.textSecondary,
+    fontSize: FONTS.sizes.md,
   },
   nurseryPickerOverlay: {
     flex: 1,
@@ -1614,29 +2397,30 @@ const styles = StyleSheet.create({
   },
   nurseryPickerBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(15, 23, 42, 0.35)',
+    backgroundColor: 'rgba(0, 0, 0, 0.35)',
   },
   nurseryPickerSheet: {
-    maxHeight: '75%',
+    maxHeight: '78%',
     backgroundColor: COLORS.white,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: RADIUS['2xl'],
+    borderTopRightRadius: RADIUS['2xl'],
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.sm,
-    paddingBottom: SPACING.lg,
-    gap: SPACING.md,
+    paddingBottom: SPACING.xl,
   },
   nurseryPickerHandle: {
     alignSelf: 'center',
-    width: 48,
+    width: 44,
     height: 4,
-    borderRadius: 999,
+    borderRadius: 2,
     backgroundColor: COLORS.gray300,
+    marginBottom: SPACING.sm,
   },
   nurseryPickerHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.xs,
   },
   nurseryPickerTitle: {
     fontSize: FONTS.sizes.xl,
@@ -1644,51 +2428,48 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
   },
   nurseryPickerCloseBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    justifyContent: 'center',
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: COLORS.gray100,
   },
   nurseryPickerPlantName: {
     fontSize: FONTS.sizes.md,
     color: COLORS.textSecondary,
+    marginBottom: SPACING.md,
   },
   nurseryPickerLoadingWrap: {
-    paddingVertical: SPACING.xl,
+    paddingVertical: SPACING.lg,
     alignItems: 'center',
   },
   nurseryPickerEmptyText: {
-    paddingVertical: SPACING.xl,
-    fontSize: FONTS.sizes.md,
-    color: COLORS.textSecondary,
     textAlign: 'center',
+    color: COLORS.textSecondary,
+    paddingVertical: SPACING.lg,
   },
   nurseryPickerList: {
-    maxHeight: 300,
+    maxHeight: 260,
   },
   nurseryPickerItem: {
     borderWidth: 1,
-    borderColor: COLORS.gray200,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.md,
+    borderColor: '#D7E4DB',
+    borderRadius: RADIUS.md,
+    padding: SPACING.sm,
     marginBottom: SPACING.sm,
-    backgroundColor: COLORS.white,
-    gap: 6,
   },
   nurseryPickerItemSelected: {
     borderColor: '#13EC5B',
-    backgroundColor: '#F0FDF4',
+    backgroundColor: '#EDFEF3',
   },
   nurseryPickerItemHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    gap: SPACING.sm,
+    marginBottom: 2,
   },
   nurseryPickerItemName: {
-    flex: 1,
     fontSize: FONTS.sizes.md,
     fontWeight: '700',
     color: COLORS.textPrimary,
@@ -1698,22 +2479,22 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
   },
   nurseryPickerItemMetaRow: {
+    marginTop: 6,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 2,
   },
   nurseryPickerItemMetaText: {
     fontSize: FONTS.sizes.sm,
-    color: '#4C9A66',
-    fontWeight: '600',
+    color: COLORS.textSecondary,
   },
   nurseryPickerItemPrice: {
     fontSize: FONTS.sizes.sm,
-    color: '#13EC5B',
     fontWeight: '700',
+    color: '#13A454',
   },
   nurseryPickerQuantityRow: {
+    marginTop: SPACING.sm,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -1733,54 +2514,53 @@ const styles = StyleSheet.create({
     height: 30,
     borderRadius: 15,
     borderWidth: 1,
-    borderColor: COLORS.gray300,
-    justifyContent: 'center',
+    borderColor: '#D7E4DB',
     alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: COLORS.white,
   },
   nurseryPickerQuantityBtnDisabled: {
-    opacity: 0.45,
+    opacity: 0.4,
   },
   nurseryPickerQuantityValue: {
-    minWidth: 26,
+    minWidth: 20,
     textAlign: 'center',
-    fontSize: FONTS.sizes.lg,
+    fontSize: FONTS.sizes.md,
     fontWeight: '700',
     color: COLORS.textPrimary,
   },
   nurseryPickerActionRow: {
+    marginTop: SPACING.md,
     flexDirection: 'row',
-    gap: 10,
+    gap: SPACING.sm,
   },
   nurseryPickerBuyNowBtn: {
-    flex: 3,
-    height: 44,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: '#13EC5B',
-    backgroundColor: '#F0FDF4',
-    justifyContent: 'center',
+    flex: 1,
+    borderRadius: 22,
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.sm,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: '#13A454',
   },
   nurseryPickerBuyNowText: {
-    fontSize: FONTS.sizes.lg,
+    color: '#13A454',
     fontWeight: '700',
-    color: '#0DA84D',
   },
   nurseryPickerConfirmBtn: {
-    flex: 7,
-    height: 44,
-    borderRadius: 24,
-    backgroundColor: '#13EC5B',
-    justifyContent: 'center',
+    flex: 1,
+    borderRadius: 22,
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.sm,
+    backgroundColor: '#13EC5B',
   },
   nurseryPickerConfirmBtnDisabled: {
-    opacity: 0.45,
+    opacity: 0.4,
   },
   nurseryPickerConfirmText: {
-    fontSize: FONTS.sizes.lg,
+    color: COLORS.white,
     fontWeight: '700',
-    color: '#102216',
   },
 });

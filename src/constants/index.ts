@@ -156,16 +156,22 @@ export const API = {
     SEND_OTP_PASSWORD_RESET: "/Authentication/send-otp-password-reset",
     RESET_PASSWORD: "/Authentication/reset-password-with-otp",
 
+    //Shop
+    SHOP_SEARCH: "/shop/search",
+    SHOP_SEARCH_CONFIG: "/system/search-config/shop-unified",
+
     // Plants
     PLANTS: "/shop/plants/search",
     COMMON_PLANTS: "/shop/common-plants/search",
     PLANT_DETAIL: (id: string | number) => `/shop/plants/${id}`,
+    MATERIAL_DETAIL: (id: string | number) => `/material/${id}`,
+    PLANT_COMBO_DETAIL: (id: string | number) => `/PlantCombos/${id}`,
     NURSERIES_GOT_COMMON_PLANT_BY_PLANT_ID: (plantId: string | number) => `/shop/plants/${plantId}/common-nurseries`,
     COMMON_PLANTS_BY_NURSERY: (nurseryId: string) => `/shop/nurseries/${nurseryId}/common-plants/search`,
-    INSTANCE_PLANTS_BY_NURSERY: (nurseryId: string) => `/shop/nurseries/${nurseryId}/plant-instances/search`,
     NURSERIES_GOT_PLANT_INSTANCES: (plantId: string | number) => `/plants/${plantId}/nurseries`,
     INSTANCE_DETAIL: (id: number) => `/shop/plant-instances/${id}`,
     COMMON_DETAIL: (id: number) => `/shop/common-plants/${id}`,
+    SHOP_INSTANCE_SEARCH: "/shop/plant-instances/search",
 
     NURSERIES: "/shop/nurseries/search",
 
@@ -192,6 +198,8 @@ export const API = {
     // System Enums
     SYSTEM_ENUMS: "/system/enums",
     SYSTEM_ENUM_BY_NAME: (enumName: string) => `/system/enums/${enumName}`,
+    ADMIN_CATEGORIES: "/admin/Categories",
+    ADMIN_TAGS: "/admin/Tags",
 
     // AI Design
     // AI_DESIGN: '/ai/design',

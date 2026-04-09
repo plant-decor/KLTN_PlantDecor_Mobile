@@ -19,7 +19,7 @@ import { RouteProp, useIsFocused, useNavigation, useRoute } from '@react-navigat
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, SPACING, RADIUS, SHADOWS } from '../../constants';
 import { usePlantStore, useCartStore, useAuthStore, useWishlistStore, useEnumStore } from '../../stores';
-import { RootStackParamList, Plant, CheckoutItem } from '../../types';
+import { RootStackParamList, Plant, CheckoutItem, ShopInstanceSearchItem } from '../../types';
 import { getWishlistKey, notify, resolveWishlistTarget } from '../../utils';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -45,6 +45,15 @@ const normalizeEnumCode = (rawCode: unknown): number | null => {
   }
 
   return null;
+};
+
+const toPositiveInt = (rawValue: unknown): number | null => {
+  const normalizedCode = normalizeEnumCode(rawValue);
+  if (!normalizedCode || normalizedCode <= 0) {
+    return null;
+  }
+
+  return normalizedCode;
 };
 
 const parseSortDescriptor = (
@@ -119,6 +128,11 @@ export default function PlantDetailScreen() {
     fetchPlantDetail,
     fetchPlants,
     plants,
+    shopInstancePlants,
+    shopInstancePlantsPageNumber,
+    shopInstancePlantsTotalPages,
+    shopInstancePlantsTotalCount,
+    searchShopInstancePlants,
     nurseriesGotPlantInstances,
     nurseriesGotCommonPlants,
     fetchNurseriesGotPlantInstances,
@@ -133,6 +147,9 @@ export default function PlantDetailScreen() {
   const [renderExtraNurseries, setRenderExtraNurseries] = useState(false);
   const [extraNurseryHeight, setExtraNurseryHeight] = useState(0);
   const [selectedNurseryId, setSelectedNurseryId] = useState<number | null>(null);
+  const [selectedInstanceNurseryId, setSelectedInstanceNurseryId] = useState<number | null>(null);
+  const [selectedInstanceId, setSelectedInstanceId] = useState<number | null>(null);
+  const [instancePageNumber, setInstancePageNumber] = useState(1);
   const [selectedQuantity, setSelectedQuantity] = useState(1);
   const [isResolvingPlant, setIsResolvingPlant] = useState(false);
   const wishlistStatus = useWishlistStore((state) => state.statusByKey);
@@ -140,16 +157,36 @@ export default function PlantDetailScreen() {
   const toggleWishlist = useWishlistStore((state) => state.toggleWishlist);
   const clearWishlistStatus = useWishlistStore((state) => state.clearStatus);
   const nurseryExtraAnim = useRef(new Animated.Value(0)).current;
+  const lastWishlistEnsureKeyRef = useRef<string>('');
+  const lastNurseryRequestKeyRef = useRef<string>('');
+
+  const selectedPlantMatchesRoute = useMemo(() => {
+    if (!selectedPlant) {
+      return false;
+    }
+
+    const normalizedRoutePlantId = String(plantId);
+    if (String(selectedPlant.id) === normalizedRoutePlantId) {
+      return true;
+    }
+
+    if (
+      selectedPlant.commonPlantId !== null &&
+      selectedPlant.commonPlantId !== undefined &&
+      String(selectedPlant.commonPlantId) === normalizedRoutePlantId
+    ) {
+      return true;
+    }
+
+    return false;
+  }, [plantId, selectedPlant]);
 
   useEffect(() => {
     if (!isFocused) {
       return;
     }
 
-    const isCurrentPlantSelected =
-      selectedPlant != null && String(selectedPlant.id) === String(plantId);
-
-    if (isCurrentPlantSelected) {
+    if (selectedPlantMatchesRoute) {
       setIsResolvingPlant(false);
       return;
     }
@@ -167,7 +204,7 @@ export default function PlantDetailScreen() {
     return () => {
       isActive = false;
     };
-  }, [fetchPlantDetail, isFocused, plantId, selectedPlant]);
+  }, [fetchPlantDetail, isFocused, plantId, selectedPlantMatchesRoute]);
 
   useEffect(() => {
     void loadEnumResource('plants');
@@ -221,6 +258,9 @@ export default function PlantDetailScreen() {
 
   useEffect(() => {
     setSelectedQuantity(1);
+    setSelectedInstanceNurseryId(null);
+    setSelectedInstanceId(null);
+    setInstancePageNumber(1);
   }, [plantId]);
 
   useEffect(() => {
@@ -229,10 +269,7 @@ export default function PlantDetailScreen() {
     }
   }, [clearWishlistStatus, isAuthenticated]);
 
-  const plant =
-    selectedPlant && String(selectedPlant.id) === String(plantId)
-      ? selectedPlant
-      : null;
+  const plant = selectedPlantMatchesRoute ? selectedPlant : null;
 
   // Related plants from store (exclude current)
   const relatedPlants = useMemo(() => {
@@ -275,64 +312,252 @@ export default function PlantDetailScreen() {
     [wishlistCheckPlants]
   );
 
+  const wishlistTargetsEnsureKey = useMemo(() => {
+    if (wishlistTargets.length === 0) {
+      return '';
+    }
+
+    return Array.from(
+      new Set(
+        wishlistTargets.map((target) =>
+          getWishlistKey(target.itemType, target.itemId)
+        )
+      )
+    )
+      .sort()
+      .join('|');
+  }, [wishlistTargets]);
+
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isFocused || !isAuthenticated) {
+      lastWishlistEnsureKeyRef.current = '';
       return;
     }
+
+    if (wishlistTargets.length === 0 || !wishlistTargetsEnsureKey) {
+      return;
+    }
+
+    if (lastWishlistEnsureKeyRef.current === wishlistTargetsEnsureKey) {
+      return;
+    }
+
+    lastWishlistEnsureKeyRef.current = wishlistTargetsEnsureKey;
+
     void ensureWishlistStatus(wishlistTargets);
-  }, [ensureWishlistStatus, isAuthenticated, wishlistTargets]);
+  }, [
+    ensureWishlistStatus,
+    isAuthenticated,
+    isFocused,
+    wishlistTargets,
+    wishlistTargetsEnsureKey,
+  ]);
 
   const plantImage = plant?.images?.[0] ?? '';
   const isInstancePlant = Boolean(plant?.isUniqueInstance);
-  const nurseriesForPlant = isInstancePlant
-    ? nurseriesGotPlantInstances
-    : nurseriesGotCommonPlants;
-  const baseNurseries = nurseriesForPlant.slice(0, 3);
-  const extraNurseries = nurseriesForPlant.slice(3);
+  const commonNurseries = nurseriesGotCommonPlants;
+  const baseNurseries = commonNurseries.slice(0, 3);
+  const extraNurseries = commonNurseries.slice(3);
   const hasExtraNurseries = extraNurseries.length > 0;
 
   const selectedNursery = !isInstancePlant
-    ? nurseriesForPlant.find((nursery) => nursery.nurseryId === selectedNurseryId) ?? null
+    ? commonNurseries.find((nursery) => nursery.nurseryId === selectedNurseryId) ?? null
     : null;
 
+  const instanceSearchPlantId = useMemo(() => {
+    if (!plant) {
+      return null;
+    }
+
+    return toPositiveInt(plant.commonPlantId) ?? toPositiveInt(plant.id);
+  }, [plant]);
+
+  const instanceNurseryFilters = useMemo(() => {
+    return Array.from(
+      new Map(
+        nurseriesGotPlantInstances.map((nursery) => [
+          nursery.nurseryId,
+          {
+            nurseryId: nursery.nurseryId,
+            nurseryName: nursery.nurseryName,
+          },
+        ])
+      ).values()
+    );
+  }, [nurseriesGotPlantInstances]);
+
   useEffect(() => {
-    if (!isFocused || !plant) {
+    if (!isInstancePlant) {
+      setSelectedInstanceNurseryId(null);
       return;
     }
 
-    const targetPlantId = plant.id ?? plantId;
+    if (instanceNurseryFilters.length === 0) {
+      setSelectedInstanceNurseryId(null);
+      return;
+    }
+
+    setSelectedInstanceNurseryId((current) => {
+      if (
+        current !== null &&
+        instanceNurseryFilters.some((nurseryFilter) => nurseryFilter.nurseryId === current)
+      ) {
+        return current;
+      }
+
+      return instanceNurseryFilters[0].nurseryId;
+    });
+  }, [instanceNurseryFilters, isInstancePlant]);
+
+  const selectedShopInstance = useMemo(() => {
+    if (selectedInstanceId === null) {
+      return null;
+    }
+
+    return (
+      shopInstancePlants.find((instance) => instance.plantInstanceId === selectedInstanceId) ??
+      null
+    );
+  }, [selectedInstanceId, shopInstancePlants]);
+
+  const canGoPrevInstancePage = shopInstancePlantsPageNumber > 1;
+  const canGoNextInstancePage = shopInstancePlantsPageNumber < shopInstancePlantsTotalPages;
+
+  const isInstanceAvailable = useCallback((instance: ShopInstanceSearchItem) => {
+    return instance.status === 1 || instance.statusName.trim().toLowerCase() === 'available';
+  }, []);
+
+  const handleOpenPlantInstanceDetail = useCallback(
+    (instanceId?: number | null) => {
+      const resolvedId = toPositiveInt(instanceId);
+      if (!resolvedId) {
+        notify({
+          message: t('plantDetail.chooseInstanceToContinue', {
+            defaultValue: 'Select an instance to view details.',
+          }),
+        });
+        return;
+      }
+
+      navigation.navigate('PlantInstanceDetail', {
+        plantInstanceId: resolvedId,
+        plantId: instanceSearchPlantId ?? undefined,
+      });
+    },
+    [instanceSearchPlantId, navigation, t]
+  );
+
+  useEffect(() => {
+    if (!isFocused) {
+      lastNurseryRequestKeyRef.current = '';
+      return;
+    }
+
+    if (!plant) {
+      return;
+    }
+
+    const targetPlantId = plant.isUniqueInstance
+      ? instanceSearchPlantId
+      : toPositiveInt(plant.id) ?? toPositiveInt(plantId);
+
+    if (!targetPlantId) {
+      return;
+    }
+
+    const nurseryRequestKey = `${plant.isUniqueInstance ? 'instance' : 'common'}:${targetPlantId}`;
+
+    if (lastNurseryRequestKeyRef.current === nurseryRequestKey) {
+      return;
+    }
+
+    lastNurseryRequestKeyRef.current = nurseryRequestKey;
+
     if (plant.isUniqueInstance) {
-      fetchNurseriesGotPlantInstances(targetPlantId);
+      void fetchNurseriesGotPlantInstances(targetPlantId);
       return;
     }
 
-    fetchNurseriesGotCommonPlantByPlantId(targetPlantId);
+    void fetchNurseriesGotCommonPlantByPlantId(targetPlantId);
   }, [
     isFocused,
     plant,
     plantId,
+    instanceSearchPlantId,
     fetchNurseriesGotPlantInstances,
     fetchNurseriesGotCommonPlantByPlantId,
   ]);
 
   useEffect(() => {
-    if (isInstancePlant) {
-      setSelectedNurseryId(null);
+    if (
+      !isFocused ||
+      !isInstancePlant ||
+      !instanceSearchPlantId ||
+      selectedInstanceNurseryId === null
+    ) {
       return;
     }
 
-    if (nurseriesForPlant.length === 0) {
+    void searchShopInstancePlants({
+      pagination: {
+        pageNumber: instancePageNumber,
+        pageSize: 20,
+      },
+      nurseryId: selectedInstanceNurseryId,
+      plantId: instanceSearchPlantId,
+    });
+  }, [
+    isFocused,
+    isInstancePlant,
+    instanceSearchPlantId,
+    instancePageNumber,
+    searchShopInstancePlants,
+    selectedInstanceNurseryId,
+  ]);
+
+  useEffect(() => {
+    if (!isInstancePlant) {
+      setSelectedInstanceId(null);
+      return;
+    }
+
+    if (shopInstancePlants.length === 0) {
+      setSelectedInstanceId(null);
+      return;
+    }
+
+    const firstAvailableInstance =
+      shopInstancePlants.find((instance) => isInstanceAvailable(instance)) ?? shopInstancePlants[0];
+
+    setSelectedInstanceId((current) => {
+      if (
+        current !== null &&
+        shopInstancePlants.some((instance) => instance.plantInstanceId === current)
+      ) {
+        return current;
+      }
+
+      return firstAvailableInstance.plantInstanceId;
+    });
+  }, [isInstanceAvailable, isInstancePlant, shopInstancePlants]);
+
+  useEffect(() => {
+    if (isInstancePlant) {
+      return;
+    }
+
+    if (commonNurseries.length === 0) {
       setSelectedNurseryId(null);
       return;
     }
 
     setSelectedNurseryId((current) => {
-      if (current && nurseriesForPlant.some((nursery) => nursery.nurseryId === current)) {
+      if (current && commonNurseries.some((nursery) => nursery.nurseryId === current)) {
         return current;
       }
-      return nurseriesForPlant[0].nurseryId;
+      return commonNurseries[0].nurseryId;
     });
-  }, [isInstancePlant, nurseriesForPlant]);
+  }, [commonNurseries, isInstancePlant]);
   const hasMoreRelatedItems = relatedPlants.length > 1;
   const showRelatedArrowLeft = relatedScrollX > 4;
   const showRelatedArrowRight = hasMoreRelatedItems
@@ -407,8 +632,13 @@ export default function PlantDetailScreen() {
       return;
     }
 
+    if (plant.isUniqueInstance) {
+      handleOpenPlantInstanceDetail(selectedShopInstance?.plantInstanceId ?? null);
+      return;
+    }
+
     void (async () => {
-      const checkoutQuantity = plant.isUniqueInstance ? 1 : selectedQuantity;
+      const checkoutQuantity = selectedQuantity;
       const baseCheckoutItem: CheckoutItem = {
         id: `buy_now_${plant.id}`,
         name: plant.name,
@@ -418,29 +648,6 @@ export default function PlantDetailScreen() {
         quantity: checkoutQuantity,
         isUniqueInstance: plant.isUniqueInstance,
       };
-
-      if (plant.isUniqueInstance) {
-        const parsedPlantInstanceId = Number(plant.id);
-        if (!Number.isInteger(parsedPlantInstanceId)) {
-          notify({
-            message: t('cart.addFailed', {
-              defaultValue: 'Unable to continue checkout.',
-            }),
-          });
-          return;
-        }
-
-        navigation.navigate('Checkout', {
-          source: 'buy-now',
-          items: [
-            {
-              ...baseCheckoutItem,
-              plantInstanceId: parsedPlantInstanceId,
-            },
-          ],
-        });
-        return;
-      }
 
       const createdCartItem = await addToCart(plant, checkoutQuantity, {
         commonPlantId: selectedNursery?.commonPlantId ?? undefined,
@@ -695,20 +902,79 @@ export default function PlantDetailScreen() {
     return `${minPrice.toLocaleString(locale)}₫ - ${maxPrice.toLocaleString(locale)}₫`;
   };
 
-  const renderNurseryCard = (nursery: (typeof nurseriesForPlant)[number]) => {
-    const isSelected = !isInstancePlant && nursery.nurseryId === selectedNurseryId;
+  const formatInstancePrice = (value: number) => {
+    return `${value.toLocaleString(locale)}₫`;
+  };
+
+  const handleSelectInstanceNursery = (nurseryId: number) => {
+    if (selectedInstanceNurseryId === nurseryId) {
+      return;
+    }
+
+    setSelectedInstanceNurseryId(nurseryId);
+    setInstancePageNumber(1);
+    setSelectedInstanceId(null);
+  };
+
+  const handlePrevInstancePage = () => {
+    if (!canGoPrevInstancePage) {
+      return;
+    }
+
+    setInstancePageNumber(shopInstancePlantsPageNumber - 1);
+  };
+
+  const handleNextInstancePage = () => {
+    if (!canGoNextInstancePage) {
+      return;
+    }
+
+    setInstancePageNumber(shopInstancePlantsPageNumber + 1);
+  };
+
+  const renderInstanceCard = (instance: ShopInstanceSearchItem) => {
+    const isSelected = instance.plantInstanceId === selectedInstanceId;
+    const available = isInstanceAvailable(instance);
 
     return (
       <TouchableOpacity
-        key={`${nursery.nurseryId}-${nursery.commonPlantId ?? 'i'}`}
-        style={[styles.nurseryCard, isSelected && styles.nurseryCardSelected]}
+        key={`instance-${instance.plantInstanceId}`}
+        style={[styles.instanceCard, isSelected && styles.instanceCardSelected]}
         onPress={() => {
-          if (!isInstancePlant) {
-            setSelectedNurseryId(nursery.nurseryId);
-          }
+          setSelectedInstanceId(instance.plantInstanceId);
+          handleOpenPlantInstanceDetail(instance.plantInstanceId);
         }}
+        activeOpacity={0.85}
+      >
+        <View style={styles.instanceHeader}>
+          <Text style={styles.instanceCode}>{instance.sku}</Text>
+          <Text style={[styles.instanceStatus, !available && styles.instanceStatusUnavailable]}>
+            {instance.statusName}
+          </Text>
+        </View>
+        <Text style={styles.instanceNursery}>{instance.nurseryName}</Text>
+        <View style={styles.instanceMetaRow}>
+          <Text style={styles.instanceMetaText}>
+            {t('plantInstanceDetail.healthStatus', {
+              defaultValue: 'Health status',
+            })}
+            : {instance.healthStatus || t('common.updating', { defaultValue: 'Updating' })}
+          </Text>
+          <Text style={styles.instancePrice}>{formatInstancePrice(instance.specificPrice)}</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderNurseryCard = (nursery: (typeof commonNurseries)[number]) => {
+    const isSelected = nursery.nurseryId === selectedNurseryId;
+
+    return (
+      <TouchableOpacity
+        key={`${nursery.nurseryId}-${nursery.commonPlantId ?? nursery.plantInstanceId ?? 'i'}`}
+        style={[styles.nurseryCard, isSelected && styles.nurseryCardSelected]}
+        onPress={() => setSelectedNurseryId(nursery.nurseryId)}
         activeOpacity={0.8}
-        disabled={isInstancePlant}
       >
       <View style={styles.nurseryHeader}>
         <Ionicons name="business-outline" size={18} color="#15803D" />
@@ -766,7 +1032,9 @@ export default function PlantDetailScreen() {
     );
   }
 
-  const price = plant.basePrice ?? 0;
+  const price = isInstancePlant
+    ? selectedShopInstance?.specificPrice ?? plant.basePrice ?? 0
+    : plant.basePrice ?? 0;
 
   // ============ RENDER ============
   return (
@@ -795,20 +1063,22 @@ export default function PlantDetailScreen() {
           <Ionicons name="chevron-back" size={22} color="#0D1B12" />
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.heartBtn}
-          onPress={() => {
-            if (plant) {
-              handleToggleWishlist(plant);
-            }
-          }}
-        >
-          <Ionicons
-            name={plant && isWishlisted(plant) ? 'heart' : 'heart-outline'}
-            size={20}
-            color={plant && isWishlisted(plant) ? COLORS.error : COLORS.white}
-          />
-        </TouchableOpacity>
+        {!isInstancePlant && (
+          <TouchableOpacity
+            style={styles.heartBtn}
+            onPress={() => {
+              if (plant) {
+                handleToggleWishlist(plant);
+              }
+            }}
+          >
+            <Ionicons
+              name={plant && isWishlisted(plant) ? 'heart' : 'heart-outline'}
+              size={20}
+              color={plant && isWishlisted(plant) ? COLORS.error : COLORS.white}
+            />
+          </TouchableOpacity>
+        )}
       </View>
 
       <ScrollView
@@ -985,7 +1255,86 @@ export default function PlantDetailScreen() {
             </View>
           )}
 
-          {nurseriesForPlant.length > 0 && (
+          {isInstancePlant && (
+            <View style={styles.sectionWrap}>
+              <Text style={styles.sectionTitle}>
+                {t('plantDetail.availableInstances', {
+                  defaultValue: 'Available instances',
+                })}
+              </Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.instanceFilterRow}
+              >
+                {instanceNurseryFilters.map((nurseryFilter) => (
+                  <TouchableOpacity
+                    key={`instance-filter-${nurseryFilter.nurseryId}`}
+                    style={[
+                      styles.instanceFilterChip,
+                      selectedInstanceNurseryId === nurseryFilter.nurseryId &&
+                        styles.instanceFilterChipActive,
+                    ]}
+                    onPress={() => handleSelectInstanceNursery(nurseryFilter.nurseryId)}
+                  >
+                    <Text
+                      style={[
+                        styles.instanceFilterChipText,
+                        selectedInstanceNurseryId === nurseryFilter.nurseryId &&
+                          styles.instanceFilterChipTextActive,
+                      ]}
+                    >
+                      {nurseryFilter.nurseryName}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              {shopInstancePlants.length > 0 ? (
+                <View style={styles.instanceListWrap}>
+                  {shopInstancePlants.map(renderInstanceCard)}
+                </View>
+              ) : (
+                <View style={styles.instanceEmptyWrap}>
+                  <Text style={styles.instanceEmptyText}>
+                    {t('plantDetail.noInstances', {
+                      defaultValue: 'No instances found for this filter.',
+                    })}
+                  </Text>
+                </View>
+              )}
+
+              {shopInstancePlantsTotalPages > 1 && (
+                <View style={styles.instancePaginationRow}>
+                  <TouchableOpacity
+                    style={[
+                      styles.instancePageBtn,
+                      !canGoPrevInstancePage && styles.instancePageBtnDisabled,
+                    ]}
+                    disabled={!canGoPrevInstancePage}
+                    onPress={handlePrevInstancePage}
+                  >
+                    <Ionicons name="chevron-back" size={16} color={COLORS.textPrimary} />
+                  </TouchableOpacity>
+                  <Text style={styles.instancePageText}>
+                    {`${shopInstancePlantsPageNumber}/${shopInstancePlantsTotalPages} | ${shopInstancePlantsTotalCount}`}
+                  </Text>
+                  <TouchableOpacity
+                    style={[
+                      styles.instancePageBtn,
+                      !canGoNextInstancePage && styles.instancePageBtnDisabled,
+                    ]}
+                    disabled={!canGoNextInstancePage}
+                    onPress={handleNextInstancePage}
+                  >
+                    <Ionicons name="chevron-forward" size={16} color={COLORS.textPrimary} />
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          )}
+
+          {!isInstancePlant && commonNurseries.length > 0 && (
             <View style={styles.sectionWrap}>
               <Text style={styles.sectionTitle}>
                 {t('plantDetail.availableNurseries', {
@@ -1136,11 +1485,18 @@ export default function PlantDetailScreen() {
       <View style={styles.bottomBar}>
         {isInstancePlant ? (
           <TouchableOpacity
-            style={[styles.buyNowBtn, styles.buyNowBtnPrimary]}
-            onPress={handleBuyNow}
+            style={[
+              styles.buyNowBtn,
+              styles.buyNowBtnPrimary,
+              !selectedShopInstance && styles.buyNowBtnDisabled,
+            ]}
+            disabled={!selectedShopInstance}
+            onPress={() => handleOpenPlantInstanceDetail(selectedShopInstance?.plantInstanceId)}
           >
             <Text style={[styles.buyNowText, styles.buyNowTextPrimary]}>
-              {t('plantDetail.buyNow', { defaultValue: 'Buy now' })}
+              {t('plantDetail.viewInstanceDetail', {
+                defaultValue: 'View selected instance',
+              })}
             </Text>
           </TouchableOpacity>
         ) : (
@@ -1586,6 +1942,126 @@ const styles = StyleSheet.create({
   },
 
   // ---- Nurseries ----
+  instanceFilterRow: {
+    marginTop: SPACING.lg,
+    paddingRight: 8,
+    gap: 8,
+  },
+  instanceFilterChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 16,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+  },
+  instanceFilterChipActive: {
+    borderColor: '#13EC5B',
+    backgroundColor: '#F0FDF4',
+  },
+  instanceFilterChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
+  instanceFilterChipTextActive: {
+    color: '#14532D',
+  },
+  instanceListWrap: {
+    marginTop: SPACING.md,
+    gap: 10,
+  },
+  instanceCard: {
+    padding: 14,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: COLORS.white,
+    gap: 8,
+    ...SHADOWS.sm,
+  },
+  instanceCardSelected: {
+    borderColor: '#13EC5B',
+    backgroundColor: '#F0FDF4',
+  },
+  instanceHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  instanceCode: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#102216',
+  },
+  instanceStatus: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#15803D',
+  },
+  instanceStatusUnavailable: {
+    color: COLORS.error,
+  },
+  instanceNursery: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#4C9A66',
+  },
+  instanceMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  instanceMetaText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '500',
+    color: COLORS.textSecondary,
+  },
+  instancePrice: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#13EC5B',
+  },
+  instanceEmptyWrap: {
+    marginTop: SPACING.md,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: COLORS.white,
+  },
+  instanceEmptyText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: COLORS.textSecondary,
+  },
+  instancePaginationRow: {
+    marginTop: SPACING.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  instancePageBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.gray300,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.white,
+  },
+  instancePageBtnDisabled: {
+    opacity: 0.35,
+  },
+  instancePageText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
   nurseryList: {
     marginTop: SPACING.lg,
     gap: 12,
@@ -1906,6 +2382,9 @@ const styles = StyleSheet.create({
   buyNowBtnPrimary: {
     borderWidth: 0,
     backgroundColor: '#13EC5B',
+  },
+  buyNowBtnDisabled: {
+    opacity: 0.4,
   },
   buyNowText: {
     fontSize: 16,

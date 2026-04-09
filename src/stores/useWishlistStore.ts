@@ -10,6 +10,7 @@ type WishlistTarget = {
 
 interface WishlistState {
   statusByKey: Record<string, boolean>;
+  pendingByKey: Record<string, boolean>;
   clearStatus: () => void;
   setStatuses: (targets: WishlistTarget[], value: boolean) => void;
   ensureStatus: (targets: WishlistTarget[]) => Promise<void>;
@@ -21,7 +22,8 @@ interface WishlistState {
 
 export const useWishlistStore = create<WishlistState>((set, get) => ({
   statusByKey: {},
-  clearStatus: () => set({ statusByKey: {} }),
+  pendingByKey: {},
+  clearStatus: () => set({ statusByKey: {}, pendingByKey: {} }),
   setStatuses: (targets, value) => {
     if (targets.length === 0) {
       return;
@@ -40,15 +42,29 @@ export const useWishlistStore = create<WishlistState>((set, get) => ({
       return;
     }
 
-    const statusByKey = get().statusByKey;
-    const pendingTargets = targets.filter(
-      (target) =>
-        statusByKey[getWishlistKey(target.itemType, target.itemId)] === undefined
-    );
+    const targetByKey = new Map<string, WishlistTarget>();
+    targets.forEach((target) => {
+      targetByKey.set(getWishlistKey(target.itemType, target.itemId), target);
+    });
+
+    const { statusByKey, pendingByKey } = get();
+    const pendingTargets = Array.from(targetByKey.entries())
+      .filter(
+        ([key]) => statusByKey[key] === undefined && pendingByKey[key] !== true
+      )
+      .map(([, target]) => target);
 
     if (pendingTargets.length === 0) {
       return;
     }
+
+    set((state) => {
+      const nextPending = { ...state.pendingByKey };
+      pendingTargets.forEach((target) => {
+        nextPending[getWishlistKey(target.itemType, target.itemId)] = true;
+      });
+      return { pendingByKey: nextPending };
+    });
 
     const results = await Promise.all(
       pendingTargets.map(async (target) => {
@@ -67,10 +83,12 @@ export const useWishlistStore = create<WishlistState>((set, get) => ({
 
     set((state) => {
       const next = { ...state.statusByKey };
+      const nextPending = { ...state.pendingByKey };
       results.forEach((result) => {
         next[result.key] = result.value;
+        delete nextPending[result.key];
       });
-      return { statusByKey: next };
+      return { statusByKey: next, pendingByKey: nextPending };
     });
   },
   toggleWishlist: async (itemType, itemId) => {

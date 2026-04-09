@@ -285,6 +285,261 @@ export interface SearchPlantsResponse {
   };
 }
 
+// ==================== Unified Shop Search ====================
+export interface ShopSearchRequest {
+  pagination?: {
+    pageNumber: number;
+    pageSize: number;
+  };
+  keyword?: string;
+  minPrice?: number;
+  maxPrice?: number;
+  categoryIds?: number[];
+  tagIds?: number[];
+  petSafe?: boolean;
+  childSafe?: boolean;
+  comboSeason?: number;
+  comboType?: number;
+  placementType?: number;
+  careLevelType?: number;
+  careLevel?: string;
+  toxicity?: boolean;
+  airPurifying?: boolean;
+  hasFlower?: boolean;
+  isUniqueInstance?: boolean;
+  sizes?: number[];
+  fengShuiElement?: number;
+  nurseryId?: number;
+  sortBy?: string;
+  sortDirection?: string;
+  includePlants?: boolean;
+  includeMaterials?: boolean;
+  includeCombos?: boolean;
+}
+
+export interface ShopSearchPlantSummary {
+  id: number;
+  name: string;
+  basePrice: number;
+  isUniqueInstance: boolean;
+  size: number;
+  sizeName: string;
+  careLevelType: number;
+  careLevelTypeName: string;
+  fengShuiElement: number;
+  fengShuiElementName?: string | null;
+  isActive: boolean;
+  primaryImageUrl?: string | null;
+  totalInstances: number;
+  availableInstances: number;
+  availableCommonQuantity?: number;
+  totalAvailableStock?: number;
+  categoryNames: string[];
+  tagNames: string[];
+  commonPlantId?: number | null;
+  nurseryPlantComboId?: number | null;
+  nurseryMaterialId?: number | null;
+}
+
+export interface ShopSearchMaterialSummary {
+  id: number;
+  materialId: number;
+  materialName: string;
+  materialCode: string;
+  unit: string;
+  nurseryId: number;
+  nurseryName: string;
+  quantity: number;
+  expiredDate?: string | null;
+  reservedQuantity: number;
+  isActive: boolean;
+  availableQuantity: number;
+  imageUrl?: string | null;
+}
+
+export interface ShopSearchComboNursery {
+  nurseryId: number;
+  nurseryName: string;
+  quantity: number;
+}
+
+export interface ShopSearchComboSummary {
+  id: number;
+  name: string;
+  comboType: number;
+  comboTypeName?: string | null;
+  description?: string | null;
+  price: number;
+  imageUrl?: string | null;
+  nurseries: ShopSearchComboNursery[];
+  season?: number | null;
+  seasonName?: string | null;
+  petSafe?: boolean;
+  childSafe?: boolean;
+}
+
+export type ShopSearchItemType = 'Plant' | 'Material' | 'Combo';
+
+export interface ShopSearchItem {
+  type: ShopSearchItemType;
+  plant: ShopSearchPlantSummary | null;
+  material: ShopSearchMaterialSummary | null;
+  combo: ShopSearchComboSummary | null;
+}
+
+export interface ShopSearchItemsPayload {
+  items: ShopSearchItem[];
+  totalCount: number;
+  pageNumber: number;
+  pageSize: number;
+  totalPages: number;
+  hasPrevious: boolean;
+  hasNext: boolean;
+}
+
+export interface ShopSearchPayload {
+  keyword: string | null;
+  items: ShopSearchItemsPayload;
+  plantTotalCount: number;
+  materialTotalCount: number;
+  comboTotalCount: number;
+}
+
+export interface ShopSearchResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: ShopSearchPayload;
+}
+
+export interface ShopSearchConfigGroup {
+  groupName: string;
+  values: SystemEnumValue[];
+}
+
+export interface ShopUnifiedSearchConfigPayload {
+  filterEnums: ShopSearchConfigGroup[];
+  filterOptions: unknown[];
+  sortEnums: ShopSearchConfigGroup[];
+}
+
+export interface ShopUnifiedSearchConfigResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: ShopUnifiedSearchConfigPayload;
+}
+
+// ==================== Material & Combo Details ====================
+export interface MaterialDetail {
+  id: number;
+  materialCode: string;
+  name: string;
+  description: string;
+  basePrice: number;
+  unit: string;
+  brand?: string | null;
+  specifications?: string | null;
+  expiryMonths?: number | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  categories: Category[];
+  tags: Tag[];
+  images: string[];
+}
+
+export interface MaterialDetailResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: MaterialDetail;
+}
+
+export interface PlantComboDetailItem {
+  id: number;
+  plantComboId: number;
+  plantId: number;
+  plantName: string;
+  quantity: number;
+  notes?: string | null;
+}
+
+export interface PlantComboDetail {
+  id: number;
+  comboCode: string;
+  comboName: string;
+  comboType: number;
+  comboTypeName: string;
+  description: string;
+  suitableSpace?: string | null;
+  suitableRooms?: string[];
+  fengShuiElement?: number | null;
+  fengShuiPurpose?: string | null;
+  petSafe?: boolean;
+  childSafe?: boolean;
+  themeName?: string | null;
+  themeDescription?: string | null;
+  comboPrice: number;
+  season?: number | null;
+  seasonName?: string | null;
+  isActive: boolean;
+  viewCount?: number;
+  purchaseCount?: number;
+  createdAt: string;
+  updatedAt: string;
+  comboItems: PlantComboDetailItem[];
+  images: string[];
+  tagsNavigation: Tag[];
+}
+
+export interface PlantComboDetailResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: PlantComboDetail;
+}
+
+// ==================== Admin Filter Options ====================
+export interface SearchAdminListParams {
+  pageNumber?: number;
+  pageSize?: number;
+}
+
+export interface CategoriesPayload {
+  items: Category[];
+  totalCount: number;
+  pageNumber: number;
+  pageSize: number;
+  totalPages: number;
+  hasPrevious: boolean;
+  hasNext: boolean;
+}
+
+export interface CategoriesResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: CategoriesPayload;
+}
+
+export interface TagsPayload {
+  items: Tag[];
+  totalCount: number;
+  pageNumber: number;
+  pageSize: number;
+  totalPages: number;
+  hasPrevious: boolean;
+  hasNext: boolean;
+}
+
+export interface TagsResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: TagsPayload;
+}
+
 // ==================== Nursery Search ====================
 export interface Nursery {
   id: number;
@@ -388,9 +643,81 @@ export interface SearchCommonPlantsResponse {
   };
 }
 
+// ==================== Shop Plant Instances Search ====================
+export interface ShopInstanceSearchRequest {
+  pagination: {
+    pageNumber: number;
+    pageSize: number;
+  };
+  nurseryId: number;
+  plantId: number;
+}
+
+export interface ShopInstanceSearchItem {
+  plantInstanceId: number;
+  plantId: number;
+  plantName: string;
+  currentNurseryId: number;
+  nurseryName: string;
+  sku: string;
+  specificPrice: number;
+  height?: number | null;
+  healthStatus?: string | null;
+  description?: string | null;
+  status: number;
+  statusName: string;
+  primaryImageUrl?: string | null;
+  createdAt: string;
+}
+
+export interface ShopInstanceSearchPayload {
+  items: ShopInstanceSearchItem[];
+  totalCount: number;
+  pageNumber: number;
+  pageSize: number;
+  totalPages: number;
+  hasPrevious: boolean;
+  hasNext: boolean;
+}
+
+export interface ShopInstanceSearchResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: ShopInstanceSearchPayload;
+}
+
+export interface PlantInstanceDetail {
+  id: number;
+  plantId: number;
+  plantName: string;
+  currentNurseryId: number;
+  nurseryName: string;
+  sku: string;
+  specificPrice: number;
+  height?: number | null;
+  trunkDiameter?: number | null;
+  healthStatus?: string | null;
+  age?: number | null;
+  description?: string | null;
+  status: number;
+  statusName: string;
+  createdAt: string;
+  updatedAt: string;
+  images: string[];
+}
+
+export interface PlantInstanceDetailResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: PlantInstanceDetail;
+}
+
 // ==================== Nurseries By Plant Instances ====================
 export interface NurseryPlantInstanceAvailability {
   commonPlantId?: number | null;
+  plantInstanceId?: number | null;
   nurseryId: number;
   nurseryName: string;
   address: string;
@@ -521,7 +848,7 @@ export interface CheckoutItem {
 }
 
 // ==================== Wishlist ====================
-export type WishlistItemType = string;
+export type WishlistItemType = 'Plant' | 'PlantInstance' | 'PlantCombo' | 'Material';
 
 export interface WishlistItem {
   id: number;
@@ -531,6 +858,7 @@ export interface WishlistItem {
   itemImageUrl: string | null;
   price: number;
   quantity: number | null;
+  nurseryName: string | null;
   additionalInfo: string | null;
   createdAt: string;
 }
@@ -771,6 +1099,18 @@ export type RootStackParamList = {
   MainTabs: undefined;
   ShipperHome: undefined;
   PlantDetail: { plantId: string };
+  PlantInstanceDetail: {
+    plantInstanceId: number;
+    plantId?: number;
+  };
+  MaterialDetail: {
+    materialId: number;
+    nurseryMaterialId?: number;
+  };
+  ComboDetail: {
+    comboId: number;
+    nurseryPlantComboId?: number;
+  };
   AIDesign: undefined;
   AIDesignResult: { resultId: string };
   Cart: undefined;

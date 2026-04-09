@@ -43,6 +43,7 @@ export default function BottomTabNavigator() {
         component={CatalogScreen}
         options={{
           tabBarIcon: ({ color }) => <ICONS.plants width={25} height={28} color={color} />,
+          tabBarStyle: { display: 'none' },
         }}
       />
       <Tab.Screen

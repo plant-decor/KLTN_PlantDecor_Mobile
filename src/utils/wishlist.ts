@@ -17,26 +17,29 @@ const toPositiveNumber = (value: unknown) => {
 };
 
 export const resolveWishlistTarget = (plant: Plant): WishlistTarget | null => {
-  const materialId = toPositiveNumber(plant.nurseryMaterialId);
-  if (materialId) {
-    return { itemType: 'NurseryMaterial', itemId: materialId };
+  const entityId = toPositiveNumber(plant.id);
+  const commonPlantId = toPositiveNumber(plant.commonPlantId);
+  const shouldUsePlantInstanceTarget =
+    plant.isUniqueInstance ||
+    (entityId !== null && commonPlantId !== null && entityId !== commonPlantId);
+
+  if (shouldUsePlantInstanceTarget && entityId) {
+    return { itemType: 'PlantInstance', itemId: entityId };
   }
 
   const comboId = toPositiveNumber(plant.nurseryPlantComboId);
   if (comboId) {
-    return { itemType: 'NurseryPlantCombo', itemId: comboId };
+    return { itemType: 'PlantCombo', itemId: comboId };
   }
 
-  if (plant.isUniqueInstance) {
-    const instanceId = toPositiveNumber(plant.id);
-    if (instanceId) {
-      return { itemType: 'PlantInstance', itemId: instanceId };
-    }
+  const materialId = toPositiveNumber(plant.nurseryMaterialId);
+  if (materialId) {
+    return { itemType: 'Material', itemId: materialId };
   }
 
-  const commonPlantId = toPositiveNumber(plant.commonPlantId ?? plant.id);
-  if (commonPlantId) {
-    return { itemType: 'CommonPlant', itemId: commonPlantId };
+  const plantId = commonPlantId ?? entityId;
+  if (plantId) {
+    return { itemType: 'Plant', itemId: plantId };
   }
 
   return null;

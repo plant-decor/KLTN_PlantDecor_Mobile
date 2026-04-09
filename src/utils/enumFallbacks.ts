@@ -27,6 +27,30 @@ const FALLBACK_GROUPS: Record<string, SystemEnumValue[]> = {
     { value: 3, name: 'Medium' },
     { value: 4, name: 'Large' },
   ],
+  ComboType: [
+    { value: 1, name: 'Space' },
+    { value: 2, name: 'Fengshui' },
+    { value: 3, name: 'Theme' },
+  ],
+  SeasonType: [
+    { value: 1, name: 'All' },
+    { value: 2, name: 'Spring' },
+    { value: 3, name: 'Summer' },
+    { value: 4, name: 'Autumn' },
+    { value: 5, name: 'Winter' },
+    { value: 6, name: 'Tet' },
+  ],
+  UnifiedSearchSortBy: [
+    { value: 1, name: 'Name' },
+    { value: 2, name: 'Price' },
+    { value: 3, name: 'Size' },
+    { value: 4, name: 'AvailableInstances' },
+    { value: 5, name: 'CreatedAt' },
+  ],
+  SortDirection: [
+    { value: 1, name: 'Asc' },
+    { value: 2, name: 'Desc' },
+  ],
   FengShuiElement: [
     { value: 1, name: 'Metal' },
     { value: 2, name: 'Wood' },
@@ -71,6 +95,10 @@ const GROUP_ALIASES: Record<string, string[]> = {
   CareLevelType: ['CareLevelType', 'careLevelType', 'careLevel'],
   PlantSort: ['PlantSort', 'plantSort', 'plant-sort', 'sortBy'],
   PlantSize: ['PlantSize', 'plantSize', 'size'],
+  ComboType: ['ComboType', 'comboType'],
+  SeasonType: ['SeasonType', 'seasonType', 'comboSeason'],
+  UnifiedSearchSortBy: ['UnifiedSearchSortBy', 'unifiedSearchSortBy', 'shopSortBy'],
+  SortDirection: ['SortDirection', 'sortDirection'],
   FengShuiElement: ['FengShuiElement', 'fengShuiElement', 'fengShui'],
   Gender: ['Gender', 'gender', 'userGender'],
   PaymentStrategy: ['PaymentStrategy', 'paymentStrategy', 'paymentMethod'],
@@ -80,6 +108,14 @@ const GROUP_ALIASES: Record<string, string[]> = {
 
 const RESOURCE_GROUPS: Record<string, string[]> = {
   plants: ['PlacementType', 'PlantSize', 'CareLevelType', 'FengShuiElement'],
+  combos: ['ComboType', 'SeasonType'],
+  shopunified: ['ComboType', 'SeasonType', 'UnifiedSearchSortBy', 'SortDirection'],
+  shopsearchconfigshopunified: [
+    'ComboType',
+    'SeasonType',
+    'UnifiedSearchSortBy',
+    'SortDirection',
+  ],
   plantsort: ['PlantSort'],
   users: ['Gender'],
   orders: ['OrderStatus', 'OrderType'],

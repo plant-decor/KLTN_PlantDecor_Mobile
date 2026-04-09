@@ -1,8 +1,13 @@
 import { API } from '../constants';
 import {
+  CategoriesResponse,
+  MaterialDetailResponse,
   NurseriesGotPlantInstancesResponse,
   NurseriesGotCommonPlantResponse,
+  PlantInstanceDetailResponse,
+  PlantComboDetailResponse,
   PlantDetailResponse,
+  SearchAdminListParams,
   SearchCommonPlantsNurseryRequest,
   SearchCommonPlantsNurseryResponse,
   SearchCommonPlantsRequest,
@@ -11,10 +16,109 @@ import {
   SearchNurseriesResponse,
   SearchPlantsRequest,
   SearchPlantsResponse,
+  ShopInstanceSearchRequest,
+  ShopInstanceSearchResponse,
+  ShopSearchRequest,
+  ShopSearchResponse,
+  ShopUnifiedSearchConfigResponse,
+  TagsResponse,
 } from '../types';
 import api from './api';
 
+const buildAdminListParams = (params?: SearchAdminListParams) => {
+  if (!params) {
+    return undefined;
+  }
+
+  const query: Record<string, number> = {};
+
+  if (params.pageNumber !== undefined) {
+    query.PageNumber = params.pageNumber;
+  }
+
+  if (params.pageSize !== undefined) {
+    query.PageSize = params.pageSize;
+  }
+
+  return Object.keys(query).length > 0 ? query : undefined;
+};
+
 export const plantService = {
+  searchShop: async (request: ShopSearchRequest) => {
+    try {
+      const response = await api.post<ShopSearchResponse>(
+        API.ENDPOINTS.SHOP_SEARCH,
+        request
+      );
+      return response.data.payload;
+    } catch (error: any) {
+      console.error('searchShop error:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  getShopUnifiedSearchConfig: async () => {
+    try {
+      const response = await api.get<ShopUnifiedSearchConfigResponse>(
+        API.ENDPOINTS.SHOP_SEARCH_CONFIG
+      );
+      return response.data.payload;
+    } catch (error: any) {
+      console.error(
+        'getShopUnifiedSearchConfig error:',
+        error.response?.data || error.message
+      );
+      throw error;
+    }
+  },
+
+  getAdminCategories: async (params?: SearchAdminListParams) => {
+    try {
+      const response = await api.get<CategoriesResponse>(API.ENDPOINTS.ADMIN_CATEGORIES, {
+        params: buildAdminListParams(params),
+      });
+      return response.data.payload;
+    } catch (error: any) {
+      console.error('getAdminCategories error:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  getAdminTags: async (params?: SearchAdminListParams) => {
+    try {
+      const response = await api.get<TagsResponse>(API.ENDPOINTS.ADMIN_TAGS, {
+        params: buildAdminListParams(params),
+      });
+      return response.data.payload;
+    } catch (error: any) {
+      console.error('getAdminTags error:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  getMaterialDetail: async (id: string | number) => {
+    try {
+      const response = await api.get<MaterialDetailResponse>(
+        API.ENDPOINTS.MATERIAL_DETAIL(id)
+      );
+      return response.data.payload;
+    } catch (error: any) {
+      console.error('getMaterialDetail error:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  getPlantComboDetail: async (id: string | number) => {
+    try {
+      const response = await api.get<PlantComboDetailResponse>(
+        API.ENDPOINTS.PLANT_COMBO_DETAIL(id)
+      );
+      return response.data.payload;
+    } catch (error: any) {
+      console.error('getPlantComboDetail error:', error.response?.data || error.message);
+      throw error;
+    }
+  },
 
   getPlantDetail: async (id: string) => {
     try {
@@ -37,6 +141,31 @@ export const plantService = {
       return response.data.payload;
     } catch (error: any) {
       console.error('searchShopPlants error:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  searchShopInstancePlants: async (request: ShopInstanceSearchRequest) => {
+    try {
+      const response = await api.post<ShopInstanceSearchResponse>(
+        API.ENDPOINTS.SHOP_INSTANCE_SEARCH,
+        request
+      );
+      return response.data.payload;
+    } catch (error: any) {
+      console.error('searchShopInstancePlants error:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  getPlantInstanceDetail: async (id: number) => {
+    try {
+      const response = await api.get<PlantInstanceDetailResponse>(
+        API.ENDPOINTS.INSTANCE_DETAIL(id)
+      );
+      return response.data.payload;
+    } catch (error: any) {
+      console.error('getPlantInstanceDetail error:', error.response?.data || error.message);
       throw error;
     }
   },

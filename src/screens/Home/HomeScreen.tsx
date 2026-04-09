@@ -316,16 +316,18 @@ export default function HomeScreen() {
             <Text style={styles.hotBadgeText}>{t('home.hot')}</Text>
           </View>
 
-          <TouchableOpacity
-            style={styles.favoriteBtn}
-            onPress={() => handleToggleWishlist(item.id)}
-          >
-            <Ionicons
-              name={isWishlisted(item.id) ? 'heart' : 'heart-outline'}
-              size={16}
-              color={isWishlisted(item.id) ? COLORS.error : COLORS.white}
-            />
-          </TouchableOpacity>
+          {!item.isUniqueInstance && (
+            <TouchableOpacity
+              style={styles.favoriteBtn}
+              onPress={() => handleToggleWishlist(item.id)}
+            >
+              <Ionicons
+                name={isWishlisted(item.id) ? 'heart' : 'heart-outline'}
+                size={16}
+                color={isWishlisted(item.id) ? COLORS.error : COLORS.white}
+              />
+            </TouchableOpacity>
+          )}
 
           <View style={styles.ratingBadge}>
             <Ionicons name="star" size={10} color={COLORS.warning} />

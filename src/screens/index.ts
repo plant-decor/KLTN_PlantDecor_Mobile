@@ -1,5 +1,6 @@
 export { default as HomeScreen } from './Home/HomeScreen';
 export { default as PlantDetailScreen } from './PlantDetail/PlantDetailScreen';
+export { default as PlantInstanceDetailScreen } from './PlantInstanceDetail/PlantInstanceDetailScreen';
 export { default as CartScreen } from './Cart/CartScreen';
 export { default as ProfileScreen } from './Profile/ProfileScreen';
 export { default as AIDesignScreen } from './AIDesign/AIDesignScreen';
@@ -10,6 +11,8 @@ export { default as LoginScreen } from './Login/LoginScreen';
 export { default as RegisterScreen } from './Register/RegisterScreen';
 export { default as ForgotPasswordScreen } from './ForgotPassword/ForgotPasswordScreen';
 export { default as CatalogScreen } from './Catalog/CatalogScreen';
+export { default as MaterialDetailScreen } from './MaterialDetail/MaterialDetailScreen';
+export { default as ComboDetailScreen } from './ComboDetail/ComboDetailScreen';
 export { default as WishlistScreen } from './Wishlist/WishlistScreen';
 export { default as EditProfileScreen } from './EditProfile/EditProfileScreen';
 export { default as OrderHistoryScreen } from './OrderHistory/OrderHistoryScreen';
