@@ -1,10 +1,15 @@
 import * as SecureStore from 'expo-secure-store';
+import * as Application from 'expo-application';
+import * as Device from 'expo-device';
 import { jwtDecode } from 'jwt-decode';
+import { Platform } from 'react-native';
 import { API, APP_CONFIG } from '../constants';
 import {
   ApiResponse,
   AuthJwtClaims,
   AuthTokens,
+  LogoutAllRequest,
+  LogoutAllResponse,
   User,
   UserGender,
   UpdateProfileRequest,
@@ -147,6 +152,24 @@ const buildUserFromToken = (accessToken: string): User | null => {
   }
 };
 
+const resolveDeviceId = async (): Promise<string> => {
+  try {
+    if (Platform.OS === 'android') {
+      const androidId = await Application.getAndroidId();
+      return androidId ?? `${Application.applicationId}-android`;
+    }
+
+    if (Platform.OS === 'ios') {
+      const iosId = await Application.getIosIdForVendorAsync();
+      return iosId ?? `${Application.applicationId}-ios`;
+    }
+
+    return Device.deviceName ?? `${Platform.OS}-unknown`;
+  } catch {
+    return Device.deviceName ?? `${Platform.OS}-${Date.now()}`;
+  }
+};
+
 export const authService = {
   setAuthFailureHandler,
   notifyAuthFailure,
@@ -196,6 +219,30 @@ export const authService = {
   logout: async () => {
     try {
       await api.post(API.ENDPOINTS.LOGOUT);
+    } catch {
+      // Ignore logout API errors
+    } finally {
+      await clearStoredTokens();
+    }
+  },
+
+  logoutAll: async () => {
+    try {
+      const [accessToken, refreshToken] = await Promise.all([
+        SecureStore.getItemAsync(APP_CONFIG.SECURE_STORE_KEYS.ACCESS_TOKEN),
+        SecureStore.getItemAsync(APP_CONFIG.SECURE_STORE_KEYS.REFRESH_TOKEN),
+      ]);
+
+      if (accessToken && refreshToken) {
+        const request: LogoutAllRequest = {
+          accessToken,
+          refreshToken,
+          deviceId: await resolveDeviceId(),
+        };
+        await api.post<LogoutAllResponse>(API.ENDPOINTS.LOGOUT_ALL, request);
+      } else {
+        await api.post(API.ENDPOINTS.LOGOUT);
+      }
     } catch {
       // Ignore logout API errors
     } finally {

@@ -18,3 +18,4 @@ export { default as EditProfileScreen } from './EditProfile/EditProfileScreen';
 export { default as OrderHistoryScreen } from './OrderHistory/OrderHistoryScreen';
 export { default as OrderDetailScreen } from './OrderDetail/OrderDetailScreen';
 export { default as ShipperHomeScreen } from './ShipperHome/ShipperHomeScreen';
+export { default as ShippingListScreen } from './ShippingList/ShippingListScreen';

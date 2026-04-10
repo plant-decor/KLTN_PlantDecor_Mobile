@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
 import BottomTabNavigator from './BottomTabNavigator';
-import { useEnumStore } from '../stores';
+import { useAuthStore, useEnumStore } from '../stores';
 import {
   PlantDetailScreen,
   PlantInstanceDetailScreen,
@@ -22,12 +22,20 @@ import {
   OrderHistoryScreen,
   OrderDetailScreen,
   ShipperHomeScreen,
+  ShippingListScreen,
 } from '../screens';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function RootNavigator() {
   const preloadResources = useEnumStore((state) => state.preloadResources);
+  const userRole = useAuthStore((state) => state.user?.role);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+
+  const normalizedRole = (userRole ?? '').trim().toLowerCase();
+  const isShipper = isAuthenticated && normalizedRole === 'shipper';
+  const navigatorKey = isShipper ? 'shipper-root' : 'default-root';
+  const initialRouteName: keyof RootStackParamList = isShipper ? 'ShipperHome' : 'MainTabs';
 
   useEffect(() => {
     void preloadResources(['plants', 'plant-sort', 'users', 'orders', 'payments']);
@@ -35,6 +43,8 @@ export default function RootNavigator() {
 
   return (
     <Stack.Navigator
+      key={navigatorKey}
+      initialRouteName={initialRouteName}
       screenOptions={{
         headerShown: false,
         animation: 'slide_from_right',
@@ -42,6 +52,7 @@ export default function RootNavigator() {
     >
       <Stack.Screen name="MainTabs" component={BottomTabNavigator} />
       <Stack.Screen name="ShipperHome" component={ShipperHomeScreen} />
+      <Stack.Screen name="ShippingList" component={ShippingListScreen} />
       <Stack.Screen name="PlantDetail" component={PlantDetailScreen} />
       <Stack.Screen name="PlantInstanceDetail" component={PlantInstanceDetailScreen} />
       <Stack.Screen name="MaterialDetail" component={MaterialDetailScreen} />

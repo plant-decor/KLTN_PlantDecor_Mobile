@@ -23,7 +23,7 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 export default function ProfileScreen() {
   const navigation = useNavigation<NavigationProp>();
   const { t } = useTranslation();
-  const { user, isAuthenticated, logout } = useAuthStore();
+  const { user, isAuthenticated, logout, logoutAll } = useAuthStore();
   const { totalItems } = useCartStore();
 
   const selectedLanguage = i18n.language === 'vi' ? 'vi' : 'en';
@@ -43,6 +43,27 @@ export default function ProfileScreen() {
         onPress: () => logout(),
       },
     ]);
+  };
+
+  const handleLogoutAll = () => {
+    Alert.alert(
+      t('profile.logoutAllConfirmTitle', {
+        defaultValue: 'Log out all devices',
+      }),
+      t('profile.logoutAllConfirmMessage', {
+        defaultValue: 'Are you sure you want to log out on all devices?',
+      }),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('profile.logoutAll', {
+            defaultValue: 'Log out all devices',
+          }),
+          style: 'destructive',
+          onPress: () => logoutAll(),
+        },
+      ]
+    );
   };
 
   if (!isAuthenticated) {
@@ -185,6 +206,13 @@ export default function ProfileScreen() {
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <Ionicons name="log-out-outline" size={22} color={COLORS.error} />
           <Text style={styles.logoutText}>{t('common.logout')}</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.logoutAllButton} onPress={handleLogoutAll}>
+          <Ionicons name="exit-outline" size={20} color={COLORS.error} />
+          <Text style={styles.logoutAllText}>
+            {t('profile.logoutAll', { defaultValue: 'Log out all devices' })}
+          </Text>
         </TouchableOpacity>
 
         {/* App Version */}
@@ -354,6 +382,24 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.lg,
     color: COLORS.error,
     fontWeight: '600',
+  },
+  logoutAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    marginHorizontal: SPACING.lg,
+    marginTop: SPACING.sm,
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.error,
+    backgroundColor: COLORS.white,
+  },
+  logoutAllText: {
+    fontSize: FONTS.sizes.md,
+    color: COLORS.error,
+    fontWeight: '700',
   },
   version: {
     textAlign: 'center',

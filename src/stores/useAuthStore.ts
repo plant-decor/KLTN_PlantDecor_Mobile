@@ -14,6 +14,7 @@ interface AuthState {
   login: (email: string, password: string, deviceId?: string) => Promise<User | null>;
   register: (data: RegisterRequest) => Promise<{ message: string }>;
   logout: () => Promise<void>;
+  logoutAll: () => Promise<void>;
   fetchProfile: () => Promise<void>;
   updateProfile: (data: UpdateProfileRequest) => Promise<void>;
   checkAuth: () => Promise<void>;
@@ -91,6 +92,20 @@ export const useAuthStore = create<AuthState>((set) => {
       set({ isLoading: true });
       try {
         await authService.logout();
+      } finally {
+        set({
+          user: null,
+          isAuthenticated: false,
+          isLoading: false,
+          error: null,
+        });
+      }
+    },
+
+    logoutAll: async () => {
+      set({ isLoading: true });
+      try {
+        await authService.logoutAll();
       } finally {
         set({
           user: null,

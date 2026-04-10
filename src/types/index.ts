@@ -57,6 +57,18 @@ export interface RefreshTokenRequest {
   refreshToken: string;
 }
 
+export interface LogoutAllRequest {
+  accessToken: string;
+  refreshToken: string;
+  deviceId: string;
+}
+
+export interface LogoutAllResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+}
+
 // Matches the exact API envelope: { success, statusCode, message, payload: { accessToken, refreshToken } }
 export interface LoginResponse {
   success: boolean;
@@ -935,6 +947,12 @@ export type OrderType = number;
 export type PaymentStrategy = number;
 export type OrderStatusFilter = string;
 
+export interface GetNurseryOrdersRequest {
+  status?: number;
+  pageNumber?: number;
+  pageSize?: number;
+}
+
 export interface CreateOrderRequest {
   address: string;
   phone: string;
@@ -965,6 +983,8 @@ export interface OrderNursery {
   status: number;
   statusName: string;
   shipperNote: string | null;
+  deliveryNote: string | null;
+  note: string | null;
   items: OrderLineItem[];
 }
 
@@ -1021,6 +1041,56 @@ export interface GetOrdersResponse {
   statusCode: number;
   message: string;
   payload: OrderPayload[];
+}
+
+export interface GetNurseryOrdersPayload {
+  items: OrderNursery[];
+  totalCount: number;
+  pageNumber: number;
+  pageSize: number;
+  totalPages: number;
+  hasPrevious: boolean;
+  hasNext: boolean;
+}
+
+export interface GetNurseryOrdersResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: GetNurseryOrdersPayload;
+}
+
+export interface StartShippingRequest {
+  shipperNote: string;
+}
+
+export interface StartShippingResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: OrderNursery;
+}
+
+export interface MarkDeliveredRequest {
+  deliveryNote: string;
+}
+
+export interface MarkDeliveredResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: OrderNursery;
+}
+
+export interface MarkDeliveryFailedRequest {
+  failureReason: string;
+}
+
+export interface MarkDeliveryFailedResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: OrderNursery;
 }
 
 export interface GetOrderDetailResponse {
@@ -1100,6 +1170,7 @@ export interface PaginatedResponse<T> {
 export type RootStackParamList = {
   MainTabs: undefined;
   ShipperHome: undefined;
+  ShippingList: undefined;
   PlantDetail: { plantId: string };
   PlantInstanceDetail: {
     plantInstanceId: number;

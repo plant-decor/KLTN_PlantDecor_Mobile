@@ -151,6 +151,7 @@ export const API = {
     REGISTER: "/Authentication/register",
     REFRESH_TOKEN: "/Authentication/refreshToken",
     LOGOUT: "/Authentication/logout",
+    LOGOUT_ALL: "/Authentication/logout-all",
     SEND_OTP_EMAIL: "/Authentication/send-otp-email-verification",
     VERIFY_OTP_EMAIL: "/Authentication/verify-otp-email-verification",
     SEND_OTP_PASSWORD_RESET: "/Authentication/send-otp-password-reset",
@@ -168,6 +169,7 @@ export const API = {
     PLANT_COMBO_DETAIL: (id: string | number) => `/PlantCombos/${id}`,
     NURSERIES_GOT_COMMON_PLANT_BY_PLANT_ID: (plantId: string | number) => `/shop/plants/${plantId}/common-nurseries`,
     COMMON_PLANTS_BY_NURSERY: (nurseryId: string) => `/shop/nurseries/${nurseryId}/common-plants/search`,
+    INSTANCE_PLANTS_BY_NURSERY: (nurseryId: string) => `/shop/nurseries/${nurseryId}/plant-instances/search`,
     NURSERIES_GOT_PLANT_INSTANCES: (plantId: string | number) => `/plants/${plantId}/nurseries`,
     INSTANCE_DETAIL: (id: number) => `/shop/plant-instances/${id}`,
     COMMON_DETAIL: (id: number) => `/shop/common-plants/${id}`,
@@ -223,6 +225,15 @@ export const API = {
     //User Preferences
     PREFERENCES_RECOMMENDATION: "/UserPreferences/recommendations",
     PREFERENCES_CONTEXTUAL: "/UserPreferences/recommendations/contextual",
+
+    //Shipping
+    NURSERY_ORDERS: "/shipper/nursery-orders/my",
+    START_SHIPPING: (orderId: number) =>
+      `/shipper/nursery-orders/${orderId}/start-shipping`,
+    MARK_DELIVERED: (orderId: number) =>
+      `/shipper/nursery-orders/${orderId}/mark-delivered`,
+    MARK_DELIVERY_FAILED: (orderId: number) =>
+      `/shipper/nursery-orders/${orderId}/mark-delivery-failed`,
 
   },
 } as const;

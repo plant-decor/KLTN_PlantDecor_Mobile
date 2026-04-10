@@ -31,9 +31,9 @@ export default function ShipperHomeScreen() {
       <TouchableOpacity
         style={styles.primaryButton}
         activeOpacity={0.8}
-        onPress={() => navigation.navigate('OrderHistory')}
+        onPress={() => navigation.navigate('ShippingList')}
       >
-        <Text style={styles.primaryButtonText}>Open Orders</Text>
+        <Text style={styles.primaryButtonText}>Open Shipping List</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
