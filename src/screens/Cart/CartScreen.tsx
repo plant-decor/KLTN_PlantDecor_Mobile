@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -8,8 +8,9 @@ import {
   Image,
   ActivityIndicator,
   Alert,
+  LayoutChangeEvent,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -19,15 +20,22 @@ import { CartApiItem, CheckoutItem, RootStackParamList } from '../../types';
 import { useAuthStore, useCartStore } from '../../stores';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+const PAGE_SIZE = 10;
+type PageToken = number | 'left-ellipsis' | 'right-ellipsis';
 
 type CartDisplayItem = {
   id: string;
   name: string;
+  nurseryName: string;
   size?: string;
   image?: string;
   price: number;
+  subTotal: number;
   oldPrice?: number;
   quantity: number;
+  commonPlantId: number | null;
+  nurseryPlantComboId: number | null;
+  nurseryMaterialId: number | null;
   isAvailable: boolean;
 };
 
@@ -38,20 +46,28 @@ const mapCartItems = (
   items.map((item) => ({
     id: String(item.id),
     name: item.productName,
+    nurseryName: item.nurseryName,
     size: fallbackSize,
     price: item.price,
+    subTotal: item.subTotal ?? item.price * item.quantity,
     quantity: item.quantity,
+    commonPlantId: item.commonPlantId,
+    nurseryPlantComboId: item.nurseryPlantComboId,
+    nurseryMaterialId: item.nurseryMaterialId,
     isAvailable: true,
   }));
 
 export default function CartScreen() {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
+  const insets = useSafeAreaInsets();
   const [items, setItems] = useState<CartDisplayItem[]>([]);
+  const [footerHeight, setFooterHeight] = useState(0);
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
   const { isAuthenticated } = useAuthStore();
   const {
     cartItems,
+    cartMeta,
     fetchCart,
     updateCartItem,
     removeCartItem,
@@ -59,16 +75,51 @@ export default function CartScreen() {
     isLoading,
   } = useCartStore();
   const authPromptedRef = useRef(false);
+  const currentPage = Math.max(1, cartMeta?.pageNumber ?? 1);
+  const totalPagesFromCount = Math.ceil((cartMeta?.totalCount ?? items.length) / PAGE_SIZE);
+  const totalPages = Math.max(1, cartMeta?.totalPages ?? 1, totalPagesFromCount);
+  const hasNextPage = cartMeta?.hasNext ?? currentPage < totalPages;
+  const visiblePageTokens = useMemo<PageToken[]>(() => {
+    if (totalPages <= 7) {
+      return Array.from({ length: totalPages }, (_, index) => index + 1);
+    }
+
+    const tokens: PageToken[] = [1];
+    const startPage = Math.max(2, currentPage - 1);
+    const endPage = Math.min(totalPages - 1, currentPage + 1);
+
+    if (startPage > 2) {
+      tokens.push('left-ellipsis');
+    }
+
+    for (let page = startPage; page <= endPage; page += 1) {
+      tokens.push(page);
+    }
+
+    if (endPage < totalPages - 1) {
+      tokens.push('right-ellipsis');
+    }
+
+    tokens.push(totalPages);
+    return tokens;
+  }, [currentPage, totalPages]);
+
+  const loadCartPage = useCallback(
+    async (targetPage: number) => {
+      await fetchCart({ pageNumber: targetPage, pageSize: PAGE_SIZE });
+    },
+    [fetchCart],
+  );
 
   useEffect(() => {
     if (!isAuthenticated) {
       return;
     }
 
-    fetchCart({ pageNumber: 1, pageSize: 10 }).catch(() => {
+    loadCartPage(1).catch(() => {
       // Error state handled by UI; keep silent here.
     });
-  }, [fetchCart, isAuthenticated]);
+  }, [isAuthenticated, loadCartPage]);
 
   useEffect(() => {
     const fallbackSize = t('common.updating', { defaultValue: 'Updating' });
@@ -102,9 +153,51 @@ export default function CartScreen() {
     () =>
       items
         .filter((item) => item.isAvailable)
-        .reduce((sum, item) => sum + (item.price || 0) * item.quantity, 0),
+        .reduce(
+          (sum, item) => sum + (item.subTotal ?? item.price * item.quantity),
+          0,
+        ),
     [items],
   );
+
+  const listBottomPadding = useMemo(
+    () => (footerHeight > 0 ? footerHeight : 220) + SPACING.lg,
+    [footerHeight],
+  );
+
+  const handleFooterLayout = useCallback((event: LayoutChangeEvent) => {
+    const nextHeight = event.nativeEvent.layout.height;
+    setFooterHeight((previousHeight) =>
+      Math.abs(previousHeight - nextHeight) > 1 ? nextHeight : previousHeight,
+    );
+  }, []);
+
+  const hasDetailTarget = (item: CartDisplayItem) =>
+    item.commonPlantId != null ||
+    item.nurseryMaterialId != null ||
+    item.nurseryPlantComboId != null;
+
+  const handleViewDetail = (item: CartDisplayItem) => {
+    if (item.commonPlantId != null) {
+      navigation.navigate('PlantDetail', { plantId: String(item.commonPlantId) });
+      return;
+    }
+
+    if (item.nurseryMaterialId != null) {
+      navigation.navigate('MaterialDetail', {
+        materialId: item.nurseryMaterialId,
+        nurseryMaterialId: item.nurseryMaterialId,
+      });
+      return;
+    }
+
+    if (item.nurseryPlantComboId != null) {
+      navigation.navigate('ComboDetail', {
+        comboId: item.nurseryPlantComboId,
+        nurseryPlantComboId: item.nurseryPlantComboId,
+      });
+    }
+  };
 
   const incrementQuantity = (id: string) => {
     const nextQuantity = items.find((item) => item.id === id)?.quantity ?? 1;
@@ -112,7 +205,7 @@ export default function CartScreen() {
     setItems((prev) =>
       prev.map((item) =>
         item.id === id && item.isAvailable
-          ? { ...item, quantity }
+          ? { ...item, quantity, subTotal: item.price * quantity }
           : item,
       ),
     );
@@ -127,10 +220,9 @@ export default function CartScreen() {
     setItems((prev) =>
       prev.map((item) => {
         if (item.id !== id || !item.isAvailable) return item;
-        return { ...item, quantity };
+        return { ...item, quantity, subTotal: item.price * quantity };
       }),
     );
-    console.log('Updating cart item', { id, quantity });
     void updateCartItem(Number(id), quantity).catch(() => {
       // keep optimistic state for now
     });
@@ -139,7 +231,7 @@ export default function CartScreen() {
   const removeItem = (id: string) => {
     setItems((prev) => prev.filter((item) => item.id !== id));
     void removeCartItem(Number(id)).catch(() => {
-      void fetchCart({ pageNumber: 1, pageSize: 10 }).catch(() => {
+      void loadCartPage(currentPage).catch(() => {
         // keep optimistic state for now
       });
     });
@@ -148,27 +240,127 @@ export default function CartScreen() {
   const handleClearAll = () => {
     setItems([]);
     void clearCart().catch(() => {
-      void fetchCart({ pageNumber: 1, pageSize: 10 }).catch(() => {
+      void loadCartPage(currentPage).catch(() => {
         // keep optimistic state for now
       });
     });
   };
 
+  const handlePrevPage = () => {
+    if (currentPage <= 1 || isLoading) {
+      return;
+    }
+
+    void loadCartPage(currentPage - 1).catch(() => {
+      // preserve current list if paging fails
+    });
+  };
+
+  const handleNextPage = () => {
+    if (currentPage >= totalPages || !hasNextPage || isLoading) {
+      return;
+    }
+
+    void loadCartPage(currentPage + 1).catch(() => {
+      // preserve current list if paging fails
+    });
+  };
+
+  const handlePageSelect = (targetPage: number) => {
+    if (targetPage < 1 || targetPage > totalPages || targetPage === currentPage || isLoading) {
+      return;
+    }
+
+    void loadCartPage(targetPage).catch(() => {
+      // preserve current list if paging fails
+    });
+  };
+
   const renderCartItem = ({ item }: { item: CartDisplayItem }) => {
     const isUnavailable = !item.isAvailable;
-    const sizeLabel = item.size
-      ? t('cart.size', { size: item.size })
-      : t('common.updating', { defaultValue: 'Updating' });
+    const itemSubTotal = item.subTotal ?? item.price * item.quantity;
+    const canViewDetail = hasDetailTarget(item);
 
     return (
       <View style={[styles.cartItem, isUnavailable && styles.cartItemUnavailable]}>
-        {item.image ? (
-          <Image source={{ uri: item.image }} style={styles.itemImage} resizeMode="cover" />
-        ) : (
-          <View style={styles.itemImagePlaceholder}>
-            <Ionicons name="leaf-outline" size={28} color={COLORS.gray400} />
+        <TouchableOpacity
+          style={styles.itemContentPressable}
+          activeOpacity={canViewDetail ? 0.82 : 1}
+          disabled={!canViewDetail}
+          onPress={() => handleViewDetail(item)}
+        >
+          {item.image ? (
+            <Image source={{ uri: item.image }} style={styles.itemImage} resizeMode="cover" />
+          ) : (
+            <View style={styles.itemImagePlaceholder}>
+              <Ionicons name="leaf-outline" size={28} color={COLORS.gray400} />
+            </View>
+          )}
+
+          <View style={styles.itemInfo}>
+            <Text style={[styles.itemName, isUnavailable && styles.unavailableText]} numberOfLines={1}>
+              {item.name}
+            </Text>
+            <Text style={styles.nurseryText} numberOfLines={1}>
+              {t('cart.nurseryLabel', { defaultValue: 'Nursery:' })} {item.nurseryName || '-'}
+            </Text>
+
+            <View style={styles.priceBreakdownWrap}>
+              <View style={styles.priceBreakdownRow}>
+                <Text style={styles.priceBreakdownLabel}>
+                  {t('cart.priceLabel', { defaultValue: 'Price:' })}
+                </Text>
+                <Text style={styles.priceBreakdownValue}>{(item.price || 0).toLocaleString(locale)}đ</Text>
+              </View>
+              <View style={styles.priceBreakdownRow}>
+                <Text style={styles.priceBreakdownLabel}>
+                  {t('cart.itemSubtotalLabel', { defaultValue: 'Item subtotal:' })}
+                </Text>
+                <Text style={styles.priceBreakdownSubtotal}>{itemSubTotal.toLocaleString(locale)}đ</Text>
+              </View>
+            </View>
+
+            <View style={styles.bottomRow}>
+              {!isUnavailable && (
+                <View style={styles.quantityPill}>
+                  <TouchableOpacity
+                    style={[styles.quantityCircle, styles.quantityMinus]}
+                    onPress={() => decrementQuantity(item.id)}
+                  >
+                    <Ionicons name="remove" size={16} color={COLORS.textSecondary} />
+                  </TouchableOpacity>
+                  <Text style={styles.quantityText}>{item.quantity}</Text>
+                  <TouchableOpacity
+                    style={[styles.quantityCircle, styles.quantityPlus]}
+                    onPress={() => incrementQuantity(item.id)}
+                  >
+                    <Ionicons name="add" size={16} color={COLORS.white} />
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {canViewDetail && (
+                <TouchableOpacity
+                  style={styles.viewDetailBtn}
+                  onPress={() => handleViewDetail(item)}
+                  activeOpacity={0.75}
+                >
+                  <Text style={styles.viewDetailText}>
+                    {t('cart.viewDetail', { defaultValue: 'View detail' })}
+                  </Text>
+                  <Ionicons name="chevron-forward" size={14} color={COLORS.primary} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {isUnavailable && (
+              <View style={styles.warningRow}>
+                <Ionicons name="alert-circle" size={15} color={COLORS.error} />
+                <Text style={styles.warningText}>{t('cart.unavailableMessage')}</Text>
+              </View>
+            )}
           </View>
-        )}
+        </TouchableOpacity>
 
         {!isUnavailable ? (
           <TouchableOpacity style={styles.closeBtn} onPress={() => removeItem(item.id)}>
@@ -179,50 +371,6 @@ export default function CartScreen() {
             <Text style={styles.deleteText}>{t('cart.delete')}</Text>
           </TouchableOpacity>
         )}
-
-        <View style={styles.itemInfo}>
-          <Text style={[styles.itemName, isUnavailable && styles.unavailableText]} numberOfLines={1}>
-            {item.name}
-          </Text>
-
-          {isUnavailable ? (
-            <View style={styles.priceUnavailableRow}>
-              <View style={styles.soldOutBadge}>
-                <Text style={styles.soldOutText}>{t('cart.soldOut')}</Text>
-              </View>
-              <Text style={styles.oldPrice}>{(item.oldPrice || 0).toLocaleString(locale)}đ</Text>
-            </View>
-          ) : (
-            <Text style={styles.itemPrice}>{(item.price || 0).toLocaleString(locale)}đ</Text>
-          )}
-
-          <View style={styles.bottomRow}>
-            {!isUnavailable && (
-              <View style={styles.quantityPill}>
-                <TouchableOpacity
-                  style={[styles.quantityCircle, styles.quantityMinus]}
-                  onPress={() => decrementQuantity(item.id)}
-                >
-                  <Ionicons name="remove" size={16} color={COLORS.textSecondary} />
-                </TouchableOpacity>
-                <Text style={styles.quantityText}>{item.quantity}</Text>
-                <TouchableOpacity
-                  style={[styles.quantityCircle, styles.quantityPlus]}
-                  onPress={() => incrementQuantity(item.id)}
-                >
-                  <Ionicons name="add" size={16} color={COLORS.white} />
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-
-          {isUnavailable && (
-            <View style={styles.warningRow}>
-              <Ionicons name="alert-circle" size={15} color={COLORS.error} />
-              <Text style={styles.warningText}>{t('cart.unavailableMessage')}</Text>
-            </View>
-          )}
-        </View>
       </View>
     );
   };
@@ -276,11 +424,66 @@ export default function CartScreen() {
         data={items}
         renderItem={renderCartItem}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.list, { paddingBottom: listBottomPadding }]}
         showsVerticalScrollIndicator={false}
       />
 
-      <View style={styles.footerSummary}>
+      <View
+        style={[styles.footerSummary, { paddingBottom: SPACING.md + insets.bottom }]}
+        onLayout={handleFooterLayout}
+      >
+        <View style={styles.paginationRow}>
+          <View style={styles.paginationControl}>
+            <TouchableOpacity
+              style={[styles.paginationButton, currentPage <= 1 && styles.paginationButtonDisabled]}
+              onPress={handlePrevPage}
+              disabled={currentPage <= 1 || isLoading}
+            >
+              <Ionicons name="chevron-back" size={16} color={COLORS.textPrimary} />
+            </TouchableOpacity>
+
+            <View style={styles.pageNumberList}>
+              {visiblePageTokens.map((token, index) =>
+                typeof token === 'number' ? (
+                  <TouchableOpacity
+                    key={`cart-page-${token}`}
+                    style={[
+                      styles.pageNumberChip,
+                      token === currentPage && styles.pageNumberChipActive,
+                    ]}
+                    onPress={() => handlePageSelect(token)}
+                    disabled={token === currentPage || isLoading}
+                  >
+                    <Text
+                      style={[
+                        styles.pageNumberChipText,
+                        token === currentPage && styles.pageNumberChipTextActive,
+                      ]}
+                    >
+                      {token}
+                    </Text>
+                  </TouchableOpacity>
+                ) : (
+                  <Text key={`cart-page-ellipsis-${token}-${index}`} style={styles.pageNumberEllipsis}>
+                    ...
+                  </Text>
+                )
+              )}
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.paginationButton,
+                (currentPage >= totalPages || !hasNextPage) && styles.paginationButtonDisabled,
+              ]}
+              onPress={handleNextPage}
+              disabled={currentPage >= totalPages || !hasNextPage || isLoading}
+            >
+              <Ionicons name="chevron-forward" size={16} color={COLORS.textPrimary} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
         <View style={styles.summaryRow}>
           <Text style={styles.footerLabel}>{t('cart.subtotal')}</Text>
           <Text style={styles.footerSubValue}>{totalPrice.toLocaleString(locale)}đ</Text>
@@ -358,15 +561,17 @@ const styles = StyleSheet.create({
   list: {
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.sm,
-    paddingBottom: SPACING['4xl'],
   },
   cartItem: {
-    flexDirection: 'row',
     backgroundColor: COLORS.white,
     borderRadius: 30,
     padding: SPACING.md,
     marginBottom: SPACING.md,
     position: 'relative',
+  },
+  itemContentPressable: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
   },
   cartItemUnavailable: {
     opacity: 0.78,
@@ -417,6 +622,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.textPrimary,
   },
+  nurseryText: {
+    marginTop: 2,
+    fontSize: FONTS.sizes.md,
+    color: COLORS.textSecondary,
+    fontWeight: '500',
+  },
   unavailableText: {
     color: COLORS.gray600,
   },
@@ -425,6 +636,29 @@ const styles = StyleSheet.create({
     fontSize: 36 / 2,
     fontWeight: '700',
     color: COLORS.primaryLight,
+  },
+  priceBreakdownWrap: {
+    marginTop: 6,
+    gap: 2,
+  },
+  priceBreakdownRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  priceBreakdownLabel: {
+    fontSize: FONTS.sizes.md,
+    color: COLORS.textSecondary,
+  },
+  priceBreakdownValue: {
+    fontSize: FONTS.sizes.md,
+    color: COLORS.textPrimary,
+    fontWeight: '500',
+  },
+  priceBreakdownSubtotal: {
+    fontSize: FONTS.sizes.lg,
+    color: COLORS.primaryLight,
+    fontWeight: '700',
   },
   priceUnavailableRow: {
     flexDirection: 'row',
@@ -453,6 +687,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  viewDetailBtn: {
+    marginLeft: 'auto',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  viewDetailText: {
+    fontSize: FONTS.sizes.md,
+    color: COLORS.primary,
+    fontWeight: '600',
   },
   itemSize: {
     fontSize: FONTS.sizes.lg,
@@ -527,6 +772,65 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
     gap: SPACING.xs,
+  },
+  paginationRow: {
+    paddingTop: SPACING.xs,
+    marginBottom: 2,
+  },
+  paginationControl: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  pageNumberList: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.sm,
+  },
+  pageNumberChip: {
+    minWidth: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.xs,
+  },
+  pageNumberChipActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.secondaryLight,
+  },
+  pageNumberChipText: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+  },
+  pageNumberChipTextActive: {
+    color: COLORS.primary,
+    fontWeight: '700',
+  },
+  pageNumberEllipsis: {
+    fontSize: FONTS.sizes.md,
+    color: COLORS.textSecondary,
+    paddingHorizontal: 2,
+  },
+  paginationButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  paginationButtonDisabled: {
+    opacity: 0.35,
   },
   summaryRow: {
     flexDirection: 'row',

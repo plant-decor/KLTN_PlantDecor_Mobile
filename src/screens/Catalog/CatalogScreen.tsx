@@ -34,7 +34,7 @@ import {
   ShopSearchRequest,
   WishlistItemType,
 } from '../../types';
-import { useAuthStore, useWishlistStore } from '../../stores';
+import { useAuthStore, useCartStore, useWishlistStore } from '../../stores';
 import { cartService, plantService } from '../../services';
 import { getWishlistKey, notify } from '../../utils';
 
@@ -193,6 +193,9 @@ export default function CatalogScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
   const { isAuthenticated } = useAuthStore();
+  const cartItemCount = useCartStore((state) => state.totalItems());
+  const fetchCart = useCartStore((state) => state.fetchCart);
+  const hasLoadedCart = useCartStore((state) => state.hasLoadedCart);
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
   const effectiveTabBarHeight = useMemo(() => {
     if (tabBarHeight <= 0) {
@@ -550,6 +553,16 @@ export default function CatalogScreen() {
     void executeSearch(1, DEFAULT_PAGE_SIZE);
   }, [executeSearch]);
 
+  useEffect(() => {
+    if (!isAuthenticated || hasLoadedCart) {
+      return;
+    }
+
+    void fetchCart({ pageNumber: 1, pageSize: 20 }).catch(() => {
+      // Keep badge in its current state when the prefetch fails.
+    });
+  }, [fetchCart, hasLoadedCart, isAuthenticated]);
+
   const requireAuth = useCallback(
     (onSuccess?: () => void): boolean => {
       if (isAuthenticated) {
@@ -655,7 +668,11 @@ export default function CatalogScreen() {
       }
 
       try {
-        return await cartService.addCartItem(request);
+        const payload = await cartService.addCartItem(request);
+        void fetchCart({ pageNumber: 1, pageSize: 20 }).catch(() => {
+          // Keep optimistic UI if syncing cart count fails.
+        });
+        return payload;
       } catch (cartError: any) {
         notify({
           message:
@@ -667,7 +684,7 @@ export default function CatalogScreen() {
         return null;
       }
     },
-    [requireAuth, t]
+    [fetchCart, requireAuth, t]
   );
 
   const handleAddMaterialToCart = useCallback(
@@ -1529,16 +1546,27 @@ export default function CatalogScreen() {
     return (
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <View style={styles.header}>
-          <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
-          </TouchableOpacity>
+          <View style={styles.headerSide}>
+            <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.goBack()}>
+              <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
+            </TouchableOpacity>
+          </View>
           <Text style={styles.headerTitle}>{t('catalog.headerTitle')}</Text>
-          <TouchableOpacity
-            style={styles.iconBtn}
-            onPress={() => requireAuth(() => navigation.navigate('Cart'))}
-          >
-            <Ionicons name="cart" size={24} color={COLORS.textPrimary} />
-          </TouchableOpacity>
+          <View style={[styles.headerSide, styles.headerActions]}>
+            <TouchableOpacity
+              style={styles.iconBtn}
+              onPress={() => requireAuth(() => navigation.navigate('Wishlist'))}
+            >
+              <Ionicons name="heart-outline" size={22} color={COLORS.textPrimary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.iconBtn}
+              onPress={() => requireAuth(() => navigation.navigate('Cart'))}
+            >
+              <Ionicons name="cart-outline" size={22} color={COLORS.textPrimary} />
+              {cartItemCount > 0 && <View style={styles.cartDot} />}
+            </TouchableOpacity>
+          </View>
         </View>
         <View style={styles.loaderContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
@@ -1551,16 +1579,27 @@ export default function CatalogScreen() {
     return (
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <View style={styles.header}>
-          <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
-          </TouchableOpacity>
+          <View style={styles.headerSide}>
+            <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.goBack()}>
+              <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
+            </TouchableOpacity>
+          </View>
           <Text style={styles.headerTitle}>{t('catalog.headerTitle')}</Text>
-          <TouchableOpacity
-            style={styles.iconBtn}
-            onPress={() => requireAuth(() => navigation.navigate('Cart'))}
-          >
-            <Ionicons name="cart" size={24} color={COLORS.textPrimary} />
-          </TouchableOpacity>
+          <View style={[styles.headerSide, styles.headerActions]}>
+            <TouchableOpacity
+              style={styles.iconBtn}
+              onPress={() => requireAuth(() => navigation.navigate('Wishlist'))}
+            >
+              <Ionicons name="heart-outline" size={22} color={COLORS.textPrimary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.iconBtn}
+              onPress={() => requireAuth(() => navigation.navigate('Cart'))}
+            >
+              <Ionicons name="cart-outline" size={22} color={COLORS.textPrimary} />
+              {cartItemCount > 0 && <View style={styles.cartDot} />}
+            </TouchableOpacity>
+          </View>
         </View>
         <View style={styles.loaderContainer}>
           <Ionicons name="alert-circle" size={56} color={COLORS.error} />
@@ -1576,16 +1615,27 @@ export default function CatalogScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
-        </TouchableOpacity>
+        <View style={styles.headerSide}>
+          <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
+          </TouchableOpacity>
+        </View>
         <Text style={styles.headerTitle}>{t('catalog.headerTitle')}</Text>
-        <TouchableOpacity
-          style={styles.iconBtn}
-          onPress={() => requireAuth(() => navigation.navigate('Cart'))}
-        >
-          <Ionicons name="cart" size={24} color={COLORS.textPrimary} />
-        </TouchableOpacity>
+        <View style={[styles.headerSide, styles.headerActions]}>
+          <TouchableOpacity
+            style={styles.iconBtn}
+            onPress={() => requireAuth(() => navigation.navigate('Wishlist'))}
+          >
+            <Ionicons name="heart-outline" size={22} color={COLORS.textPrimary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.iconBtn}
+            onPress={() => requireAuth(() => navigation.navigate('Cart'))}
+          >
+            <Ionicons name="cart-outline" size={22} color={COLORS.textPrimary} />
+            {cartItemCount > 0 && <View style={styles.cartDot} />}
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.searchContainer}>
@@ -1932,11 +1982,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
   },
+  headerSide: {
+    width: 84,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerActions: {
+    justifyContent: 'flex-end',
+    gap: SPACING.xs,
+  },
   iconBtn: {
     width: 36,
     height: 36,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  cartDot: {
+    position: 'absolute',
+    top: 6,
+    right: 4,
+    width: 8,
+    height: 8,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.primaryLight,
   },
   headerTitle: {
     fontSize: FONTS.sizes.xl,

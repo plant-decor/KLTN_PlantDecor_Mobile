@@ -757,6 +757,8 @@ export interface CartApiItem {
   commonPlantId: number | null;
   nurseryPlantComboId: number | null;
   nurseryMaterialId: number | null;
+  nurseryId: number;
+  nurseryName: string;
   productName: string;
   quantity: number;
   price: number;

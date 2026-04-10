@@ -10,7 +10,7 @@ import {
   RefreshControl,
   Modal,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -29,12 +29,14 @@ import { notify } from '../../utils';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type PendingPlantAction = 'add' | 'buy';
+type PageToken = number | 'left-ellipsis' | 'right-ellipsis';
 
 const PAGE_SIZE = 10;
 
 export default function WishlistScreen() {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
+  const insets = useSafeAreaInsets();
   const { isAuthenticated } = useAuthStore();
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
   const setWishlistStatuses = useWishlistStore((state) => state.setStatuses);
@@ -44,6 +46,8 @@ export default function WishlistScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [pageNumber, setPageNumber] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
   const [hasNext, setHasNext] = useState(false);
   const [isNurseryPickerVisible, setIsNurseryPickerVisible] = useState(false);
   const [isNurseryPickerLoading, setIsNurseryPickerLoading] = useState(false);
@@ -53,6 +57,41 @@ export default function WishlistScreen() {
   const [nurseryOptions, setNurseryOptions] = useState<NurseryPlantInstanceAvailability[]>([]);
   const [selectedNurseryId, setSelectedNurseryId] = useState<number | null>(null);
   const [selectedQuantity, setSelectedQuantity] = useState(1);
+
+  const effectiveTotalPages = useMemo(
+    () => Math.max(1, totalPages, Math.ceil(totalCount / PAGE_SIZE)),
+    [totalCount, totalPages]
+  );
+
+  const hasNextPage = useMemo(
+    () => hasNext || pageNumber < effectiveTotalPages,
+    [effectiveTotalPages, hasNext, pageNumber]
+  );
+
+  const visiblePageTokens = useMemo<PageToken[]>(() => {
+    if (effectiveTotalPages <= 7) {
+      return Array.from({ length: effectiveTotalPages }, (_, index) => index + 1);
+    }
+
+    const tokens: PageToken[] = [1];
+    const startPage = Math.max(2, pageNumber - 1);
+    const endPage = Math.min(effectiveTotalPages - 1, pageNumber + 1);
+
+    if (startPage > 2) {
+      tokens.push('left-ellipsis');
+    }
+
+    for (let page = startPage; page <= endPage; page += 1) {
+      tokens.push(page);
+    }
+
+    if (endPage < effectiveTotalPages - 1) {
+      tokens.push('right-ellipsis');
+    }
+
+    tokens.push(effectiveTotalPages);
+    return tokens;
+  }, [effectiveTotalPages, pageNumber]);
 
   const humanizeType = useCallback((value: string) => {
     const trimmed = value.trim();
@@ -77,9 +116,11 @@ export default function WishlistScreen() {
   );
 
   const fetchWishlist = useCallback(
-    async (targetPage: number, options?: { refresh?: boolean }) => {
+    async (targetPage: number, options?: { refresh?: boolean; paging?: boolean }) => {
       if (options?.refresh) {
         setIsRefreshing(true);
+      } else if (options?.paging) {
+        setIsLoadingMore(true);
       } else if (targetPage === 1) {
         setIsLoading(true);
       } else {
@@ -93,7 +134,7 @@ export default function WishlistScreen() {
         });
         const nextItems = payload.items ?? [];
 
-        setItems((prev) => (targetPage === 1 ? nextItems : [...prev, ...nextItems]));
+        setItems(nextItems);
         setWishlistStatuses(
           nextItems.map((item) => ({
             itemType: item.itemType,
@@ -102,6 +143,8 @@ export default function WishlistScreen() {
           true
         );
         setPageNumber(payload.pageNumber);
+        setTotalPages(Math.max(1, payload.totalPages || 1));
+        setTotalCount(payload.totalCount || 0);
         setHasNext(payload.hasNext);
       } catch (error: any) {
         notify({
@@ -135,11 +178,34 @@ export default function WishlistScreen() {
     fetchWishlist(1, { refresh: true });
   };
 
-  const handleLoadMore = () => {
-    if (!hasNext || isLoadingMore || isLoading) {
+  const handlePrevPage = () => {
+    if (pageNumber <= 1 || isLoading || isLoadingMore) {
       return;
     }
-    fetchWishlist(pageNumber + 1);
+
+    void fetchWishlist(pageNumber - 1, { paging: true });
+  };
+
+  const handleNextPage = () => {
+    if (pageNumber >= effectiveTotalPages || !hasNextPage || isLoading || isLoadingMore) {
+      return;
+    }
+
+    void fetchWishlist(pageNumber + 1, { paging: true });
+  };
+
+  const handlePageSelect = (targetPage: number) => {
+    if (
+      targetPage < 1 ||
+      targetPage > effectiveTotalPages ||
+      targetPage === pageNumber ||
+      isLoading ||
+      isLoadingMore
+    ) {
+      return;
+    }
+
+    void fetchWishlist(targetPage, { paging: true });
   };
 
   const closeNurseryPicker = useCallback(() => {
@@ -430,11 +496,15 @@ export default function WishlistScreen() {
       void wishlistService
         .removeWishlistItem(targetItem.itemType, targetItem.itemId)
         .then(() => {
+          const targetPage = previousItems.length === 1 && pageNumber > 1 ? pageNumber - 1 : pageNumber;
+
           notify({
             message: t('wishlist.removeSuccess', {
               defaultValue: 'Removed from wishlist.',
             }),
           });
+
+          void fetchWishlist(targetPage, { refresh: true });
         })
         .catch((error) => {
           setItems(previousItems);
@@ -452,18 +522,20 @@ export default function WishlistScreen() {
           });
         });
     },
-    [items, t]
+    [fetchWishlist, items, pageNumber, t]
   );
 
   const headerTitle = useMemo(() => {
-    if (items.length > 0) {
+    const count = totalCount || items.length;
+
+    if (count > 0) {
       return t('wishlist.headerWithCount', {
         defaultValue: 'Wishlist ({{count}})',
-        count: items.length,
+        count,
       });
     }
     return t('wishlist.header', { defaultValue: 'Wishlist' });
-  }, [items.length, t]);
+  }, [items.length, t, totalCount]);
 
   const renderWishlistItem = ({ item }: { item: WishlistItem }) => {
     const imageUri = item.itemImageUrl?.trim();
@@ -473,84 +545,86 @@ export default function WishlistScreen() {
 
     return (
       <View style={styles.card}>
-        <View style={styles.imageWrap}>
-          {imageUri ? (
-            <Image source={{ uri: imageUri }} style={styles.image} resizeMode="cover" />
-          ) : (
-            <Ionicons name="leaf-outline" size={28} color={COLORS.gray400} />
-          )}
+        <View style={styles.cardTopRow}>
+          <View style={styles.imageWrap}>
+            {imageUri ? (
+              <Image source={{ uri: imageUri }} style={styles.image} resizeMode="cover" />
+            ) : (
+              <Ionicons name="leaf-outline" size={28} color={COLORS.gray400} />
+            )}
+          </View>
+
+          <View style={styles.info}>
+            <Text style={styles.name} numberOfLines={1}>
+              {item.itemName}
+            </Text>
+
+            <View style={styles.metaRow}>
+              <View style={styles.typeBadge}>
+                <Text style={styles.typeText}>{getItemTypeLabel(item.itemType)}</Text>
+              </View>
+              {showQuantity && item.quantity != null && (
+                <Text style={styles.quantityText}>
+                  {t('wishlist.quantityLabel', 'Available: {{count}}', {
+                    count: item.quantity,
+                  })}
+                </Text>
+              )}
+              {showNurseryName && (
+                <Text style={styles.quantityText} numberOfLines={1}>
+                  {item.nurseryName}
+                </Text>
+              )}
+            </View>
+
+            <Text style={styles.price}>
+              {(item.price || 0).toLocaleString(locale)}đ
+            </Text>
+
+            {item.additionalInfo ? (
+              <Text style={styles.additionalInfo} numberOfLines={2}>
+                {item.additionalInfo}
+              </Text>
+            ) : null}
+          </View>
         </View>
 
-        <View style={styles.info}>
-          <Text style={styles.name} numberOfLines={1}>
-            {item.itemName}
-          </Text>
-
-          <View style={styles.metaRow}>
-            <View style={styles.typeBadge}>
-              <Text style={styles.typeText}>{getItemTypeLabel(item.itemType)}</Text>
-            </View>
-            {showQuantity && item.quantity != null && (
-              <Text style={styles.quantityText}>
-                {t('wishlist.quantityLabel', 'Available: {{count}}', {
-                  count: item.quantity,
-                })}
-              </Text>
-            )}
-            {showNurseryName && (
-              <Text style={styles.quantityText} numberOfLines={1}>
-                {item.nurseryName}
-              </Text>
-            )}
-          </View>
-
-          <Text style={styles.price}>
-            {(item.price || 0).toLocaleString(locale)}đ
-          </Text>
-
-          {item.additionalInfo ? (
-            <Text style={styles.additionalInfo} numberOfLines={2}>
-              {item.additionalInfo}
+        <View style={styles.actionRow}>
+          <TouchableOpacity
+            style={[styles.actionButton, styles.viewDetailActionButton]}
+            onPress={() => handleViewDetail(item)}
+          >
+            <Ionicons name="eye-outline" size={14} color="#1D4ED8" />
+            <Text style={[styles.actionButtonText, styles.viewDetailActionText]}>
+              {t('wishlist.viewDetail', { defaultValue: 'View detail' })}
             </Text>
-          ) : null}
+          </TouchableOpacity>
 
-          <View style={styles.actionRow}>
-            <TouchableOpacity
-              style={[styles.actionButton, styles.viewDetailActionButton]}
-              onPress={() => handleViewDetail(item)}
-            >
-              <Ionicons name="eye-outline" size={14} color="#1D4ED8" />
-              <Text style={[styles.actionButtonText, styles.viewDetailActionText]}>
-                {t('wishlist.viewDetail', { defaultValue: 'View detail' })}
-              </Text>
-            </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.actionButton, styles.buyNowActionButton]}
+            onPress={() => {
+              void handleBuyNow(item);
+            }}
+          >
+            <Ionicons name="flash-outline" size={14} color="#C2410C" />
+            <Text style={[styles.actionButtonText, styles.buyNowActionText]}>
+              {t('plantDetail.buyNow', { defaultValue: 'Buy now' })}
+            </Text>
+          </TouchableOpacity>
 
+          {canAddToCart && (
             <TouchableOpacity
-              style={[styles.actionButton, styles.buyNowActionButton]}
+              style={[styles.actionButton, styles.addToCartActionButton]}
               onPress={() => {
-                void handleBuyNow(item);
+                void handleAddToCart(item);
               }}
             >
-              <Ionicons name="flash-outline" size={14} color="#C2410C" />
-              <Text style={[styles.actionButtonText, styles.buyNowActionText]}>
-                {t('plantDetail.buyNow', { defaultValue: 'Buy now' })}
+              <Ionicons name="cart-outline" size={14} color="#0F6F3C" />
+              <Text style={[styles.actionButtonText, styles.addToCartActionText]}>
+                {t('plantDetail.addToCart', { defaultValue: 'Add to cart' })}
               </Text>
             </TouchableOpacity>
-
-            {canAddToCart && (
-              <TouchableOpacity
-                style={[styles.actionButton, styles.addToCartActionButton]}
-                onPress={() => {
-                  void handleAddToCart(item);
-                }}
-              >
-                <Ionicons name="cart-outline" size={14} color="#0F6F3C" />
-                <Text style={[styles.actionButtonText, styles.addToCartActionText]}>
-                  {t('plantDetail.addToCart', { defaultValue: 'Add to cart' })}
-                </Text>
-              </TouchableOpacity>
-            )}
-          </View>
+          )}
         </View>
 
         <TouchableOpacity
@@ -616,29 +690,91 @@ export default function WishlistScreen() {
           </Text>
         </View>
       ) : (
-        <FlatList
-          data={items}
-          renderItem={renderWishlistItem}
-          keyExtractor={(item) => String(item.id)}
-          contentContainerStyle={styles.list}
-          showsVerticalScrollIndicator={false}
-          onEndReached={handleLoadMore}
-          onEndReachedThreshold={0.4}
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefreshing}
-              onRefresh={handleRefresh}
-              tintColor={COLORS.primary}
-            />
-          }
-          ListFooterComponent={
-            isLoadingMore ? (
+        <View style={styles.listSection}>
+          <FlatList
+            style={styles.listFlex}
+            data={items}
+            renderItem={renderWishlistItem}
+            keyExtractor={(item) => String(item.id)}
+            contentContainerStyle={styles.list}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefreshing}
+                onRefresh={handleRefresh}
+                tintColor={COLORS.primary}
+              />
+            }
+          />
+
+          <View
+            style={[styles.paginationFooter, { paddingBottom: SPACING.xs + insets.bottom }]}
+          >
+            {isLoadingMore ? (
               <View style={styles.footerLoader}>
                 <ActivityIndicator size="small" color={COLORS.primary} />
               </View>
-            ) : null
-          }
-        />
+            ) : null}
+
+            <View style={styles.paginationRow}>
+              <View style={styles.paginationControl}>
+                <TouchableOpacity
+                  style={[styles.paginationButton, pageNumber <= 1 && styles.paginationButtonDisabled]}
+                  onPress={handlePrevPage}
+                  disabled={pageNumber <= 1 || isLoadingMore || isLoading}
+                >
+                  <Ionicons name="chevron-back" size={16} color={COLORS.textPrimary} />
+                </TouchableOpacity>
+
+                <View style={styles.pageNumberList}>
+                  {visiblePageTokens.map((token, index) =>
+                    typeof token === 'number' ? (
+                      <TouchableOpacity
+                        key={`wishlist-page-${token}`}
+                        style={[
+                          styles.pageNumberChip,
+                          token === pageNumber && styles.pageNumberChipActive,
+                        ]}
+                        onPress={() => handlePageSelect(token)}
+                        disabled={token === pageNumber || isLoadingMore || isLoading}
+                      >
+                        <Text
+                          style={[
+                            styles.pageNumberChipText,
+                            token === pageNumber && styles.pageNumberChipTextActive,
+                          ]}
+                        >
+                          {token}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <Text
+                        key={`wishlist-page-ellipsis-${token}-${index}`}
+                        style={styles.pageNumberEllipsis}
+                      >
+                        ...
+                      </Text>
+                    )
+                  )}
+                </View>
+
+                <TouchableOpacity
+                  style={[
+                    styles.paginationButton,
+                    (pageNumber >= effectiveTotalPages || !hasNextPage) &&
+                      styles.paginationButtonDisabled,
+                  ]}
+                  onPress={handleNextPage}
+                  disabled={
+                    pageNumber >= effectiveTotalPages || !hasNextPage || isLoadingMore || isLoading
+                  }
+                >
+                  <Ionicons name="chevron-forward" size={16} color={COLORS.textPrimary} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
       )}
 
       <Modal
@@ -826,18 +962,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  listSection: {
+    flex: 1,
+  },
+  listFlex: {
+    flex: 1,
+  },
   list: {
     paddingHorizontal: SPACING.lg,
-    paddingBottom: SPACING['4xl'],
+    paddingBottom: SPACING.lg,
     paddingTop: SPACING.sm,
   },
   card: {
-    flexDirection: 'row',
     backgroundColor: COLORS.white,
     borderRadius: RADIUS.lg,
     padding: SPACING.md,
     marginBottom: SPACING.md,
     ...SHADOWS.sm,
+  },
+  cardTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
   },
   imageWrap: {
     width: 86,
@@ -855,6 +1000,7 @@ const styles = StyleSheet.create({
   info: {
     flex: 1,
     marginLeft: SPACING.md,
+    paddingRight: SPACING['4xl'],
   },
   name: {
     fontSize: FONTS.sizes.lg,
@@ -974,7 +1120,72 @@ const styles = StyleSheet.create({
     color: COLORS.white,
   },
   footerLoader: {
-    paddingVertical: SPACING.md,
+    paddingVertical: SPACING.xs,
+  },
+  paginationFooter: {
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    backgroundColor: COLORS.background,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.xs,
+  },
+  paginationRow: {
+    paddingTop: SPACING.xs,
+  },
+  paginationControl: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  pageNumberList: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.sm,
+  },
+  pageNumberChip: {
+    minWidth: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.xs,
+  },
+  pageNumberChipActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.secondaryLight,
+  },
+  pageNumberChipText: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+  },
+  pageNumberChipTextActive: {
+    color: COLORS.primary,
+    fontWeight: '700',
+  },
+  pageNumberEllipsis: {
+    fontSize: FONTS.sizes.md,
+    color: COLORS.textSecondary,
+    paddingHorizontal: 2,
+  },
+  paginationButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  paginationButtonDisabled: {
+    opacity: 0.35,
   },
   nurseryPickerBackdrop: {
     flex: 1,

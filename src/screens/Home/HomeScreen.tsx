@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   View,
   Text,
   StyleSheet,
@@ -10,6 +11,7 @@ import {
   TextInput,
   Dimensions,
   Alert,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,7 +22,15 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, SPACING, RADIUS, SHADOWS } from '../../constants';
 import { usePlantStore, useCartStore, useAuthStore, useWishlistStore, useEnumStore } from '../../stores';
-import { MainTabParamList, RootStackParamList, Plant } from '../../types';
+import {
+  AddCartItemRequest,
+  CheckoutItem,
+  MainTabParamList,
+  NurseryPlantInstanceAvailability,
+  Plant,
+  RootStackParamList,
+} from '../../types';
+import { cartService, plantService } from '../../services';
 import { getWishlistKey, notify, resolveWishlistTarget } from '../../utils';
 
 type NavigationProp = CompositeNavigationProp<
@@ -73,6 +83,9 @@ const parseSortDescriptor = (
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - SPACING.lg * 3) / 2 - 2;
 
+const formatMoney = (amount: number, locale: string): string =>
+  `${Math.max(0, amount).toLocaleString(locale)}₫`;
+
 export default function HomeScreen() {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
@@ -80,8 +93,9 @@ export default function HomeScreen() {
   const loadEnumResource = useEnumStore((state) => state.loadResource);
   const getEnumValues = useEnumStore((state) => state.getEnumValues);
   const enumGroups = useEnumStore((state) => state.groups);
-  const totalItems = useCartStore((state) => state.totalItems);
-  const addToCart = useCartStore((state) => state.addToCart);
+  const cartItemCount = useCartStore((state) => state.totalItems());
+  const fetchCart = useCartStore((state) => state.fetchCart);
+  const hasLoadedCart = useCartStore((state) => state.hasLoadedCart);
   const { isAuthenticated } = useAuthStore();
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
   const [selectedSort, setSelectedSort] = useState<HomeSortKey>('newest');
@@ -93,10 +107,27 @@ export default function HomeScreen() {
   const ensureWishlistStatus = useWishlistStore((state) => state.ensureStatus);
   const toggleWishlist = useWishlistStore((state) => state.toggleWishlist);
   const clearWishlistStatus = useWishlistStore((state) => state.clearStatus);
+  const [isNurseryPickerVisible, setIsNurseryPickerVisible] = useState(false);
+  const [isNurseryPickerLoading, setIsNurseryPickerLoading] = useState(false);
+  const [pendingCartPlant, setPendingCartPlant] = useState<Plant | null>(null);
+  const [availableNurseryOptions, setAvailableNurseryOptions] =
+    useState<NurseryPlantInstanceAvailability[]>([]);
+  const [selectedCartNurseryId, setSelectedCartNurseryId] = useState<number | null>(null);
+  const [selectedCartQuantity, setSelectedCartQuantity] = useState(1);
 
   useEffect(() => {
     void loadEnumResource('plant-sort');
   }, [loadEnumResource]);
+
+  useEffect(() => {
+    if (!isAuthenticated || hasLoadedCart) {
+      return;
+    }
+
+    void fetchCart({ pageNumber: 1, pageSize: 20 }).catch(() => {
+      // Keep current UI if cart prefetch fails.
+    });
+  }, [fetchCart, hasLoadedCart, isAuthenticated]);
 
   const sortConfig = useMemo(
     () => {
@@ -193,43 +224,198 @@ export default function HomeScreen() {
     void ensureWishlistStatus(wishlistTargets);
   }, [ensureWishlistStatus, isAuthenticated, wishlistTargets]);
 
-  const requireAuth = (onSuccess?: () => void) => {
-    if (isAuthenticated) {
-      onSuccess?.();
-      return true;
-    }
+  const requireAuth = useCallback(
+    (onSuccess?: () => void) => {
+      if (isAuthenticated) {
+        onSuccess?.();
+        return true;
+      }
 
-    Alert.alert(
-      t('common.loginRequiredTitle', { defaultValue: 'Login required' }),
-      t('common.loginRequiredMessage', { defaultValue: 'Please login to continue.' }),
-      [
-        { text: t('common.cancel', { defaultValue: 'Cancel' }), style: 'cancel' },
-        {
-          text: t('common.login', { defaultValue: 'Login' }),
-          onPress: () => navigation.navigate('Login'),
-        },
-      ],
-    );
-    return false;
-  };
+      Alert.alert(
+        t('common.loginRequiredTitle', { defaultValue: 'Login required' }),
+        t('common.loginRequiredMessage', { defaultValue: 'Please login to continue.' }),
+        [
+          { text: t('common.cancel', { defaultValue: 'Cancel' }), style: 'cancel' },
+          {
+            text: t('common.login', { defaultValue: 'Login' }),
+            onPress: () => navigation.navigate('Login'),
+          },
+        ],
+      );
+      return false;
+    },
+    [isAuthenticated, navigation, t]
+  );
 
-  const handleAddToCart = (plantId: string) => {
+  const submitAddToCart = useCallback(
+    async (request: AddCartItemRequest) => {
+      if (!requireAuth()) {
+        return null;
+      }
+
+      try {
+        const payload = await cartService.addCartItem(request);
+        void fetchCart({ pageNumber: 1, pageSize: 20 }).catch(() => {
+          // Keep optimistic UI if syncing cart count fails.
+        });
+        return payload;
+      } catch (cartError: any) {
+        notify({
+          message:
+            cartError?.response?.data?.message ||
+            t('cart.addFailed', {
+              defaultValue: 'Unable to add to cart.',
+            }),
+        });
+        return null;
+      }
+    },
+    [fetchCart, requireAuth, t]
+  );
+
+  const closeNurseryPicker = useCallback(() => {
+    setIsNurseryPickerVisible(false);
+    setIsNurseryPickerLoading(false);
+    setPendingCartPlant(null);
+    setAvailableNurseryOptions([]);
+    setSelectedCartNurseryId(null);
+    setSelectedCartQuantity(1);
+  }, []);
+
+  const handleSelectNurseryForCart = useCallback(
+    async (plant: Plant) => {
+      if (!requireAuth()) {
+        return;
+      }
+
+      if (plant.isUniqueInstance) {
+        notify({
+          message: t('catalog.uniquePlantCannotCart', {
+            defaultValue: 'Unique plants cannot be added to cart directly.',
+          }),
+        });
+        return;
+      }
+
+      setPendingCartPlant(plant);
+      setIsNurseryPickerVisible(true);
+      setIsNurseryPickerLoading(true);
+      setAvailableNurseryOptions([]);
+      setSelectedCartNurseryId(null);
+      setSelectedCartQuantity(1);
+
+      try {
+        const options = await plantService.getNurseriesGotCommonPlantByPlantId(plant.id);
+        setAvailableNurseryOptions(options ?? []);
+        setSelectedCartNurseryId(options?.[0]?.nurseryId ?? null);
+      } catch (pickerError: any) {
+        notify({
+          message:
+            pickerError?.response?.data?.message ||
+            t('catalog.loadNurseryFailed', {
+              defaultValue: 'Unable to load available nurseries.',
+            }),
+        });
+        closeNurseryPicker();
+      } finally {
+        setIsNurseryPickerLoading(false);
+      }
+    },
+    [closeNurseryPicker, requireAuth, t]
+  );
+
+  const formatNurseryPrice = useCallback(
+    (minPrice: number, maxPrice: number) => {
+      if (!minPrice && !maxPrice) {
+        return t('plantDetail.priceContact', { defaultValue: 'Contact' });
+      }
+
+      if (minPrice === maxPrice) {
+        return formatMoney(minPrice, locale);
+      }
+
+      return `${formatMoney(minPrice, locale)} - ${formatMoney(maxPrice, locale)}`;
+    },
+    [locale, t]
+  );
+
+  const handleConfirmNurseryAdd = useCallback(
+    async (goToCheckout = false) => {
+      if (!pendingCartPlant || selectedCartNurseryId === null) {
+        return;
+      }
+
+      const selectedNursery = availableNurseryOptions.find(
+        (option) => option.nurseryId === selectedCartNurseryId
+      );
+
+      if (!selectedNursery || selectedNursery.commonPlantId == null) {
+        notify({
+          message: t('cart.addFailed', {
+            defaultValue: 'Unable to add to cart.',
+          }),
+        });
+        return;
+      }
+
+      const quantity = Math.max(1, selectedCartQuantity);
+      const payload = await submitAddToCart({
+        commonPlantId: selectedNursery.commonPlantId,
+        nurseryPlantComboId: null,
+        nurseryMaterialId: null,
+        quantity,
+      });
+
+      if (!payload) {
+        return;
+      }
+
+      if (goToCheckout) {
+        const checkoutItem: CheckoutItem = {
+          id: `buy_now_${pendingCartPlant.id}_${selectedNursery.nurseryId}`,
+          name: pendingCartPlant.name,
+          image: pendingCartPlant.images?.find(
+            (image) => typeof image === 'string' && image.trim().length > 0
+          ),
+          price: selectedNursery.minPrice || pendingCartPlant.basePrice,
+          quantity,
+          cartItemId: payload.id,
+          isUniqueInstance: false,
+        };
+
+        closeNurseryPicker();
+        navigation.navigate('Checkout', {
+          source: 'buy-now',
+          items: [checkoutItem],
+        });
+        return;
+      }
+
+      notify({
+        message: t('cart.addedMessage', { defaultValue: 'Added to cart.' }),
+      });
+      closeNurseryPicker();
+    },
+    [
+      availableNurseryOptions,
+      closeNurseryPicker,
+      navigation,
+      pendingCartPlant,
+      selectedCartNurseryId,
+      selectedCartQuantity,
+      submitAddToCart,
+      t,
+    ]
+  );
+
+  const handleAddToCart = useCallback(async (plantId: string) => {
     const targetPlant = plants.find((plant) => String(plant.id) === plantId);
     if (!targetPlant) {
       return;
     }
 
-    if (!requireAuth()) {
-      return;
-    }
-
-    if (targetPlant.isUniqueInstance) {
-      return;
-    }
-
-    addToCart(targetPlant);
-    notify({ message: t('cart.addedMessage', { defaultValue: 'Added to cart.' }) });
-  };
+    await handleSelectNurseryForCart(targetPlant);
+  }, [handleSelectNurseryForCart, plants]);
 
   const handleToggleWishlist = async (plantId: string) => {
     const targetPlant = plants.find((plant) => String(plant.id) === plantId);
@@ -319,7 +505,10 @@ export default function HomeScreen() {
           {!item.isUniqueInstance && (
             <TouchableOpacity
               style={styles.favoriteBtn}
-              onPress={() => handleToggleWishlist(item.id)}
+              onPress={(event) => {
+                event.stopPropagation();
+                void handleToggleWishlist(item.id);
+              }}
             >
               <Ionicons
                 name={isWishlisted(item.id) ? 'heart' : 'heart-outline'}
@@ -339,11 +528,14 @@ export default function HomeScreen() {
           <Text style={styles.plantName}>{item.name}</Text>
           <Text style={styles.plantSub}>{item.subtitle}</Text>
           <View style={styles.priceRow}>
-            <Text style={styles.plantPrice}>{(item.price || 0).toLocaleString(locale)}đ</Text>
+            <Text style={styles.plantPrice}>{formatMoney(item.price, locale)}</Text>
             {!item.isUniqueInstance && (
               <TouchableOpacity
                 style={styles.plusBtn}
-                onPress={() => handleAddToCart(item.id)}
+                onPress={(event) => {
+                  event.stopPropagation();
+                  void handleAddToCart(item.id);
+                }}
               >
                 <Ionicons name="add" size={15} color={COLORS.black} />
               </TouchableOpacity>
@@ -359,6 +551,10 @@ export default function HomeScreen() {
   const showAiArrowRight = hasMoreAiItems
     ? aiContentWidth === 0 || aiContentWidth - aiListWidth - aiScrollX > 4
     : false;
+  const isNurseryActionDisabled =
+    isNurseryPickerLoading ||
+    availableNurseryOptions.length === 0 ||
+    selectedCartNurseryId === null;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -369,22 +565,32 @@ export default function HomeScreen() {
       >
         <View style={styles.stickyHeader}>
           <View style={styles.header}>
-            <TouchableOpacity style={styles.iconBtn}>
-              <Ionicons name="menu" size={22} color={COLORS.textPrimary} />
-            </TouchableOpacity>
+            <View style={styles.headerSide}>
+              <TouchableOpacity style={styles.iconBtn}>
+                <Ionicons name="menu" size={22} color={COLORS.textPrimary} />
+              </TouchableOpacity>
+            </View>
 
             <View style={styles.brandRow}>
               <Ionicons name="leaf" size={18} color={COLORS.primaryLight} />
               <Text style={styles.brandText}>PlantDecor</Text>
             </View>
 
-            <TouchableOpacity
-              style={styles.iconBtn}
-              onPress={() => requireAuth(() => navigation.navigate('CartTab'))}
-            >
-              <Ionicons name="bag-outline" size={21} color={COLORS.textPrimary} />
-              {totalItems() > 0 && <View style={styles.cartDot} />}
-            </TouchableOpacity>
+            <View style={[styles.headerSide, styles.headerActions]}>
+              <TouchableOpacity
+                style={styles.iconBtn}
+                onPress={() => requireAuth(() => navigation.navigate('Wishlist'))}
+              >
+                <Ionicons name="heart-outline" size={22} color={COLORS.textPrimary} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.iconBtn}
+                onPress={() => requireAuth(() => navigation.navigate('CartTab'))}
+              >
+                <Ionicons name="cart-outline" size={22} color={COLORS.textPrimary} />
+                {cartItemCount > 0 && <View style={styles.cartDot} />}
+              </TouchableOpacity>
+            </View>
           </View>
           <View style={styles.searchContainer}>
             <View style={styles.searchBar}>
@@ -472,6 +678,154 @@ export default function HomeScreen() {
 
         <View style={styles.bottomSpace} />
       </ScrollView>
+
+      <Modal
+        visible={isNurseryPickerVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={closeNurseryPicker}
+      >
+        <View style={styles.nurseryPickerOverlay}>
+          <TouchableOpacity
+            style={styles.nurseryPickerBackdrop}
+            activeOpacity={1}
+            onPress={closeNurseryPicker}
+          />
+
+          <View style={styles.nurseryPickerSheet}>
+            <View style={styles.nurseryPickerHandle} />
+            <View style={styles.nurseryPickerHeader}>
+              <Text style={styles.nurseryPickerTitle}>
+                {t('catalog.selectNurseryTitle', {
+                  defaultValue: 'Select a nursery',
+                })}
+              </Text>
+              <TouchableOpacity style={styles.nurseryPickerCloseBtn} onPress={closeNurseryPicker}>
+                <Ionicons name="close" size={20} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {pendingCartPlant && (
+              <Text style={styles.nurseryPickerPlantName} numberOfLines={1}>
+                {pendingCartPlant.name}
+              </Text>
+            )}
+
+            {isNurseryPickerLoading ? (
+              <View style={styles.nurseryPickerLoadingWrap}>
+                <ActivityIndicator size="small" color={COLORS.primary} />
+              </View>
+            ) : availableNurseryOptions.length === 0 ? (
+              <Text style={styles.nurseryPickerEmptyText}>
+                {t('catalog.noNurseryAvailable', {
+                  defaultValue: 'No nursery is currently available for this plant.',
+                })}
+              </Text>
+            ) : (
+              <ScrollView
+                style={styles.nurseryPickerList}
+                showsVerticalScrollIndicator={false}
+              >
+                {availableNurseryOptions.map((nursery) => {
+                  const isSelected = nursery.nurseryId === selectedCartNurseryId;
+
+                  return (
+                    <TouchableOpacity
+                      key={`${nursery.nurseryId}-${nursery.commonPlantId ?? 'none'}`}
+                      style={[
+                        styles.nurseryPickerItem,
+                        isSelected && styles.nurseryPickerItemSelected,
+                      ]}
+                      onPress={() => setSelectedCartNurseryId(nursery.nurseryId)}
+                    >
+                      <View style={styles.nurseryPickerItemHeader}>
+                        <Text style={styles.nurseryPickerItemName}>{nursery.nurseryName}</Text>
+                        {isSelected && (
+                          <Ionicons name="checkmark-circle" size={18} color="#13EC5B" />
+                        )}
+                      </View>
+
+                      <Text style={styles.nurseryPickerItemAddress}>{nursery.address}</Text>
+                      <View style={styles.nurseryPickerItemMetaRow}>
+                        <Text style={styles.nurseryPickerItemMetaText}>
+                          {t('plantDetail.availableCount', {
+                            defaultValue: 'Available',
+                          })}
+                          : {nursery.availableInstanceCount}
+                        </Text>
+                        <Text style={styles.nurseryPickerItemPrice}>
+                          {formatNurseryPrice(nursery.minPrice, nursery.maxPrice)}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            )}
+
+            {!isNurseryPickerLoading && availableNurseryOptions.length > 0 && (
+              <View style={styles.nurseryPickerQuantityRow}>
+                <Text style={styles.nurseryPickerQuantityLabel}>
+                  {t('cart.quantity', { defaultValue: 'Quantity' })}
+                </Text>
+                <View style={styles.nurseryPickerQuantityControl}>
+                  <TouchableOpacity
+                    style={[
+                      styles.nurseryPickerQuantityBtn,
+                      selectedCartQuantity <= 1 && styles.nurseryPickerQuantityBtnDisabled,
+                    ]}
+                    disabled={selectedCartQuantity <= 1}
+                    onPress={() =>
+                      setSelectedCartQuantity((previous) => Math.max(1, previous - 1))
+                    }
+                  >
+                    <Ionicons name="remove" size={16} color={COLORS.textSecondary} />
+                  </TouchableOpacity>
+
+                  <Text style={styles.nurseryPickerQuantityValue}>{selectedCartQuantity}</Text>
+
+                  <TouchableOpacity
+                    style={styles.nurseryPickerQuantityBtn}
+                    onPress={() =>
+                      setSelectedCartQuantity((previous) => Math.min(99, previous + 1))
+                    }
+                  >
+                    <Ionicons name="add" size={16} color={COLORS.textPrimary} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            <View style={styles.nurseryPickerActionRow}>
+              <TouchableOpacity
+                style={[
+                  styles.nurseryPickerBuyNowBtn,
+                  isNurseryActionDisabled && styles.nurseryPickerConfirmBtnDisabled,
+                ]}
+                disabled={isNurseryActionDisabled}
+                onPress={() => void handleConfirmNurseryAdd(true)}
+              >
+                <Text style={styles.nurseryPickerBuyNowText}>
+                  {`${t('plantDetail.buyNow', { defaultValue: 'Buy now' })} x${selectedCartQuantity}`}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.nurseryPickerConfirmBtn,
+                  isNurseryActionDisabled && styles.nurseryPickerConfirmBtnDisabled,
+                ]}
+                disabled={isNurseryActionDisabled}
+                onPress={() => void handleConfirmNurseryAdd(false)}
+              >
+                <Text style={styles.nurseryPickerConfirmText}>
+                  {`${t('plantDetail.addToCart', { defaultValue: 'Add to cart' })} x${selectedCartQuantity}`}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -493,6 +847,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: SPACING.md,
+  },
+  headerSide: {
+    width: 80,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerActions: {
+    justifyContent: 'flex-end',
+    gap: SPACING.xs,
   },
   iconBtn: {
     width: 34,
@@ -784,5 +1147,177 @@ const styles = StyleSheet.create({
   },
   bottomSpace: {
     height: 80,
+  },
+  nurseryPickerOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  nurseryPickerBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.35)',
+  },
+  nurseryPickerSheet: {
+    maxHeight: '78%',
+    backgroundColor: COLORS.white,
+    borderTopLeftRadius: RADIUS['2xl'],
+    borderTopRightRadius: RADIUS['2xl'],
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.xl,
+  },
+  nurseryPickerHandle: {
+    alignSelf: 'center',
+    width: 44,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: COLORS.gray300,
+    marginBottom: SPACING.sm,
+  },
+  nurseryPickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.xs,
+  },
+  nurseryPickerTitle: {
+    fontSize: FONTS.sizes.xl,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  nurseryPickerCloseBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.gray100,
+  },
+  nurseryPickerPlantName: {
+    fontSize: FONTS.sizes.md,
+    color: COLORS.textSecondary,
+    marginBottom: SPACING.md,
+  },
+  nurseryPickerLoadingWrap: {
+    paddingVertical: SPACING.lg,
+    alignItems: 'center',
+  },
+  nurseryPickerEmptyText: {
+    textAlign: 'center',
+    color: COLORS.textSecondary,
+    paddingVertical: SPACING.lg,
+  },
+  nurseryPickerList: {
+    maxHeight: 260,
+  },
+  nurseryPickerItem: {
+    borderWidth: 1,
+    borderColor: '#D7E4DB',
+    borderRadius: RADIUS.md,
+    padding: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  nurseryPickerItemSelected: {
+    borderColor: '#13EC5B',
+    backgroundColor: '#EDFEF3',
+  },
+  nurseryPickerItemHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  nurseryPickerItemName: {
+    fontSize: FONTS.sizes.md,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  nurseryPickerItemAddress: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+  },
+  nurseryPickerItemMetaRow: {
+    marginTop: 6,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  nurseryPickerItemMetaText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+  },
+  nurseryPickerItemPrice: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '700',
+    color: '#13A454',
+  },
+  nurseryPickerQuantityRow: {
+    marginTop: SPACING.sm,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  nurseryPickerQuantityLabel: {
+    fontSize: FONTS.sizes.md,
+    color: COLORS.textPrimary,
+    fontWeight: '600',
+  },
+  nurseryPickerQuantityControl: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  nurseryPickerQuantityBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: '#D7E4DB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.white,
+  },
+  nurseryPickerQuantityBtnDisabled: {
+    opacity: 0.4,
+  },
+  nurseryPickerQuantityValue: {
+    minWidth: 20,
+    textAlign: 'center',
+    fontSize: FONTS.sizes.md,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  nurseryPickerActionRow: {
+    marginTop: SPACING.md,
+    flexDirection: 'row',
+    gap: SPACING.sm,
+  },
+  nurseryPickerBuyNowBtn: {
+    flex: 1,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.sm,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: '#13A454',
+  },
+  nurseryPickerBuyNowText: {
+    color: '#13A454',
+    fontWeight: '700',
+  },
+  nurseryPickerConfirmBtn: {
+    flex: 1,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.sm,
+    backgroundColor: '#13EC5B',
+  },
+  nurseryPickerConfirmBtnDisabled: {
+    opacity: 0.4,
+  },
+  nurseryPickerConfirmText: {
+    color: COLORS.white,
+    fontWeight: '700',
   },
 });
