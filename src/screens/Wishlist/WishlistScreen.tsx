@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Modal,
+  Alert,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,7 +24,7 @@ import {
   WishlistItem,
   WishlistItemType,
 } from '../../types';
-import { useAuthStore, useWishlistStore } from '../../stores';
+import { useAuthStore, useEnumStore, useWishlistStore } from '../../stores';
 import { cartService, plantService, wishlistService } from '../../services';
 import { notify } from '../../utils';
 
@@ -40,6 +41,10 @@ export default function WishlistScreen() {
   const { isAuthenticated } = useAuthStore();
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
   const setWishlistStatuses = useWishlistStore((state) => state.setStatuses);
+  const clearWishlistStatuses = useWishlistStore((state) => state.clearStatus);
+  const loadEnumResource = useEnumStore((state) => state.loadResource);
+  const getEnumValues = useEnumStore((state) => state.getEnumValues);
+  const enumGroups = useEnumStore((state) => state.groups);
 
   const [items, setItems] = useState<WishlistItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -49,6 +54,7 @@ export default function WishlistScreen() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [hasNext, setHasNext] = useState(false);
+  const [isClearingAll, setIsClearingAll] = useState(false);
   const [isNurseryPickerVisible, setIsNurseryPickerVisible] = useState(false);
   const [isNurseryPickerLoading, setIsNurseryPickerLoading] = useState(false);
   const [isConfirmingNursery, setIsConfirmingNursery] = useState(false);
@@ -104,15 +110,79 @@ export default function WishlistScreen() {
       .replace(/[_-]+/g, ' ');
   }, []);
 
+  const normalizeWishlistType = useCallback((value: unknown): WishlistItemType | null => {
+    if (typeof value !== 'string' && typeof value !== 'number') {
+      return null;
+    }
+
+    const normalized = String(value).replace(/[^a-z0-9]/gi, '').toLowerCase();
+    switch (normalized) {
+      case '0':
+      case 'plant':
+      case 'commonplant':
+        return 'Plant';
+      case '1':
+      case 'plantinstance':
+        return 'PlantInstance';
+      case '2':
+      case 'plantcombo':
+      case 'nurseryplantcombo':
+      case 'combo':
+        return 'PlantCombo';
+      case '3':
+      case 'material':
+      case 'nurserymaterial':
+        return 'Material';
+      default:
+        return null;
+    }
+  }, []);
+
+  const wishlistItemTypeValues = useMemo(
+    () => getEnumValues(['WishlistItemType', 'wishlistItemType']),
+    [enumGroups, getEnumValues]
+  );
+
+  const wishlistTypeTranslationSuffix = useMemo<Record<WishlistItemType, string>>(() => {
+    const resolvedMap: Record<WishlistItemType, string> = {
+      Plant: 'Plant',
+      PlantInstance: 'PlantInstance',
+      PlantCombo: 'PlantCombo',
+      Material: 'Material',
+    };
+
+    wishlistItemTypeValues.forEach((enumValue) => {
+      const resolvedType =
+        normalizeWishlistType(enumValue.name) ?? normalizeWishlistType(enumValue.value);
+      if (!resolvedType) {
+        return;
+      }
+
+      const labelFromName =
+        typeof enumValue.name === 'string' && enumValue.name.trim().length > 0
+          ? enumValue.name.trim()
+          : null;
+      const labelFromValue =
+        typeof enumValue.value === 'string' && enumValue.value.trim().length > 0
+          ? enumValue.value.trim()
+          : null;
+
+      resolvedMap[resolvedType] = labelFromName ?? labelFromValue ?? resolvedMap[resolvedType];
+    });
+
+    return resolvedMap;
+  }, [normalizeWishlistType, wishlistItemTypeValues]);
+
   const getItemTypeLabel = useCallback(
     (itemType: WishlistItemType) => {
-      const translationKeySuffix = itemType.trim();
+      const translationKeySuffix =
+        wishlistTypeTranslationSuffix[itemType]?.trim() || itemType.trim();
 
       return t(`wishlist.type${translationKeySuffix}`, {
-        defaultValue: humanizeType(itemType),
+        defaultValue: humanizeType(translationKeySuffix),
       });
     },
-    [humanizeType, t]
+    [humanizeType, t, wishlistTypeTranslationSuffix]
   );
 
   const fetchWishlist = useCallback(
@@ -160,6 +230,12 @@ export default function WishlistScreen() {
       }
     },
     [t]
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadEnumResource('wishlist-types');
+    }, [loadEnumResource])
   );
 
   useFocusEffect(
@@ -288,13 +364,6 @@ export default function WishlistScreen() {
       setIsConfirmingNursery(true);
 
       const quantity = Math.max(1, selectedQuantity);
-      const payload = await cartService.addCartItem({
-        commonPlantId: selectedNursery.commonPlantId,
-        nurseryPlantComboId: null,
-        nurseryMaterialId: null,
-        quantity,
-      });
-
       if (pendingPlantAction === 'buy') {
         const normalizedImage = pendingPlantItem.itemImageUrl?.trim();
         const checkoutItem: CheckoutItem = {
@@ -303,7 +372,8 @@ export default function WishlistScreen() {
           image: normalizedImage ? normalizedImage : undefined,
           price: selectedNursery.minPrice || pendingPlantItem.price || 0,
           quantity,
-          cartItemId: payload.id,
+          buyNowItemId: selectedNursery.commonPlantId,
+          buyNowItemTypeName: 'CommonPlant',
           isUniqueInstance: false,
         };
 
@@ -314,6 +384,13 @@ export default function WishlistScreen() {
         });
         return;
       }
+
+      await cartService.addCartItem({
+        commonPlantId: selectedNursery.commonPlantId,
+        nurseryPlantComboId: null,
+        nurseryMaterialId: null,
+        quantity,
+      });
 
       notify({
         message: t('cart.addedMessage', { defaultValue: 'Added to cart.' }),
@@ -342,6 +419,70 @@ export default function WishlistScreen() {
     selectedQuantity,
     t,
   ]);
+
+  const handleClearAllConfirm = useCallback(async () => {
+    if (isClearingAll || items.length === 0) {
+      return;
+    }
+
+    try {
+      setIsClearingAll(true);
+      await wishlistService.clearWishlist();
+
+      closeNurseryPicker();
+      setItems([]);
+      clearWishlistStatuses();
+      setPageNumber(1);
+      setTotalPages(1);
+      setTotalCount(0);
+      setHasNext(false);
+
+      notify({
+        message: t('wishlist.clearAllSuccess', {
+          defaultValue: 'Cleared all wishlist items.',
+        }),
+      });
+    } catch (error: any) {
+      notify({
+        message:
+          error?.response?.data?.message ||
+          t('wishlist.clearAllFailed', {
+            defaultValue: 'Unable to clear wishlist.',
+          }),
+        useAlert: true,
+      });
+    } finally {
+      setIsClearingAll(false);
+    }
+  }, [clearWishlistStatuses, closeNurseryPicker, isClearingAll, items.length, t]);
+
+  const handleClearAll = useCallback(() => {
+    if (items.length === 0 || isClearingAll || isLoading || isLoadingMore) {
+      return;
+    }
+
+    Alert.alert(
+      t('wishlist.clearAllConfirmTitle', {
+        defaultValue: 'Clear all wishlist items?',
+      }),
+      t('wishlist.clearAllConfirmMessage', {
+        defaultValue: 'This will remove every item from your wishlist.',
+      }),
+      [
+        {
+          text: t('common.cancel', { defaultValue: 'Cancel' }),
+          style: 'cancel',
+        },
+        {
+          text: t('wishlist.clearAll', { defaultValue: 'Clear all' }),
+          style: 'destructive',
+          onPress: () => {
+            void handleClearAllConfirm();
+          },
+        },
+      ]
+    );
+  }, [handleClearAllConfirm, isClearingAll, isLoading, isLoadingMore, items.length, t]);
 
   const handleViewDetail = useCallback(
     (item: WishlistItem) => {
@@ -444,40 +585,40 @@ export default function WishlistScreen() {
         return;
       }
 
-      try {
-        const quantity = 1;
-        const payload = await cartService.addCartItem({
-          commonPlantId: null,
-          nurseryPlantComboId: item.itemType === 'PlantCombo' ? item.itemId : null,
-          nurseryMaterialId: item.itemType === 'Material' ? item.itemId : null,
-          quantity,
-        });
+      const quantity = 1;
+      const normalizedImage = item.itemImageUrl?.trim();
+      const buyNowItemTypeName =
+        item.itemType === 'PlantCombo'
+          ? 'NurseryPlantCombo'
+          : item.itemType === 'Material'
+            ? 'NurseryMaterial'
+            : null;
 
-        const normalizedImage = item.itemImageUrl?.trim();
-        const checkoutItem: CheckoutItem = {
-          id: `wishlist_buy_now_${item.itemType}_${item.itemId}`,
-          name: item.itemName,
-          image: normalizedImage ? normalizedImage : undefined,
-          price: item.price || payload.price || 0,
-          quantity,
-          cartItemId: payload.id,
-          isUniqueInstance: false,
-        };
-
-        navigation.navigate('Checkout', {
-          source: 'buy-now',
-          items: [checkoutItem],
-        });
-      } catch (error: any) {
+      if (!buyNowItemTypeName) {
         notify({
-          message:
-            error?.response?.data?.message ||
-            t('cart.addFailed', {
-              defaultValue: 'Unable to add to cart.',
-            }),
+          message: t('checkout.invalidCheckoutItems', {
+            defaultValue: 'Cannot resolve buy now item for order creation.',
+          }),
           useAlert: true,
         });
+        return;
       }
+
+      const checkoutItem: CheckoutItem = {
+        id: `wishlist_buy_now_${item.itemType}_${item.itemId}`,
+        name: item.itemName,
+        image: normalizedImage ? normalizedImage : undefined,
+        price: item.price || 0,
+        quantity,
+        buyNowItemId: item.itemId,
+        buyNowItemTypeName,
+        isUniqueInstance: false,
+      };
+
+      navigation.navigate('Checkout', {
+        source: 'buy-now',
+        items: [checkoutItem],
+      });
     },
     [navigation, openPlantNurseryPicker, t]
   );
@@ -670,7 +811,23 @@ export default function WishlistScreen() {
           <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{headerTitle}</Text>
-        <View style={styles.headerSidePlaceholder} />
+        {items.length > 0 ? (
+          <TouchableOpacity
+            style={styles.headerActionBtn}
+            onPress={handleClearAll}
+            disabled={isLoading || isLoadingMore || isRefreshing || isClearingAll}
+          >
+            {isClearingAll ? (
+              <ActivityIndicator size="small" color={COLORS.primary} />
+            ) : (
+              <Text style={styles.headerActionText}>
+                {t('wishlist.clearAll', { defaultValue: 'Clear all' })}
+              </Text>
+            )}
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.headerSidePlaceholder} />
+        )}
       </View>
 
       {isLoading && items.length === 0 ? (
@@ -950,6 +1107,17 @@ const styles = StyleSheet.create({
   },
   headerSidePlaceholder: {
     width: 32,
+  },
+  headerActionBtn: {
+    minWidth: 64,
+    minHeight: 24,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+  headerActionText: {
+    color: COLORS.primary,
+    fontSize: FONTS.sizes.md,
+    fontWeight: '700',
   },
   headerTitle: {
     fontSize: FONTS.sizes['2xl'],

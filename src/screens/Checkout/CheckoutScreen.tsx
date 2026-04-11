@@ -74,6 +74,9 @@ const normalizeEnumCode = (rawCode: unknown): number | null => {
   return null;
 };
 
+const normalizeEnumToken = (value: string): string =>
+  value.replace(/[^a-z0-9]/gi, '').toLowerCase();
+
 export default function CheckoutScreen() {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
@@ -82,6 +85,21 @@ export default function CheckoutScreen() {
   const loadEnumResource = useEnumStore((state) => state.loadResource);
   const getEnumValues = useEnumStore((state) => state.getEnumValues);
   const enumGroups = useEnumStore((state) => state.groups);
+  const routeSource = route.params?.source;
+  const routeItems = route.params?.items ?? [];
+
+  const isPlantInstanceBuyNow = useMemo(() => {
+    if (routeSource !== 'buy-now') {
+      return false;
+    }
+
+    return routeItems.some(
+      (item) =>
+        typeof item.plantInstanceId === 'number' &&
+        Number.isInteger(item.plantInstanceId) &&
+        item.plantInstanceId > 0
+    );
+  }, [routeItems, routeSource]);
 
   useEffect(() => {
     void Promise.all([
@@ -93,6 +111,10 @@ export default function CheckoutScreen() {
 
   const genderEnumValues = useMemo(() => getEnumValues(['Gender']), [enumGroups, getEnumValues]);
   const orderTypeEnumValues = useMemo(() => getEnumValues(['OrderType']), [enumGroups, getEnumValues]);
+  const buyNowItemTypeEnumValues = useMemo(
+    () => getEnumValues(['BuyNowItemType', 'buyNowItemType']),
+    [enumGroups, getEnumValues]
+  );
   const paymentStrategyEnumValues = useMemo(
     () => getEnumValues(['PaymentStrategy']),
     [enumGroups, getEnumValues]
@@ -108,16 +130,23 @@ export default function CheckoutScreen() {
 
         const normalizedName = item.name.trim().toLowerCase();
         const isVNPay = normalizedName.includes('vnpay');
+        const isDeposit = normalizedName.includes('cod') || normalizedName.includes('deposit');
 
         return {
           value,
           title: isVNPay
             ? t('checkout.paymentVNPayTitle', { defaultValue: item.name })
-            : item.name,
+            : isDeposit
+              ? t('checkout.paymentDepositTitle', { defaultValue: 'Deposit' })
+              : item.name,
           subtitle: isVNPay
             ? t('checkout.paymentVNPaySub', {
                 defaultValue: 'Quick and secure online payment',
               })
+            : isDeposit
+              ? t('checkout.paymentDepositSub', {
+                  defaultValue: 'Pay deposit for plant instance orders',
+                })
             : t('checkout.paymentMethodGenericSub', {
                 defaultValue: 'Available payment method',
               }),
@@ -137,8 +166,50 @@ export default function CheckoutScreen() {
         } => Boolean(option)
       );
 
-    if (options.length > 0) {
-      return options;
+    const depositOptions = options.filter(
+      (option) =>
+        option.normalizedName.includes('cod') || option.normalizedName.includes('deposit')
+    );
+
+    const hasVNPayOption = options.some((option) => option.normalizedName.includes('vnpay'));
+
+    if (isPlantInstanceBuyNow) {
+      const instanceOptions = [...options];
+
+      if (!hasVNPayOption) {
+        instanceOptions.unshift({
+          value: 1,
+          title: t('checkout.paymentVNPayTitle', { defaultValue: 'VNPay wallet' }),
+          subtitle: t('checkout.paymentVNPaySub', {
+            defaultValue: 'Quick and secure online payment',
+          }),
+          iconText: 'V',
+          normalizedName: 'vnpay',
+        });
+      }
+
+      if (depositOptions.length === 0) {
+        instanceOptions.push({
+          value: 2,
+          title: t('checkout.paymentDepositTitle', { defaultValue: 'Deposit' }),
+          subtitle: t('checkout.paymentDepositSub', {
+            defaultValue: 'Pay deposit for plant instance orders',
+          }),
+          iconText: 'D',
+          normalizedName: 'deposit',
+        });
+      }
+
+      return instanceOptions;
+    }
+
+    const nonDepositOptions = options.filter(
+      (option) =>
+        !option.normalizedName.includes('cod') && !option.normalizedName.includes('deposit')
+    );
+
+    if (nonDepositOptions.length > 0) {
+      return nonDepositOptions;
     }
 
     return [
@@ -152,7 +223,7 @@ export default function CheckoutScreen() {
         normalizedName: 'vnpay',
       },
     ];
-  }, [paymentStrategyEnumValues, t]);
+  }, [isPlantInstanceBuyNow, paymentStrategyEnumValues, t]);
 
   const [selectedPaymentStrategy, setSelectedPaymentStrategy] = useState<number>(
     () => paymentOptions[0]?.value ?? 1
@@ -171,12 +242,22 @@ export default function CheckoutScreen() {
       return;
     }
 
+    if (isPlantInstanceBuyNow) {
+      const preferredDeposit = paymentOptions.find(
+        (option) =>
+          option.normalizedName.includes('cod') || option.normalizedName.includes('deposit')
+      );
+
+      setSelectedPaymentStrategy(preferredDeposit?.value ?? paymentOptions[0].value);
+      return;
+    }
+
     const preferredVNPay = paymentOptions.find((option) =>
       option.normalizedName.includes('vnpay')
     );
 
     setSelectedPaymentStrategy(preferredVNPay?.value ?? paymentOptions[0].value);
-  }, [paymentOptions, selectedPaymentStrategy]);
+  }, [isPlantInstanceBuyNow, paymentOptions, selectedPaymentStrategy]);
 
   const resolvedGenderCode = useMemo(() => {
     const normalizedCode = normalizeEnumCode(user?.genderCode);
@@ -203,8 +284,21 @@ export default function CheckoutScreen() {
     return 1;
   }, [genderEnumValues, user?.gender, user?.genderCode]);
 
-  const resolveOrderType = (isPlantInstanceOrder: boolean): number => {
-    const fallbackOrderType = isPlantInstanceOrder ? 2 : 1;
+  const resolveOrderType = (isPlantInstanceOrder: boolean, isBuyNowOrder: boolean): number => {
+    const fallbackOrderType = isPlantInstanceOrder ? 2 : isBuyNowOrder ? 3 : 1;
+    const targetName = isPlantInstanceOrder
+      ? 'plantinstance'
+      : isBuyNowOrder
+        ? 'otherproductbuynow'
+        : 'otherproduct';
+
+    const exactOption = orderTypeEnumValues.find(
+      (item) => normalizeEnumToken(item.name) === targetName
+    );
+    const exactCode = normalizeEnumCode(exactOption?.value);
+    if (exactCode !== null) {
+      return exactCode;
+    }
 
     const normalizedFallbackOption = orderTypeEnumValues.find(
       (item) => normalizeEnumCode(item.value) === fallbackOrderType
@@ -215,11 +309,16 @@ export default function CheckoutScreen() {
     }
 
     const semanticOption = orderTypeEnumValues.find((item) => {
-      const normalizedName = item.name.trim().toLowerCase();
+      const normalizedName = normalizeEnumToken(item.name);
       if (isPlantInstanceOrder) {
         return normalizedName.includes('instance');
       }
-      return normalizedName.includes('cart') || normalizedName.includes('common');
+
+      if (isBuyNowOrder) {
+        return normalizedName.includes('buynow') || normalizedName.includes('combo');
+      }
+
+      return normalizedName.includes('otherproduct') || normalizedName.includes('cart');
     });
 
     const semanticCode = normalizeEnumCode(semanticOption?.value);
@@ -231,6 +330,42 @@ export default function CheckoutScreen() {
     return firstOrderTypeCode ?? fallbackOrderType;
   };
 
+  const resolveBuyNowItemType = (buyNowItemTypeName: string): number | null => {
+    const normalizedTypeName = normalizeEnumToken(buyNowItemTypeName);
+    if (!normalizedTypeName) {
+      return null;
+    }
+
+    const enumMatch = buyNowItemTypeEnumValues.find((item) => {
+      const normalizedName = normalizeEnumToken(item.name);
+      if (normalizedName === normalizedTypeName) {
+        return true;
+      }
+
+      if (typeof item.value === 'string') {
+        return normalizeEnumToken(item.value) === normalizedTypeName;
+      }
+
+      return false;
+    });
+
+    const enumCode = normalizeEnumCode(enumMatch?.value);
+    if (enumCode !== null) {
+      return enumCode;
+    }
+
+    const fallbackCodeMap: Record<string, number> = {
+      commonplant: 1,
+      nurseryplantcombo: 2,
+      plantcombo: 2,
+      combo: 2,
+      nurserymaterial: 3,
+      material: 3,
+    };
+
+    return fallbackCodeMap[normalizedTypeName] ?? null;
+  };
+
   const {
     cartItems,
     items: localCartItems,
@@ -239,7 +374,6 @@ export default function CheckoutScreen() {
   } = useCartStore();
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
   const fallbackSize = t('common.updating', { defaultValue: 'Updating' });
-  const routeItems = route.params?.items ?? [];
   const hasRouteItems = routeItems.length > 0;
   const userAddress =
     typeof user?.address === 'string'
@@ -281,39 +415,6 @@ export default function CheckoutScreen() {
       setDeliveryPhone(userPhone);
     }
   }, [userAddress, userPhone, isEditingAddress]);
-
-  useEffect(() => {
-    if (!route.params?.paymentCompleted) {
-      return;
-    }
-
-    Alert.alert(
-      t('common.success', { defaultValue: 'Success' }),
-      t('checkout.paymentSuccessMessage', {
-        orderId: route.params.completedOrderId,
-        defaultValue: 'Payment completed successfully.',
-      })
-    );
-
-    setOrderNote('');
-
-    void fetchCart({ pageNumber: 1, pageSize: 20 }).catch(() => {
-      // Keep screen usable even when cart refresh fails.
-    });
-
-    navigation.setParams({
-      paymentCompleted: undefined,
-      completedOrderId: undefined,
-      source: undefined,
-      items: [],
-    });
-  }, [
-    fetchCart,
-    navigation,
-    route.params?.completedOrderId,
-    route.params?.paymentCompleted,
-    t,
-  ]);
 
   const checkoutItems = useMemo(() => {
     if (routeItems.length > 0) {
@@ -492,9 +593,18 @@ export default function CheckoutScreen() {
       return;
     }
 
-    const plantInstanceId = checkoutItems.find(
-      (item) => Number.isInteger(item.plantInstanceId)
-    )?.plantInstanceId;
+    const plantInstanceId = checkoutItems
+      .map((item) => item.plantInstanceId)
+      .find((id): id is number => typeof id === 'number' && Number.isInteger(id) && id > 0);
+
+    const buyNowItem = checkoutItems.find(
+      (item) => Number.isInteger(item.buyNowItemId) && (item.buyNowItemId ?? 0) > 0
+    );
+
+    const isPlantInstanceOrder = Boolean(plantInstanceId);
+    const isBuyNowOrder =
+      routeSource === 'buy-now' || isPlantInstanceOrder || Boolean(buyNowItem);
+    const isBuyNowNonInstanceOrder = isBuyNowOrder && !isPlantInstanceOrder;
 
     const cartIdsFromCheckoutItems = checkoutItems
       .map((item) => item.cartItemId)
@@ -504,13 +614,13 @@ export default function CheckoutScreen() {
       .map((item) => item.id)
       .filter((id) => Number.isInteger(id));
 
-    const cartItemIds = plantInstanceId
+    const cartItemIds = isBuyNowOrder
       ? []
       : cartIdsFromCheckoutItems.length > 0
         ? cartIdsFromCheckoutItems
         : fallbackCartItemIds;
 
-    if (!plantInstanceId && cartItemIds.length === 0) {
+    if (!isBuyNowOrder && cartItemIds.length === 0) {
       Alert.alert(
         t('common.error', { defaultValue: 'Error' }),
         t('checkout.invalidCheckoutItems', {
@@ -520,7 +630,25 @@ export default function CheckoutScreen() {
       return;
     }
 
-    const orderType = resolveOrderType(Boolean(plantInstanceId));
+    const buyNowItemId = buyNowItem?.buyNowItemId;
+    const buyNowQuantity = buyNowItem ? Math.max(1, buyNowItem.quantity || 1) : null;
+    const buyNowItemType = buyNowItem?.buyNowItemTypeName
+      ? resolveBuyNowItemType(buyNowItem.buyNowItemTypeName)
+      : null;
+
+    if (isBuyNowNonInstanceOrder) {
+      if (!buyNowItemId || !buyNowQuantity || buyNowItemType === null) {
+        Alert.alert(
+          t('common.error', { defaultValue: 'Error' }),
+          t('checkout.invalidCheckoutItems', {
+            defaultValue: 'Cannot resolve buy now item for order creation.',
+          })
+        );
+        return;
+      }
+    }
+
+    const orderType = resolveOrderType(isPlantInstanceOrder, isBuyNowNonInstanceOrder);
 
     const createOrderPayload: CreateOrderRequest = {
       address: trimmedAddress,
@@ -530,8 +658,17 @@ export default function CheckoutScreen() {
       paymentStrategy: selectedPaymentStrategy,
       orderType,
       cartItemIds,
-      plantInstanceId: plantInstanceId ?? 0,
     };
+
+    if (isBuyNowNonInstanceOrder && buyNowItemId && buyNowItemType !== null && buyNowQuantity) {
+      createOrderPayload.buyNowItemId = buyNowItemId;
+      createOrderPayload.buyNowItemType = buyNowItemType;
+      createOrderPayload.buyNowQuantity = buyNowQuantity;
+    }
+
+    if (isPlantInstanceOrder && plantInstanceId) {
+      createOrderPayload.plantInstanceId = plantInstanceId;
+    }
 
     try {
       setIsSubmittingOrder(true);

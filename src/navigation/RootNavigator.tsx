@@ -8,6 +8,7 @@ import {
   PlantInstanceDetailScreen,
   CartScreen,
   CheckoutScreen,
+  PaymentSuccessScreen,
   PaymentWebViewScreen,
   VerifyCodeScreen,
   AIDesignScreen,
@@ -61,6 +62,7 @@ export default function RootNavigator() {
       <Stack.Screen name="Wishlist" component={WishlistScreen} />
       <Stack.Screen name="Checkout" component={CheckoutScreen} />
       <Stack.Screen name="PaymentWebView" component={PaymentWebViewScreen} />
+      <Stack.Screen name="PaymentSuccess" component={PaymentSuccessScreen} options={{ animation: 'fade_from_bottom' }} />
       <Stack.Screen name="VerifyCode" component={VerifyCodeScreen} options={{ animation: 'fade_from_bottom' }} />
       <Stack.Screen name="AIDesign" component={AIDesignScreen} />
       <Stack.Screen name="Login" component={LoginScreen} options={{ animation: 'fade_from_bottom' }} />
@@ -68,7 +70,11 @@ export default function RootNavigator() {
       <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} options={{ animation: 'fade_from_bottom' }} />
       <Stack.Screen name="Catalog" component={CatalogScreen} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{ animation: 'fade_from_bottom' }} />
-      <Stack.Screen name="OrderHistory" component={OrderHistoryScreen} />
+      <Stack.Screen
+        name="OrderHistory"
+        component={OrderHistoryScreen}
+        options={{ animationTypeForReplace: 'pop' }}
+      />
       <Stack.Screen name="OrderDetail" component={OrderDetailScreen} />
       {/* Add more stack screens as needed:
         <Stack.Screen name="Checkout" component={CheckoutScreen} />

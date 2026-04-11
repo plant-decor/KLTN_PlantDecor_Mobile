@@ -15,7 +15,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, RADIUS, SPACING } from '../../constants';
-import { RootStackParamList } from '../../types';
+import { CheckoutItem, RootStackParamList } from '../../types';
 import { useAuthStore, useWishlistStore } from '../../stores';
 import { cartService, plantService } from '../../services';
 import { getWishlistKey, notify } from '../../utils';
@@ -29,7 +29,7 @@ export default function ComboDetailScreen() {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<ScreenRouteProp>();
-  const { comboId } = route.params;
+  const { comboId, nurseryPlantComboId } = route.params;
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
   const { isAuthenticated } = useAuthStore();
 
@@ -178,6 +178,40 @@ export default function ComboDetailScreen() {
     }
   }, [quantity, requireAuth, t, wishlistItemId]);
 
+  const handleBuyNow = useCallback(() => {
+    if (!requireAuth() || !combo) {
+      return;
+    }
+
+    const buyNowItemId = nurseryPlantComboId ?? combo.id ?? comboId;
+
+    if (!buyNowItemId) {
+      notify({
+        message: t('checkout.invalidCheckoutItems', {
+          defaultValue: 'Cannot resolve buy now item for order creation.',
+        }),
+        useAlert: true,
+      });
+      return;
+    }
+
+    const checkoutItem: CheckoutItem = {
+      id: `buy_now_combo_${buyNowItemId}`,
+      name: combo.comboName,
+      image: combo.images?.[0] ?? undefined,
+      price: combo.comboPrice,
+      quantity: Math.max(1, quantity),
+      buyNowItemId,
+      buyNowItemTypeName: 'NurseryPlantCombo',
+      isUniqueInstance: false,
+    };
+
+    navigation.navigate('Checkout', {
+      source: 'buy-now',
+      items: [checkoutItem],
+    });
+  }, [combo, comboId, navigation, nurseryPlantComboId, quantity, requireAuth, t]);
+
   if (isLoading) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
@@ -306,19 +340,31 @@ export default function ComboDetailScreen() {
           </View>
         </View>
 
-        <TouchableOpacity
-          style={[styles.addToCartButton, isSubmitting && styles.addToCartDisabled]}
-          disabled={isSubmitting}
-          onPress={() => void handleAddToCart()}
-        >
-          {isSubmitting ? (
-            <ActivityIndicator size="small" color={COLORS.white} />
-          ) : (
-            <Text style={styles.addToCartText}>
-              {t('plantDetail.addToCart', { defaultValue: 'Add to cart' })}
+        <View style={styles.actionRow}>
+          <TouchableOpacity
+            style={[styles.buyNowButton, isSubmitting && styles.addToCartDisabled]}
+            disabled={isSubmitting}
+            onPress={handleBuyNow}
+          >
+            <Text style={styles.buyNowText}>
+              {t('plantDetail.buyNow', { defaultValue: 'Buy now' })}
             </Text>
-          )}
-        </TouchableOpacity>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.addToCartButton, isSubmitting && styles.addToCartDisabled]}
+            disabled={isSubmitting}
+            onPress={() => void handleAddToCart()}
+          >
+            {isSubmitting ? (
+              <ActivityIndicator size="small" color={COLORS.white} />
+            ) : (
+              <Text style={styles.addToCartText}>
+                {t('plantDetail.addToCart', { defaultValue: 'Add to cart' })}
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -436,8 +482,27 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     fontWeight: '700',
   },
-  addToCartButton: {
+  actionRow: {
     marginTop: SPACING.lg,
+    flexDirection: 'row',
+    gap: SPACING.md,
+  },
+  buyNowButton: {
+    flex: 1,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#13EC5B',
+    backgroundColor: COLORS.white,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+  },
+  buyNowText: {
+    fontSize: FONTS.sizes.lg,
+    color: '#13EC5B',
+    fontWeight: '700',
+  },
+  addToCartButton: {
+    flex: 1,
     backgroundColor: '#13EC5B',
     borderRadius: 24,
     paddingVertical: SPACING.md,

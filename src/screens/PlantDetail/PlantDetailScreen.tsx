@@ -637,41 +637,37 @@ export default function PlantDetailScreen() {
       return;
     }
 
-    void (async () => {
-      const checkoutQuantity = selectedQuantity;
-      const baseCheckoutItem: CheckoutItem = {
-        id: `buy_now_${plant.id}`,
-        name: plant.name,
-        size: plant.sizeName || t('common.updating', { defaultValue: 'Updating' }),
-        image: plant.images?.[0] ?? undefined,
-        price: selectedNursery?.minPrice || plant.basePrice || 0,
-        quantity: checkoutQuantity,
-        isUniqueInstance: plant.isUniqueInstance,
-      };
+    const buyNowItemId =
+      toPositiveInt(selectedNursery?.commonPlantId) ??
+      toPositiveInt(plant.commonPlantId) ??
+      toPositiveInt(plant.id);
 
-      const createdCartItem = await addToCart(plant, checkoutQuantity, {
-        commonPlantId: selectedNursery?.commonPlantId ?? undefined,
+    if (!buyNowItemId) {
+      notify({
+        message: t('checkout.invalidCheckoutItems', {
+          defaultValue: 'Cannot resolve buy now item for order creation.',
+        }),
       });
+      return;
+    }
 
-      if (!createdCartItem) {
-        notify({
-          message: t('cart.addFailed', {
-            defaultValue: 'Unable to add to cart.',
-          }),
-        });
-        return;
-      }
+    const checkoutQuantity = Math.max(1, selectedQuantity);
+    const checkoutItem: CheckoutItem = {
+      id: `buy_now_${plant.id}`,
+      name: plant.name,
+      size: plant.sizeName || t('common.updating', { defaultValue: 'Updating' }),
+      image: plant.images?.[0] ?? undefined,
+      price: selectedNursery?.minPrice || plant.basePrice || 0,
+      quantity: checkoutQuantity,
+      buyNowItemId,
+      buyNowItemTypeName: 'CommonPlant',
+      isUniqueInstance: plant.isUniqueInstance,
+    };
 
-      navigation.navigate('Checkout', {
-        source: 'buy-now',
-        items: [
-          {
-            ...baseCheckoutItem,
-            cartItemId: createdCartItem.id,
-          },
-        ],
-      });
-    })();
+    navigation.navigate('Checkout', {
+      source: 'buy-now',
+      items: [checkoutItem],
+    });
   };
 
   const handleAddToCart = (

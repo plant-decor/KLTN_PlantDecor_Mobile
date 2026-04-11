@@ -221,6 +221,7 @@ export const API = {
       `/Wishlist/${itemType}/${itemId}`,
     WISHLIST_CHECK: (itemType: string, itemId: number) =>
       `/Wishlist/${itemType}/${itemId}/check`,
+    WISHLIST_CLEAR: "/Wishlist/all",
 
     //User Preferences
     PREFERENCES_RECOMMENDATION: "/UserPreferences/recommendations",

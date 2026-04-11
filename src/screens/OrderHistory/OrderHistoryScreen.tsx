@@ -191,6 +191,10 @@ export default function OrderHistoryScreen() {
     return t('profile.orderHistory', { defaultValue: 'Order history' });
   }, [orders.length, t]);
 
+  const handleBackToProfile = useCallback(() => {
+    navigation.popTo('MainTabs', { screen: 'Profile' });
+  }, [navigation]);
+
   const renderStatusFilters = () => (
     <View style={styles.filterWrap}>
       <ScrollView
@@ -337,7 +341,7 @@ export default function OrderHistoryScreen() {
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => navigation.goBack()}
+          onPress={handleBackToProfile}
         >
           <Ionicons name="chevron-back" size={22} color={COLORS.textPrimary} />
         </TouchableOpacity>

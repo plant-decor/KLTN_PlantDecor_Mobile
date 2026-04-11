@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -48,11 +48,38 @@ export default function PaymentWebViewScreen() {
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<ScreenRouteProp>();
   const { paymentUrl, orderId } = route.params;
-  const clearCart = useCartStore((state) => state.clearCart);
+  const fetchCart = useCartStore((state) => state.fetchCart);
 
   const hasHandledResultRef = useRef(false);
+  const hasRefreshedCartRef = useRef(false);
   const [isPageLoading, setIsPageLoading] = useState(true);
   const [isProcessingResult, setIsProcessingResult] = useState(false);
+
+  const refreshCartOnce = useCallback(async () => {
+    if (hasRefreshedCartRef.current) {
+      return;
+    }
+
+    hasRefreshedCartRef.current = true;
+
+    try {
+      await fetchCart({ pageNumber: 1, pageSize: 20 });
+    } catch {
+      // Keep payment navigation flow resilient even when cart refresh fails.
+    }
+  }, [fetchCart]);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', () => {
+      if (hasHandledResultRef.current) {
+        return;
+      }
+
+      void refreshCartOnce();
+    });
+
+    return unsubscribe;
+  }, [navigation, refreshCartOnce]);
 
   const handleResolvedResult = async (result: PaymentResult) => {
     if (!result || hasHandledResultRef.current) {
@@ -60,31 +87,12 @@ export default function PaymentWebViewScreen() {
     }
 
     hasHandledResultRef.current = true;
+    setIsProcessingResult(true);
+
+    await refreshCartOnce();
 
     if (result === 'success') {
-      setIsProcessingResult(true);
-
-      try {
-        await clearCart();
-      } catch {
-        // Ignore clear cart failures here; user already paid.
-      }
-
-      Alert.alert(
-        t('common.success', { defaultValue: 'Success' }),
-        t('checkout.paymentSuccessMessage', {
-          orderId,
-          defaultValue: 'Payment completed successfully.',
-        }),
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              navigation.replace('OrderHistory');
-            },
-          },
-        ]
-      );
+      navigation.replace('PaymentSuccess', { orderId });
 
       return;
     }

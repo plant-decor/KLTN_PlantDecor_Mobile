@@ -68,9 +68,15 @@ const FALLBACK_GROUPS: Record<string, SystemEnumValue[]> = {
     { value: 2, name: 'COD' },
   ],
   OrderType: [
-    { value: 1, name: 'Cart' },
+    { value: 1, name: 'OtherProduct' },
     { value: 2, name: 'PlantInstance' },
-    { value: 3, name: 'Combo' },
+    { value: 3, name: 'OtherProductBuyNow' },
+    { value: 4, name: 'Service' },
+  ],
+  BuyNowItemType: [
+    { value: 1, name: 'CommonPlant' },
+    { value: 2, name: 'NurseryPlantCombo' },
+    { value: 3, name: 'NurseryMaterial' },
   ],
   OrderStatus: [
     { value: 'Pending', name: 'Pending' },
@@ -88,6 +94,12 @@ const FALLBACK_GROUPS: Record<string, SystemEnumValue[]> = {
     { value: 'Rejected', name: 'Rejected' },
     { value: 'PendingConfirmation', name: 'PendingConfirmation' },
   ],
+  WishlistItemType: [
+    { value: 0, name: 'Plant' },
+    { value: 1, name: 'PlantInstance' },
+    { value: 2, name: 'PlantCombo' },
+    { value: 3, name: 'Material' },
+  ],
 };
 
 const GROUP_ALIASES: Record<string, string[]> = {
@@ -103,7 +115,14 @@ const GROUP_ALIASES: Record<string, string[]> = {
   Gender: ['Gender', 'gender', 'userGender'],
   PaymentStrategy: ['PaymentStrategy', 'paymentStrategy', 'paymentMethod'],
   OrderType: ['OrderType', 'orderType'],
+  BuyNowItemType: ['BuyNowItemType', 'buyNowItemType'],
   OrderStatus: ['OrderStatus', 'orderStatus', 'status'],
+  WishlistItemType: [
+    'WishlistItemType',
+    'wishlistItemType',
+    'wishlistType',
+    'wishlistItem',
+  ],
 };
 
 const RESOURCE_GROUPS: Record<string, string[]> = {
@@ -118,8 +137,10 @@ const RESOURCE_GROUPS: Record<string, string[]> = {
   ],
   plantsort: ['PlantSort'],
   users: ['Gender'],
-  orders: ['OrderStatus', 'OrderType'],
+  orders: ['OrderStatus', 'OrderType', 'BuyNowItemType'],
   payments: ['PaymentStrategy'],
+  wishlist: ['WishlistItemType'],
+  wishlisttypes: ['WishlistItemType'],
 };
 
 const normalizedAliasMap = Object.entries(GROUP_ALIASES).reduce<Record<string, string>>(

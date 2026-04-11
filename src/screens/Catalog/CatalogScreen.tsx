@@ -58,7 +58,7 @@ type FilterSectionKey =
   | 'nursery';
 
 const { width } = Dimensions.get('window');
-const CARD_WIDTH = (width - SPACING.lg * 3) / 2;``
+const CARD_WIDTH = (width - SPACING.lg * 3) / 2;
 const PAGE_SIZE_OPTIONS = [10, 20, 40, 80];
 const DEFAULT_PAGE_SIZE = 20;
 const DEFAULT_SORT_BY_OPTIONS: StringOption[] = [
@@ -705,6 +705,52 @@ export default function CatalogScreen() {
     [submitAddToCart, t]
   );
 
+  const handleBuyNowMaterial = useCallback(
+    async (material: ShopSearchMaterialSummary) => {
+      if (!requireAuth()) {
+        return;
+      }
+
+      const buyNowItemId = toPositiveInt(material.id);
+      if (!buyNowItemId) {
+        notify({
+          message: t('checkout.invalidCheckoutItems', {
+            defaultValue: 'Cannot resolve buy now item for order creation.',
+          }),
+          useAlert: true,
+        });
+        return;
+      }
+
+      const detailMaterialId = toPositiveInt(material.materialId) ?? buyNowItemId;
+      let materialPrice = 0;
+
+      try {
+        const materialDetail = await plantService.getMaterialDetail(detailMaterialId);
+        materialPrice = Math.max(0, materialDetail.basePrice || 0);
+      } catch {
+        // Buy-now payload can still be created with backend price resolution.
+      }
+
+      const checkoutItem: CheckoutItem = {
+        id: `buy_now_material_${buyNowItemId}`,
+        name: material.materialName,
+        image: material.imageUrl?.trim() || undefined,
+        price: materialPrice,
+        quantity: 1,
+        buyNowItemId,
+        buyNowItemTypeName: 'NurseryMaterial',
+        isUniqueInstance: false,
+      };
+
+      navigation.navigate('Checkout', {
+        source: 'buy-now',
+        items: [checkoutItem],
+      });
+    },
+    [navigation, requireAuth, t]
+  );
+
   const handleAddComboToCart = useCallback(
     async (combo: ShopSearchComboSummary) => {
       const payload = await submitAddToCart({
@@ -721,6 +767,42 @@ export default function CatalogScreen() {
       }
     },
     [submitAddToCart, t]
+  );
+
+  const handleBuyNowCombo = useCallback(
+    (combo: ShopSearchComboSummary) => {
+      if (!requireAuth()) {
+        return;
+      }
+
+      const buyNowItemId = toPositiveInt(combo.id);
+      if (!buyNowItemId) {
+        notify({
+          message: t('checkout.invalidCheckoutItems', {
+            defaultValue: 'Cannot resolve buy now item for order creation.',
+          }),
+          useAlert: true,
+        });
+        return;
+      }
+
+      const checkoutItem: CheckoutItem = {
+        id: `buy_now_combo_${buyNowItemId}`,
+        name: combo.name,
+        image: combo.imageUrl?.trim() || undefined,
+        price: Math.max(0, combo.price || 0),
+        quantity: 1,
+        buyNowItemId,
+        buyNowItemTypeName: 'NurseryPlantCombo',
+        isUniqueInstance: false,
+      };
+
+      navigation.navigate('Checkout', {
+        source: 'buy-now',
+        items: [checkoutItem],
+      });
+    },
+    [navigation, requireAuth, t]
   );
 
   const closeNurseryPicker = useCallback(() => {
@@ -809,16 +891,6 @@ export default function CatalogScreen() {
       }
 
       const quantity = Math.max(1, selectedCartQuantity);
-      const payload = await submitAddToCart({
-        commonPlantId: selectedNursery.commonPlantId,
-        nurseryPlantComboId: null,
-        nurseryMaterialId: null,
-        quantity,
-      });
-
-      if (!payload) {
-        return;
-      }
 
       if (goToCheckout) {
         const checkoutItem: CheckoutItem = {
@@ -827,7 +899,8 @@ export default function CatalogScreen() {
           image: pendingCartPlant.primaryImageUrl ?? undefined,
           price: selectedNursery.minPrice || pendingCartPlant.basePrice,
           quantity,
-          cartItemId: payload.id,
+          buyNowItemId: selectedNursery.commonPlantId,
+          buyNowItemTypeName: 'CommonPlant',
           isUniqueInstance: false,
         };
 
@@ -836,6 +909,17 @@ export default function CatalogScreen() {
           source: 'buy-now',
           items: [checkoutItem],
         });
+        return;
+      }
+
+      const payload = await submitAddToCart({
+        commonPlantId: selectedNursery.commonPlantId,
+        nurseryPlantComboId: null,
+        nurseryMaterialId: null,
+        quantity,
+      });
+
+      if (!payload) {
         return;
       }
 
@@ -1164,15 +1248,26 @@ export default function CatalogScreen() {
           </Text>
           <View style={styles.productFooter}>
             <Text style={styles.productPrice}>{material.unit}</Text>
-            <TouchableOpacity
-              style={styles.addButton}
-              onPress={(event) => {
-                event.stopPropagation();
-                void handleAddMaterialToCart(material);
-              }}
-            >
-              <Ionicons name="add" size={14} color={COLORS.black} />
-            </TouchableOpacity>
+            <View style={styles.productActions}>
+              <TouchableOpacity
+                style={styles.buyNowButton}
+                onPress={(event) => {
+                  event.stopPropagation();
+                  void handleBuyNowMaterial(material);
+                }}
+              >
+                <Ionicons name="flash-outline" size={13} color="#13A454" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.addButton}
+                onPress={(event) => {
+                  event.stopPropagation();
+                  void handleAddMaterialToCart(material);
+                }}
+              >
+                <Ionicons name="add" size={14} color={COLORS.black} />
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </TouchableOpacity>
@@ -1219,15 +1314,26 @@ export default function CatalogScreen() {
           </Text>
           <View style={styles.productFooter}>
             <Text style={styles.productPrice}>{formatMoney(combo.price, locale)}</Text>
-            <TouchableOpacity
-              style={styles.addButton}
-              onPress={(event) => {
-                event.stopPropagation();
-                void handleAddComboToCart(combo);
-              }}
-            >
-              <Ionicons name="add" size={14} color={COLORS.black} />
-            </TouchableOpacity>
+            <View style={styles.productActions}>
+              <TouchableOpacity
+                style={styles.buyNowButton}
+                onPress={(event) => {
+                  event.stopPropagation();
+                  void handleBuyNowCombo(combo);
+                }}
+              >
+                <Ionicons name="flash-outline" size={13} color="#13A454" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.addButton}
+                onPress={(event) => {
+                  event.stopPropagation();
+                  void handleAddComboToCart(combo);
+                }}
+              >
+                <Ionicons name="add" size={14} color={COLORS.black} />
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </TouchableOpacity>
@@ -2439,6 +2545,21 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#13A454',
     flex: 1,
+  },
+  productActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  buyNowButton: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#13A454',
+    backgroundColor: COLORS.white,
   },
   addButton: {
     width: 26,

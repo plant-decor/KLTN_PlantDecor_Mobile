@@ -1,4 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
+import type { NavigatorScreenParams } from '@react-navigation/native';
 // ==================== User & Auth ====================
 export interface User {
   id: string;
@@ -857,6 +858,8 @@ export interface CheckoutItem {
   price: number;
   quantity: number;
   cartItemId?: number;
+  buyNowItemId?: number;
+  buyNowItemTypeName?: string;
   plantInstanceId?: number;
   isUniqueInstance?: boolean;
 }
@@ -914,6 +917,12 @@ export interface RemoveWishlistItemResponse {
   message: string;
 }
 
+export interface ClearWishlistResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+}
+
 export interface CheckWishlistResponse {
   success: boolean;
   statusCode: number;
@@ -944,6 +953,7 @@ export interface SystemEnumsResponse {
 
 // ==================== Order & Payment ====================
 export type OrderType = number;
+export type BuyNowItemType = number;
 export type PaymentStrategy = number;
 export type OrderStatusFilter = string;
 
@@ -961,6 +971,9 @@ export interface CreateOrderRequest {
   paymentStrategy: PaymentStrategy;
   orderType: OrderType;
   cartItemIds: number[];
+  buyNowItemId?: number;
+  buyNowItemType?: BuyNowItemType;
+  buyNowQuantity?: number;
   plantInstanceId?: number;
 }
 
@@ -1168,7 +1181,7 @@ export interface PaginatedResponse<T> {
 
 // ==================== Navigation ====================
 export type RootStackParamList = {
-  MainTabs: undefined;
+  MainTabs: NavigatorScreenParams<MainTabParamList> | undefined;
   ShipperHome: undefined;
   ShippingList: undefined;
   PlantDetail: { plantId: string };
@@ -1197,6 +1210,9 @@ export type RootStackParamList = {
   PaymentWebView: {
     paymentUrl: string;
     orderId: number;
+  };
+  PaymentSuccess: {
+    orderId?: number;
   };
   VerifyCode: { email: string; password: string };
   ForgotPassword: { email?: string } | undefined;

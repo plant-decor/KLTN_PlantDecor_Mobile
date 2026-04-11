@@ -29,6 +29,8 @@ import {
   NurseryPlantInstanceAvailability,
   Plant,
   RootStackParamList,
+  ShopSearchComboSummary,
+  ShopSearchMaterialSummary,
 } from '../../types';
 import { cartService, plantService } from '../../services';
 import { getWishlistKey, notify, resolveWishlistTarget } from '../../utils';
@@ -114,6 +116,9 @@ export default function HomeScreen() {
     useState<NurseryPlantInstanceAvailability[]>([]);
   const [selectedCartNurseryId, setSelectedCartNurseryId] = useState<number | null>(null);
   const [selectedCartQuantity, setSelectedCartQuantity] = useState(1);
+  const [featuredMaterials, setFeaturedMaterials] = useState<ShopSearchMaterialSummary[]>([]);
+  const [featuredCombos, setFeaturedCombos] = useState<ShopSearchComboSummary[]>([]);
+  const [isLoadingFeaturedProducts, setIsLoadingFeaturedProducts] = useState(false);
 
   useEffect(() => {
     void loadEnumResource('plant-sort');
@@ -182,6 +187,62 @@ export default function HomeScreen() {
       sortDirection: selectedSortConfig.sortDirection,
     });
   }, [fetchPlants, selectedSort, sortConfig]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadFeaturedProducts = async () => {
+      setIsLoadingFeaturedProducts(true);
+
+      try {
+        const payload = await plantService.searchShop({
+          pagination: {
+            pageNumber: 1,
+            pageSize: 24,
+          },
+          includePlants: false,
+          includeMaterials: true,
+          includeCombos: true,
+          sortBy: 'CreatedAt',
+          sortDirection: 'Desc',
+        });
+
+        if (!isMounted) {
+          return;
+        }
+
+        const featuredItems = payload.items?.items ?? [];
+        const materialItems = featuredItems
+          .filter((entry) => entry.type === 'Material')
+          .map((entry) => entry.material)
+          .filter((entry): entry is ShopSearchMaterialSummary => Boolean(entry))
+          .slice(0, 6);
+        const comboItems = featuredItems
+          .filter((entry) => entry.type === 'Combo')
+          .map((entry) => entry.combo)
+          .filter((entry): entry is ShopSearchComboSummary => Boolean(entry))
+          .slice(0, 6);
+
+        setFeaturedMaterials(materialItems);
+        setFeaturedCombos(comboItems);
+      } catch {
+        if (isMounted) {
+          setFeaturedMaterials([]);
+          setFeaturedCombos([]);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingFeaturedProducts(false);
+        }
+      }
+    };
+
+    void loadFeaturedProducts();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const homePlants = useMemo<HomePlant[]>(() => {
     if (plants.length === 0) {
@@ -273,6 +334,127 @@ export default function HomeScreen() {
     [fetchCart, requireAuth, t]
   );
 
+  const handleAddMaterialToCart = useCallback(
+    async (material: ShopSearchMaterialSummary) => {
+      const payload = await submitAddToCart({
+        commonPlantId: null,
+        nurseryPlantComboId: null,
+        nurseryMaterialId: material.id,
+        quantity: 1,
+      });
+
+      if (payload) {
+        notify({
+          message: t('cart.addedMessage', { defaultValue: 'Added to cart.' }),
+        });
+      }
+    },
+    [submitAddToCart, t]
+  );
+
+  const handleAddComboToCart = useCallback(
+    async (combo: ShopSearchComboSummary) => {
+      const payload = await submitAddToCart({
+        commonPlantId: null,
+        nurseryPlantComboId: combo.id,
+        nurseryMaterialId: null,
+        quantity: 1,
+      });
+
+      if (payload) {
+        notify({
+          message: t('cart.addedMessage', { defaultValue: 'Added to cart.' }),
+        });
+      }
+    },
+    [submitAddToCart, t]
+  );
+
+  const handleBuyNowMaterial = useCallback(
+    async (material: ShopSearchMaterialSummary) => {
+      if (!requireAuth()) {
+        return;
+      }
+
+      const buyNowItemId = Number.isInteger(material.id) && material.id > 0 ? material.id : null;
+      if (!buyNowItemId) {
+        notify({
+          message: t('checkout.invalidCheckoutItems', {
+            defaultValue: 'Cannot resolve buy now item for order creation.',
+          }),
+          useAlert: true,
+        });
+        return;
+      }
+
+      const detailMaterialId =
+        Number.isInteger(material.materialId) && material.materialId > 0
+          ? material.materialId
+          : buyNowItemId;
+
+      let materialPrice = 0;
+      try {
+        const materialDetail = await plantService.getMaterialDetail(detailMaterialId);
+        materialPrice = Math.max(0, materialDetail.basePrice || 0);
+      } catch {
+        // Buy-now payload can still be created with backend price resolution.
+      }
+
+      const checkoutItem: CheckoutItem = {
+        id: `buy_now_material_${buyNowItemId}`,
+        name: material.materialName,
+        image: material.imageUrl?.trim() || undefined,
+        price: materialPrice,
+        quantity: 1,
+        buyNowItemId,
+        buyNowItemTypeName: 'NurseryMaterial',
+        isUniqueInstance: false,
+      };
+
+      navigation.navigate('Checkout', {
+        source: 'buy-now',
+        items: [checkoutItem],
+      });
+    },
+    [navigation, requireAuth, t]
+  );
+
+  const handleBuyNowCombo = useCallback(
+    (combo: ShopSearchComboSummary) => {
+      if (!requireAuth()) {
+        return;
+      }
+
+      const buyNowItemId = Number.isInteger(combo.id) && combo.id > 0 ? combo.id : null;
+      if (!buyNowItemId) {
+        notify({
+          message: t('checkout.invalidCheckoutItems', {
+            defaultValue: 'Cannot resolve buy now item for order creation.',
+          }),
+          useAlert: true,
+        });
+        return;
+      }
+
+      const checkoutItem: CheckoutItem = {
+        id: `buy_now_combo_${buyNowItemId}`,
+        name: combo.name,
+        image: combo.imageUrl?.trim() || undefined,
+        price: Math.max(0, combo.price || 0),
+        quantity: 1,
+        buyNowItemId,
+        buyNowItemTypeName: 'NurseryPlantCombo',
+        isUniqueInstance: false,
+      };
+
+      navigation.navigate('Checkout', {
+        source: 'buy-now',
+        items: [checkoutItem],
+      });
+    },
+    [navigation, requireAuth, t]
+  );
+
   const closeNurseryPicker = useCallback(() => {
     setIsNurseryPickerVisible(false);
     setIsNurseryPickerLoading(false);
@@ -359,16 +541,6 @@ export default function HomeScreen() {
       }
 
       const quantity = Math.max(1, selectedCartQuantity);
-      const payload = await submitAddToCart({
-        commonPlantId: selectedNursery.commonPlantId,
-        nurseryPlantComboId: null,
-        nurseryMaterialId: null,
-        quantity,
-      });
-
-      if (!payload) {
-        return;
-      }
 
       if (goToCheckout) {
         const checkoutItem: CheckoutItem = {
@@ -379,7 +551,8 @@ export default function HomeScreen() {
           ),
           price: selectedNursery.minPrice || pendingCartPlant.basePrice,
           quantity,
-          cartItemId: payload.id,
+          buyNowItemId: selectedNursery.commonPlantId,
+          buyNowItemTypeName: 'CommonPlant',
           isUniqueInstance: false,
         };
 
@@ -388,6 +561,17 @@ export default function HomeScreen() {
           source: 'buy-now',
           items: [checkoutItem],
         });
+        return;
+      }
+
+      const payload = await submitAddToCart({
+        commonPlantId: selectedNursery.commonPlantId,
+        nurseryPlantComboId: null,
+        nurseryMaterialId: null,
+        quantity,
+      });
+
+      if (!payload) {
         return;
       }
 
@@ -546,6 +730,142 @@ export default function HomeScreen() {
     );
   };
 
+  const renderMaterialCard = ({ item }: { item: ShopSearchMaterialSummary }) => {
+    const imageUri = item.imageUrl?.trim();
+    const materialId =
+      Number.isInteger(item.materialId) && item.materialId > 0 ? item.materialId : item.id;
+
+    return (
+      <TouchableOpacity
+        style={styles.featuredCard}
+        onPress={() =>
+          navigation.navigate('MaterialDetail', {
+            materialId,
+            nurseryMaterialId: item.id,
+          })
+        }
+        activeOpacity={0.75}
+      >
+        <View style={styles.imageWrap}>
+          {imageUri ? (
+            <Image source={{ uri: imageUri }} style={styles.plantImage} resizeMode="cover" />
+          ) : (
+            <View style={styles.imagePlaceholder}>
+              <Ionicons name="cube-outline" size={32} color={COLORS.gray500} />
+            </View>
+          )}
+
+          <View style={[styles.productTypeBadge, styles.productTypeBadgeMaterial]}>
+            <Text style={styles.productTypeBadgeText}>
+              {t('catalog.typeMaterial', { defaultValue: 'Material' })}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.plantInfo}>
+          <Text style={styles.plantName} numberOfLines={1}>
+            {item.materialName}
+          </Text>
+          <Text style={styles.plantSub} numberOfLines={1}>
+            {`${item.nurseryName} • ${t('catalog.stock', { defaultValue: 'Stock' })}: ${item.availableQuantity}`}
+          </Text>
+          <View style={styles.priceRow}>
+            <Text style={styles.plantPrice} numberOfLines={1}>
+              {item.unit}
+            </Text>
+            <View style={styles.quickActionRow}>
+              <TouchableOpacity
+                style={styles.quickBuyBtn}
+                onPress={(event) => {
+                  event.stopPropagation();
+                  void handleBuyNowMaterial(item);
+                }}
+              >
+                <Ionicons name="flash-outline" size={13} color="#13A454" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.plusBtn}
+                onPress={(event) => {
+                  event.stopPropagation();
+                  void handleAddMaterialToCart(item);
+                }}
+              >
+                <Ionicons name="add" size={15} color={COLORS.black} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderComboCard = ({ item }: { item: ShopSearchComboSummary }) => {
+    const imageUri = item.imageUrl?.trim();
+
+    return (
+      <TouchableOpacity
+        style={styles.featuredCard}
+        onPress={() =>
+          navigation.navigate('ComboDetail', {
+            comboId: item.id,
+            nurseryPlantComboId: item.id,
+          })
+        }
+        activeOpacity={0.75}
+      >
+        <View style={styles.imageWrap}>
+          {imageUri ? (
+            <Image source={{ uri: imageUri }} style={styles.plantImage} resizeMode="cover" />
+          ) : (
+            <View style={styles.imagePlaceholder}>
+              <Ionicons name="albums-outline" size={32} color={COLORS.gray500} />
+            </View>
+          )}
+
+          <View style={[styles.productTypeBadge, styles.productTypeBadgeCombo]}>
+            <Text style={styles.productTypeBadgeText}>
+              {t('catalog.typeCombo', { defaultValue: 'Combo' })}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.plantInfo}>
+          <Text style={styles.plantName} numberOfLines={1}>
+            {item.name}
+          </Text>
+          <Text style={styles.plantSub} numberOfLines={1}>
+            {item.comboTypeName || '-'}
+          </Text>
+          <View style={styles.priceRow}>
+            <Text style={styles.plantPrice} numberOfLines={1}>
+              {formatMoney(item.price, locale)}
+            </Text>
+            <View style={styles.quickActionRow}>
+              <TouchableOpacity
+                style={styles.quickBuyBtn}
+                onPress={(event) => {
+                  event.stopPropagation();
+                  void handleBuyNowCombo(item);
+                }}
+              >
+                <Ionicons name="flash-outline" size={13} color="#13A454" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.plusBtn}
+                onPress={(event) => {
+                  event.stopPropagation();
+                  void handleAddComboToCart(item);
+                }}
+              >
+                <Ionicons name="add" size={15} color={COLORS.black} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
   const hasMoreAiItems = homePlants.length > 1;
   const showAiArrowLeft = aiScrollX > 4;
   const showAiArrowRight = hasMoreAiItems
@@ -675,6 +995,50 @@ export default function HomeScreen() {
           scrollEnabled={false}
           contentContainerStyle={styles.bestList}
         />
+
+        <View style={styles.featuredSectionHeader}>
+          <Text style={styles.featuredSectionTitle}>
+            {t('catalog.typeMaterial', { defaultValue: 'Material' })}
+          </Text>
+        </View>
+
+        {isLoadingFeaturedProducts && featuredMaterials.length === 0 ? (
+          <View style={styles.featuredLoadingWrap}>
+            <ActivityIndicator size="small" color={COLORS.primary} />
+          </View>
+        ) : (
+          <FlatList
+            data={featuredMaterials}
+            renderItem={renderMaterialCard}
+            keyExtractor={(item) => `home-material-${item.id}`}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.featuredList}
+            ItemSeparatorComponent={() => <View style={styles.featuredSeparator} />}
+          />
+        )}
+
+        <View style={styles.featuredSectionHeader}>
+          <Text style={styles.featuredSectionTitle}>
+            {t('catalog.typeCombo', { defaultValue: 'Combo' })}
+          </Text>
+        </View>
+
+        {isLoadingFeaturedProducts && featuredCombos.length === 0 ? (
+          <View style={styles.featuredLoadingWrap}>
+            <ActivityIndicator size="small" color={COLORS.primary} />
+          </View>
+        ) : (
+          <FlatList
+            data={featuredCombos}
+            renderItem={renderComboCard}
+            keyExtractor={(item) => `home-combo-${item.id}`}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.featuredList}
+            ItemSeparatorComponent={() => <View style={styles.featuredSeparator} />}
+          />
+        )}
 
         <View style={styles.bottomSpace} />
       </ScrollView>
@@ -998,6 +1362,12 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.xl,
     padding: SPACING.sm,
   },
+  featuredCard: {
+    width: CARD_WIDTH,
+    backgroundColor: COLORS.gray50,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.sm,
+  },
   imageWrap: {
     borderRadius: RADIUS.lg,
     overflow: 'hidden',
@@ -1056,6 +1426,26 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.md,
     fontWeight: '600',
   },
+  productTypeBadge: {
+    position: 'absolute',
+    left: SPACING.sm,
+    bottom: SPACING.sm,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+  },
+  productTypeBadgeMaterial: {
+    backgroundColor: 'rgba(45, 106, 79, 0.85)',
+  },
+  productTypeBadgeCombo: {
+    backgroundColor: 'rgba(49, 81, 180, 0.85)',
+  },
+  productTypeBadgeText: {
+    color: COLORS.white,
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '700',
+  },
   plantInfo: {
     paddingTop: SPACING.sm,
     gap: 2,
@@ -1079,6 +1469,22 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.xl,
     fontWeight: '700',
     color: COLORS.primaryLight,
+    flex: 1,
+  },
+  quickActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  quickBuyBtn: {
+    width: 22,
+    height: 22,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: '#13A454',
+    backgroundColor: COLORS.white,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   plusBtn: {
     width: 22,
@@ -1141,6 +1547,26 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes['3xl'],
     fontWeight: '700',
     color: COLORS.textPrimary,
+  },
+  featuredSectionHeader: {
+    marginTop: SPACING.lg,
+    marginBottom: SPACING.sm,
+  },
+  featuredSectionTitle: {
+    fontSize: FONTS.sizes['2xl'],
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  featuredList: {
+    paddingBottom: SPACING.sm,
+  },
+  featuredSeparator: {
+    width: SPACING.md,
+  },
+  featuredLoadingWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 96,
   },
   bestList: {
     paddingBottom: SPACING.lg,
