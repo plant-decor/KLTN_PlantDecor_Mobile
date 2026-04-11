@@ -17,6 +17,8 @@ import {
   LoginResponse,
   RegisterRequest,
   RegisterResponse,
+  ChangeAvatarPayload,
+  ChangeAvatarRequest,
   SendOTPRequest,
   SendOTPResponse,
   SendPasswordResetOTPRequest,
@@ -261,6 +263,46 @@ export const authService = {
       data
     );
     return normalizeUser(getEnvelopeData(response.data));
+  },
+
+  changeAvatar: async (request: ChangeAvatarRequest) => {
+    const normalizedUri = request.uri?.trim();
+    if (!normalizedUri) {
+      throw new Error('Invalid avatar file uri');
+    }
+
+    const inferredFileName = normalizedUri.split('/').pop() || `avatar-${Date.now()}.jpg`;
+    const fileName = request.fileName?.trim() || inferredFileName;
+    const mimeType = request.mimeType?.trim() || 'image/jpeg';
+
+    const formData = new FormData();
+    formData.append(
+      'file',
+      {
+        uri: normalizedUri,
+        name: fileName,
+        type: mimeType,
+      } as any
+    );
+
+    const response = await api.put<ApiResponse<ChangeAvatarPayload>>(
+      API.ENDPOINTS.CHANGE_AVATAR,
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      }
+    );
+
+    const payload = getEnvelopeData(response.data);
+    const avatarURL = payload?.avatarURL;
+
+    if (typeof avatarURL !== 'string' || avatarURL.trim().length === 0) {
+      throw new Error('Invalid avatar upload response');
+    }
+
+    return avatarURL;
   },
 
   getUserFromStoredToken: async (): Promise<User | null> => {

@@ -1446,14 +1446,14 @@ export default function PlantDetailScreen() {
                     <Text style={styles.relatedPrice}>
                       {(item.price || 0).toLocaleString(locale)}₫
                     </Text>
-                    {!item.isUniqueInstance && (
+                    {/* {!item.isUniqueInstance && (
                       <TouchableOpacity
                         style={styles.relatedPlusBtn}
                         onPress={() => handleAddRelatedToCart(item.id)}
                       >
                         <Ionicons name="add" size={14} color={COLORS.black} />
                       </TouchableOpacity>
-                    )}
+                    )} */}
                   </View>
                 </TouchableOpacity>
               )}

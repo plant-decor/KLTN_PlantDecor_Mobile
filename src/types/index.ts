@@ -115,6 +115,16 @@ export interface RegisterResponse {
   };
 }
 
+export interface ChangeAvatarRequest {
+  uri: string;
+  fileName?: string;
+  mimeType?: string;
+}
+
+export interface ChangeAvatarPayload {
+  avatarURL: string;
+}
+
 export interface SendOTPRequest {
   email: string;
 }

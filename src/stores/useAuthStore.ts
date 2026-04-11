@@ -17,6 +17,7 @@ interface AuthState {
   logoutAll: () => Promise<void>;
   fetchProfile: () => Promise<void>;
   updateProfile: (data: UpdateProfileRequest) => Promise<void>;
+  changeAvatar: (uri: string, fileName?: string, mimeType?: string) => Promise<string>;
   checkAuth: () => Promise<void>;
   clearError: () => void;
   setUser: (user: User) => void;
@@ -135,6 +136,34 @@ export const useAuthStore = create<AuthState>((set) => {
         const message =
           error.response?.data?.message || "Cập nhật thất bại. Vui lòng thử lại.";
         set({ error: message, isLoading: false });
+        throw error;
+      }
+    },
+
+    changeAvatar: async (uri, fileName, mimeType) => {
+      set({ error: null });
+      try {
+        const avatarURL = await authService.changeAvatar({
+          uri,
+          fileName,
+          mimeType,
+        });
+
+        set((state) => ({
+          user: state.user
+            ? {
+                ...state.user,
+                avatar: avatarURL,
+              }
+            : state.user,
+        }));
+
+        return avatarURL;
+      } catch (error: any) {
+        const message =
+          error?.response?.data?.message ||
+          'Cập nhật ảnh đại diện thất bại. Vui lòng thử lại.';
+        set({ error: message });
         throw error;
       }
     },

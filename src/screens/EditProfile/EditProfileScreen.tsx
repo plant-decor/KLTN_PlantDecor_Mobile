@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
+  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -10,6 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -49,6 +52,7 @@ export default function EditProfileScreen() {
 
   const user = useAuthStore((state) => state.user);
   const updateProfile = useAuthStore((state) => state.updateProfile);
+  const changeAvatar = useAuthStore((state) => state.changeAvatar);
   const isLoading = useAuthStore((state) => state.isLoading);
   const loadEnumResource = useEnumStore((state) => state.loadResource);
   const getEnumValues = useEnumStore((state) => state.getEnumValues);
@@ -132,6 +136,81 @@ export default function EditProfileScreen() {
   const [receiveNotifications, setReceiveNotifications] = useState(
     user?.receiveNotifications ?? user?.receiveNotification ?? false
   );
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+
+  const avatarUri =
+    typeof user?.avatar === 'string' && user.avatar.trim().length > 0
+      ? user.avatar.trim()
+      : null;
+
+  const handleChangeAvatar = async () => {
+    if (isUploadingAvatar) {
+      return;
+    }
+
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        t('aiDesign.mediaPermissionMessage', {
+          defaultValue: 'Please grant photo library access',
+        })
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (result.canceled) {
+      return;
+    }
+
+    const selectedAsset = result.assets?.[0];
+    const selectedUri = selectedAsset?.uri?.trim();
+    if (!selectedUri) {
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        t('aiDesign.missingImageMessage', {
+          defaultValue: 'Please choose an image',
+        })
+      );
+      return;
+    }
+
+    const fallbackFileName = selectedUri.split('/').pop() || `avatar-${Date.now()}.jpg`;
+    const fileName = selectedAsset?.fileName?.trim() || fallbackFileName;
+    const mimeType =
+      selectedAsset?.mimeType?.trim() ||
+      (fileName.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg');
+
+    try {
+      setIsUploadingAvatar(true);
+      await changeAvatar(selectedUri, fileName, mimeType);
+
+      Alert.alert(
+        t('common.success', { defaultValue: 'Success' }),
+        t('profile.editAvatarSuccess', {
+          defaultValue: 'Avatar uploaded successfully.',
+        })
+      );
+    } catch (error: any) {
+      const apiMessage = error?.response?.data?.message;
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        typeof apiMessage === 'string' && apiMessage.trim().length > 0
+          ? apiMessage
+          : t('profile.editAvatarFailed', {
+              defaultValue: 'Unable to upload avatar. Please try again.',
+            })
+      );
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
 
   useEffect(() => {
     if (preferredGenderCode !== null) {
@@ -240,6 +319,37 @@ export default function EditProfileScreen() {
         >
           <View style={styles.formCard}>
             <Text style={styles.sectionTitle}>{t('profile.editFormSectionTitle')}</Text>
+
+            <View style={styles.avatarSection}>
+              <View style={styles.avatarPreviewWrap}>
+                {avatarUri ? (
+                  <Image source={{ uri: avatarUri }} style={styles.avatarPreview} />
+                ) : (
+                  <View style={styles.avatarPlaceholder}>
+                    <Text style={styles.avatarPlaceholderText}>
+                      {user?.fullName?.charAt(0).toUpperCase() || '?'}
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              <TouchableOpacity
+                style={[styles.avatarActionButton, isUploadingAvatar && styles.avatarActionButtonDisabled]}
+                onPress={() => void handleChangeAvatar()}
+                disabled={isUploadingAvatar}
+              >
+                {isUploadingAvatar ? (
+                  <ActivityIndicator size="small" color={COLORS.white} />
+                ) : (
+                  <>
+                    <Ionicons name="camera-outline" size={16} color={COLORS.white} />
+                    <Text style={styles.avatarActionText}>
+                      {t('profile.editAvatarAction', { defaultValue: 'Change avatar' })}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
 
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>{t('profile.editFormUsername')}</Text>
@@ -421,6 +531,51 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.textPrimary,
     marginBottom: SPACING.lg,
+  },
+  avatarSection: {
+    marginBottom: SPACING.lg,
+    alignItems: 'center',
+    gap: SPACING.md,
+  },
+  avatarPreviewWrap: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    overflow: 'hidden',
+    backgroundColor: COLORS.gray200,
+  },
+  avatarPreview: {
+    width: '100%',
+    height: '100%',
+  },
+  avatarPlaceholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+  },
+  avatarPlaceholderText: {
+    color: COLORS.white,
+    fontSize: FONTS.sizes['2xl'],
+    fontWeight: '700',
+  },
+  avatarActionButton: {
+    minHeight: 36,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+  },
+  avatarActionButtonDisabled: {
+    opacity: 0.7,
+  },
+  avatarActionText: {
+    color: COLORS.white,
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '700',
   },
   inputGroup: {
     marginBottom: SPACING.md,
