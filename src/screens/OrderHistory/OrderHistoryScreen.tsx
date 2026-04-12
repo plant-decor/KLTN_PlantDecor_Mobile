@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   RefreshControl,
   ScrollView,
@@ -15,10 +16,16 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, RADIUS, SHADOWS, SPACING } from '../../constants';
-import { orderService } from '../../services';
+import { orderService, paymentService } from '../../services';
 import { useAuthStore, useEnumStore } from '../../stores';
 import { OrderPayload, RootStackParamList } from '../../types';
-import { getOrderStatusColors, getOrderStatusLabel } from '../../utils';
+import {
+  canContinueOrderPayment,
+  getOrderStatusColors,
+  getOrderStatusLabel,
+  isOrderCancellableStatus,
+  notify,
+} from '../../utils';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'OrderHistory'>;
 type StatusFilter = 'all' | string;
@@ -37,6 +44,8 @@ export default function OrderHistoryScreen() {
   const [orders, setOrders] = useState<OrderPayload[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [processingCancelOrderId, setProcessingCancelOrderId] = useState<number | null>(null);
+  const [processingInvoiceKey, setProcessingInvoiceKey] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useFocusEffect(
@@ -195,6 +204,119 @@ export default function OrderHistoryScreen() {
     navigation.popTo('MainTabs', { screen: 'Profile' });
   }, [navigation]);
 
+  const handleConfirmCancelOrder = useCallback(
+    async (orderId: number) => {
+      if (processingCancelOrderId !== null || processingInvoiceKey !== null) {
+        return;
+      }
+
+      setProcessingCancelOrderId(orderId);
+
+      try {
+        await orderService.cancelOrder(orderId);
+
+        notify({
+          title: t('common.success', { defaultValue: 'Success' }),
+          message: t('orderHistory.cancelSuccess', {
+            defaultValue: 'Order cancelled successfully.',
+          }),
+        });
+
+        await loadOrders(activeFilter, { refresh: true });
+      } catch (error: any) {
+        const apiMessage = error?.response?.data?.message;
+
+        Alert.alert(
+          t('common.error', { defaultValue: 'Error' }),
+          typeof apiMessage === 'string' && apiMessage.trim().length > 0
+            ? apiMessage
+            : t('orderHistory.cancelFailed', {
+                defaultValue: 'Unable to cancel order. Please try again.',
+              })
+        );
+      } finally {
+        setProcessingCancelOrderId(null);
+      }
+    },
+    [activeFilter, loadOrders, processingCancelOrderId, processingInvoiceKey, t]
+  );
+
+  const handleCancelOrder = useCallback(
+    (orderId: number, orderStatus: string) => {
+      if (!isOrderCancellableStatus(orderStatus)) {
+        return;
+      }
+
+      Alert.alert(
+        t('orderHistory.cancelTitle', { defaultValue: 'Cancel order?' }),
+        t('orderHistory.cancelMessage', {
+          defaultValue: 'Are you sure you want to cancel this order?',
+        }),
+        [
+          {
+            text: t('common.cancel', { defaultValue: 'Cancel' }),
+            style: 'cancel',
+          },
+          {
+            text: t('orderHistory.cancelAction', { defaultValue: 'Cancel order' }),
+            style: 'destructive',
+            onPress: () => {
+              void handleConfirmCancelOrder(orderId);
+            },
+          },
+        ]
+      );
+    },
+    [handleConfirmCancelOrder, t]
+  );
+
+  const handleContinuePayment = useCallback(
+    async (
+      orderId: number,
+      orderStatus: string,
+      invoiceId: number,
+      invoiceStatus: string
+    ) => {
+      if (
+        processingCancelOrderId !== null ||
+        processingInvoiceKey !== null ||
+        !canContinueOrderPayment(orderStatus, invoiceStatus)
+      ) {
+        return;
+      }
+
+      const actionKey = `${orderId}:${invoiceId}`;
+      setProcessingInvoiceKey(actionKey);
+
+      try {
+        const payment = await paymentService.continuePayment(invoiceId);
+
+        if (!payment?.paymentUrl) {
+          throw new Error('Missing payment URL');
+        }
+
+        navigation.navigate('PaymentWebView', {
+          paymentUrl: payment.paymentUrl,
+          orderId,
+        });
+      } catch (error: any) {
+        const apiMessage = error?.response?.data?.message;
+
+        Alert.alert(
+          t('common.error', { defaultValue: 'Error' }),
+          typeof apiMessage === 'string' && apiMessage.trim().length > 0
+            ? apiMessage
+            : t('orderHistory.continuePaymentFailed', {
+                defaultValue: 'Unable to continue payment. Please try again.',
+              })
+        );
+      } finally {
+        setProcessingInvoiceKey(null);
+      }
+    },
+    [navigation, processingCancelOrderId, processingInvoiceKey, t]
+  );
+
   const renderStatusFilters = () => (
     <View style={styles.filterWrap}>
       <ScrollView
@@ -228,6 +350,17 @@ export default function OrderHistoryScreen() {
   const renderOrderItem = ({ item }: { item: OrderPayload }) => {
     const statusColors = getOrderStatusColors(item.statusName);
     const firstInvoice = item.invoices?.[0];
+    const firstContinuableInvoice = item.invoices.find((invoice) =>
+      canContinueOrderPayment(item.statusName, invoice.statusName)
+    );
+    const hasRunningAction =
+      processingCancelOrderId !== null || processingInvoiceKey !== null;
+    const cancelInProgress = processingCancelOrderId === item.id;
+    const continueActionKey = firstContinuableInvoice
+      ? `${item.id}:${firstContinuableInvoice.id}`
+      : null;
+    const continueInProgress =
+      continueActionKey !== null && processingInvoiceKey === continueActionKey;
 
     return (
       <TouchableOpacity
@@ -290,6 +423,61 @@ export default function OrderHistoryScreen() {
         ) : null}
 
         <View style={styles.divider} />
+
+        {isOrderCancellableStatus(item.statusName) || firstContinuableInvoice ? (
+          <View style={styles.actionRow}>
+            {isOrderCancellableStatus(item.statusName) ? (
+              <TouchableOpacity
+                style={[
+                  styles.cancelButton,
+                  hasRunningAction && styles.actionButtonDisabled,
+                ]}
+                onPress={(event) => {
+                  event.stopPropagation();
+                  handleCancelOrder(item.id, item.statusName);
+                }}
+                disabled={hasRunningAction}
+              >
+                {cancelInProgress ? (
+                  <ActivityIndicator size="small" color={COLORS.error} />
+                ) : (
+                  <Text style={styles.cancelButtonText}>
+                    {t('orderHistory.cancelAction', { defaultValue: 'Cancel order' })}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            ) : null}
+
+            {firstContinuableInvoice ? (
+              <TouchableOpacity
+                style={[
+                  styles.continueButton,
+                  hasRunningAction && styles.actionButtonDisabled,
+                ]}
+                onPress={(event) => {
+                  event.stopPropagation();
+                  void handleContinuePayment(
+                    item.id,
+                    item.statusName,
+                    firstContinuableInvoice.id,
+                    firstContinuableInvoice.statusName
+                  );
+                }}
+                disabled={hasRunningAction}
+              >
+                {continueInProgress ? (
+                  <ActivityIndicator size="small" color={COLORS.white} />
+                ) : (
+                  <Text style={styles.continueButtonText}>
+                    {t('orderHistory.continuePayment', {
+                      defaultValue: 'Continue payment',
+                    })}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : null}
 
         <View style={styles.bottomRow}>
           <View style={styles.addressRow}>
@@ -579,6 +767,45 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.sm,
     color: COLORS.primary,
     fontWeight: '600',
+  },
+  actionRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
+  cancelButton: {
+    minWidth: 120,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: COLORS.error,
+    backgroundColor: COLORS.white,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+  },
+  cancelButtonText: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '700',
+    color: COLORS.error,
+  },
+  continueButton: {
+    minWidth: 148,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.primary,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+  },
+  continueButtonText: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '700',
+    color: COLORS.white,
+  },
+  actionButtonDisabled: {
+    opacity: 0.65,
   },
   emptyContainer: {
     flex: 1,

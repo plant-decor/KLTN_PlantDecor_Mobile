@@ -1123,6 +1123,13 @@ export interface GetOrderDetailResponse {
   payload: OrderPayload;
 }
 
+export interface CancelOrderResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: OrderPayload;
+}
+
 export interface CreatePaymentRequest {
   invoiceId: number;
 }
@@ -1133,6 +1140,13 @@ export interface CreatePaymentPayload {
 }
 
 export interface CreatePaymentResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: CreatePaymentPayload;
+}
+
+export interface ContinuePaymentResponse {
   success: boolean;
   statusCode: number;
   message: string;

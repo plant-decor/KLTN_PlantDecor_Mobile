@@ -1,5 +1,6 @@
 import { API } from '../constants';
 import {
+  CancelOrderResponse,
   CreateOrderRequest,
   CreateOrderResponse,
   GetNurseryOrdersPayload,
@@ -157,6 +158,18 @@ export const orderService = {
       return response.data.payload;
     } catch (error: any) {
       console.error('getOrderDetail error:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  cancelOrder: async (orderId: number): Promise<OrderPayload> => {
+    try {
+      const response = await api.patch<CancelOrderResponse>(
+        API.ENDPOINTS.ORDER_CANCEL(orderId)
+      );
+      return response.data.payload;
+    } catch (error: any) {
+      console.error('cancelOrder error:', error.response?.data || error.message);
       throw error;
     }
   },

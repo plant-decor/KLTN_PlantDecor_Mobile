@@ -16,6 +16,8 @@ const DEFAULT_STATUS_COLOR: StatusColor = {
   textColor: '#4B5563',
 };
 
+const CANCELLABLE_ORDER_STATUS_TOKENS = new Set(['pending', 'depositpaid']);
+
 const toTranslationKey = (status: string): string => {
   const sanitized = status.replace(/[^a-zA-Z0-9]/g, '');
   if (!sanitized) {
@@ -25,7 +27,48 @@ const toTranslationKey = (status: string): string => {
   return sanitized.charAt(0).toLowerCase() + sanitized.slice(1);
 };
 
-const normalizeStatusToken = (status: string): string => status.trim().toLowerCase();
+const normalizeStatusToken = (status: string): string =>
+  status.replace(/[^a-z0-9]/gi, '').toLowerCase();
+
+const isUnpaidInvoiceStatus = (status: string): boolean => {
+  const token = normalizeStatusToken(status);
+
+  if (!token) {
+    return false;
+  }
+
+  if (token.includes('cancel') || token.includes('fail') || token.includes('refund')) {
+    return false;
+  }
+
+  if (token.includes('unpaid') || token.includes('pending') || token.includes('waiting')) {
+    return true;
+  }
+
+  if (token.includes('paid') || token.includes('complete') || token.includes('success')) {
+    return false;
+  }
+
+  return false;
+};
+
+export const isOrderCancellableStatus = (status: string): boolean => {
+  const token = normalizeStatusToken(status);
+  return CANCELLABLE_ORDER_STATUS_TOKENS.has(token);
+};
+
+export const canContinueOrderPayment = (
+  orderStatus: string,
+  invoiceStatus: string
+): boolean => {
+  const orderToken = normalizeStatusToken(orderStatus);
+
+  if (!orderToken || orderToken.includes('cancel')) {
+    return false;
+  }
+
+  return isUnpaidInvoiceStatus(invoiceStatus);
+};
 
 export const getOrderStatusLabel = (
   status: string,

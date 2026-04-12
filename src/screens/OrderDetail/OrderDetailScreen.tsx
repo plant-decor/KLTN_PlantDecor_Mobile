@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,10 +14,16 @@ import { RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navig
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, RADIUS, SHADOWS, SPACING } from '../../constants';
-import { orderService } from '../../services';
+import { orderService, paymentService } from '../../services';
 import { useEnumStore } from '../../stores';
 import { OrderPayload, RootStackParamList } from '../../types';
-import { getOrderStatusColors, getOrderStatusLabel } from '../../utils';
+import {
+  canContinueOrderPayment,
+  getOrderStatusColors,
+  getOrderStatusLabel,
+  isOrderCancellableStatus,
+  notify,
+} from '../../utils';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'OrderDetail'>;
 type ScreenRouteProp = RouteProp<RootStackParamList, 'OrderDetail'>;
@@ -33,6 +40,8 @@ export default function OrderDetailScreen() {
 
   const [order, setOrder] = useState<OrderPayload | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isCancellingOrder, setIsCancellingOrder] = useState(false);
+  const [processingInvoiceId, setProcessingInvoiceId] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useFocusEffect(
@@ -115,6 +124,107 @@ export default function OrderDetailScreen() {
     useCallback(() => {
       void loadOrderDetail();
     }, [loadOrderDetail])
+  );
+
+  const canCancelOrder = useMemo(
+    () => (order ? isOrderCancellableStatus(order.statusName) : false),
+    [order]
+  );
+
+  const handleConfirmCancelOrder = useCallback(async () => {
+    if (!order || isCancellingOrder) {
+      return;
+    }
+
+    setIsCancellingOrder(true);
+
+    try {
+      const payload = await orderService.cancelOrder(order.id);
+      setOrder(payload);
+
+      notify({
+        title: t('common.success', { defaultValue: 'Success' }),
+        message: t('orderDetail.cancelSuccess', {
+          defaultValue: 'Order cancelled successfully.',
+        }),
+      });
+    } catch (error: any) {
+      const apiMessage = error?.response?.data?.message;
+
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        typeof apiMessage === 'string' && apiMessage.trim().length > 0
+          ? apiMessage
+          : t('orderDetail.cancelFailed', {
+              defaultValue: 'Unable to cancel order. Please try again.',
+            })
+      );
+    } finally {
+      setIsCancellingOrder(false);
+    }
+  }, [isCancellingOrder, order, t]);
+
+  const handleCancelOrder = useCallback(() => {
+    if (!order || !canCancelOrder || isCancellingOrder) {
+      return;
+    }
+
+    Alert.alert(
+      t('orderDetail.cancelTitle', { defaultValue: 'Cancel order?' }),
+      t('orderDetail.cancelMessage', {
+        defaultValue: 'Are you sure you want to cancel this order?',
+      }),
+      [
+        {
+          text: t('common.cancel', { defaultValue: 'Cancel' }),
+          style: 'cancel',
+        },
+        {
+          text: t('orderDetail.cancelAction', { defaultValue: 'Cancel order' }),
+          style: 'destructive',
+          onPress: () => {
+            void handleConfirmCancelOrder();
+          },
+        },
+      ]
+    );
+  }, [canCancelOrder, handleConfirmCancelOrder, isCancellingOrder, order, t]);
+
+  const handleContinuePayment = useCallback(
+    async (invoiceId: number) => {
+      if (!order || isCancellingOrder || processingInvoiceId !== null) {
+        return;
+      }
+
+      setProcessingInvoiceId(invoiceId);
+
+      try {
+        const payment = await paymentService.continuePayment(invoiceId);
+
+        if (!payment?.paymentUrl) {
+          throw new Error('Missing payment URL');
+        }
+
+        navigation.navigate('PaymentWebView', {
+          paymentUrl: payment.paymentUrl,
+          orderId: order.id,
+        });
+      } catch (error: any) {
+        const apiMessage = error?.response?.data?.message;
+
+        Alert.alert(
+          t('common.error', { defaultValue: 'Error' }),
+          typeof apiMessage === 'string' && apiMessage.trim().length > 0
+            ? apiMessage
+            : t('orderDetail.continuePaymentFailed', {
+                defaultValue: 'Unable to continue payment. Please try again.',
+              })
+        );
+      } finally {
+        setProcessingInvoiceId(null);
+      }
+    },
+    [isCancellingOrder, navigation, order, processingInvoiceId, t]
   );
 
   if (isLoading && !order) {
@@ -203,6 +313,27 @@ export default function OrderDetailScreen() {
           <Text style={styles.totalText}>
             {t('orderDetail.total', { defaultValue: 'Total' })}: {formatCurrency(order.totalAmount)}
           </Text>
+
+          {canCancelOrder ? (
+            <View style={styles.orderActionRow}>
+              <TouchableOpacity
+                style={[
+                  styles.cancelOrderButton,
+                  isCancellingOrder && styles.actionButtonDisabled,
+                ]}
+                onPress={handleCancelOrder}
+                disabled={isCancellingOrder}
+              >
+                {isCancellingOrder ? (
+                  <ActivityIndicator size="small" color={COLORS.error} />
+                ) : (
+                  <Text style={styles.cancelOrderButtonText}>
+                    {t('orderDetail.cancelAction', { defaultValue: 'Cancel order' })}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.card}>
@@ -272,6 +403,32 @@ export default function OrderDetailScreen() {
                 <Text style={styles.infoText}>{invoice.typeName}</Text>
                 <Text style={styles.infoText}>{formatDateTime(invoice.issuedDate)}</Text>
                 <Text style={styles.totalText}>{formatCurrency(invoice.totalAmount)}</Text>
+
+                {canContinueOrderPayment(order.statusName, invoice.statusName) ? (
+                  <View style={styles.invoiceActionRow}>
+                    <TouchableOpacity
+                      style={[
+                        styles.continuePaymentButton,
+                        (processingInvoiceId !== null || isCancellingOrder) &&
+                          styles.actionButtonDisabled,
+                      ]}
+                      onPress={() => {
+                        void handleContinuePayment(invoice.id);
+                      }}
+                      disabled={processingInvoiceId !== null || isCancellingOrder}
+                    >
+                      {processingInvoiceId === invoice.id ? (
+                        <ActivityIndicator size="small" color={COLORS.white} />
+                      ) : (
+                        <Text style={styles.continuePaymentButtonText}>
+                          {t('orderDetail.continuePayment', {
+                            defaultValue: 'Continue payment',
+                          })}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
               </View>
             ))}
           </View>
@@ -358,6 +515,30 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.textPrimary,
   },
+  orderActionRow: {
+    marginTop: SPACING.md,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  cancelOrderButton: {
+    minWidth: 132,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: COLORS.error,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+    backgroundColor: COLORS.white,
+  },
+  cancelOrderButtonText: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '700',
+    color: COLORS.error,
+  },
+  actionButtonDisabled: {
+    opacity: 0.65,
+  },
   noteText: {
     marginTop: SPACING.xs,
     fontSize: FONTS.sizes.sm,
@@ -419,6 +600,25 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.sm,
     color: COLORS.primary,
     fontWeight: '600',
+  },
+  invoiceActionRow: {
+    marginTop: SPACING.sm,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  continuePaymentButton: {
+    minWidth: 156,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.primary,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+  },
+  continuePaymentButtonText: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '700',
+    color: COLORS.white,
   },
   emptyContainer: {
     flex: 1,

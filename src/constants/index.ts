@@ -193,7 +193,7 @@ export const API = {
 
     // Payment
     PAYMENT_CREATE: "/Payment/create",
-    PAYMENT_RETRY: (id: number) => `/Payment/${id}/retry`,
+    PAYMENT_CONTINUE: (invoiceId: number) => `/Payment/invoice/${invoiceId}/continue`,
     PAYMENT_CALLBACK: "/Payment/Checkout/PaymentCallbackVnpay",
     PAYMENT_IPN: "/Payment/Checkout/IpnVnpay",
 
