@@ -40,9 +40,13 @@ export const cartService = {
         API.ENDPOINTS.CART_ADD,
         request
       );
-      return response.data.payload;
+      const payload = response.data.payload;
+      return payload;
     } catch (error: any) {
-      console.error('addCartItem error:', error.response?.data || error.message);
+      console.error('[CartService][addCartItem] error:', {
+        request,
+        error: error.response?.data || error.message,
+      });
       throw error;
     }
   },

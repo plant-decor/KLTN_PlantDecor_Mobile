@@ -5,6 +5,8 @@ import FavoriteIcon from "../../assets/icons/Icons.svg";
 import ProfileIcon from "../../assets/icons/Vector.svg";
 import GoogleIcon from "../../assets/icons/Google_Icon.svg";
 import CartBagIcon from "../../assets/icons/cart_bag.svg";
+import Logo from "../../assets/icons/logo.svg";
+import LogoWithText from "../../assets/icons/logo_with_text.svg";
 import ENV from "../config/env";
 
 // ==================== Icons ====================
@@ -16,6 +18,8 @@ export const ICONS = {
   profile: ProfileIcon,
   google: GoogleIcon,
   cartBag: CartBagIcon,
+  logo: Logo,
+  logoWithText: LogoWithText,
 } as const;
 
 // ==================== Colors ====================
@@ -160,22 +164,29 @@ export const API = {
     //Shop
     SHOP_SEARCH: "/shop/search",
     SHOP_SEARCH_CONFIG: "/system/search-config/shop-unified",
-
+    SHOP_INSTANCE_SEARCH: "/shop/plant-instances/search",
+    NURSERIES: "/shop/nurseries/search",
+    
     // Plants
     PLANTS: "/shop/plants/search",
-    COMMON_PLANTS: "/shop/common-plants/search",
-    PLANT_DETAIL: (id: string | number) => `/shop/plants/${id}`,
-    MATERIAL_DETAIL: (id: string | number) => `/material/${id}`,
-    PLANT_COMBO_DETAIL: (id: string | number) => `/PlantCombos/${id}`,
-    NURSERIES_GOT_COMMON_PLANT_BY_PLANT_ID: (plantId: string | number) => `/shop/plants/${plantId}/common-nurseries`,
-    COMMON_PLANTS_BY_NURSERY: (nurseryId: string) => `/shop/nurseries/${nurseryId}/common-plants/search`,
-    INSTANCE_PLANTS_BY_NURSERY: (nurseryId: string) => `/shop/nurseries/${nurseryId}/plant-instances/search`,
-    NURSERIES_GOT_PLANT_INSTANCES: (plantId: string | number) => `/plants/${plantId}/nurseries`,
-    INSTANCE_DETAIL: (id: number) => `/shop/plant-instances/${id}`,
-    COMMON_DETAIL: (id: number) => `/shop/common-plants/${id}`,
-    SHOP_INSTANCE_SEARCH: "/shop/plant-instances/search",
+    PLANT_DETAIL: (id: number) => `/shop/plants/${id}`,
 
-    NURSERIES: "/shop/nurseries/search",
+    COMMON_PLANTS: "/shop/common-plants/search",
+    COMMON_DETAIL: (id: number) => `/shop/common-plants/${id}`,
+    COMMON_PLANTS_BY_NURSERY: (nurseryId: number) => `/shop/nurseries/${nurseryId}/common-plants/search`,
+    NURSERIES_GOT_COMMON_PLANT_BY_PLANT_ID: (plantId: number) => `/shop/plants/${plantId}/common-nurseries`,
+    
+    INSTANCE_DETAIL: (id: number) => `/shop/plant-instances/${id}`,
+    INSTANCE_PLANTS_BY_NURSERY: (nurseryId: number) => `/shop/nurseries/${nurseryId}/plant-instances/search`,
+    NURSERIES_GOT_PLANT_INSTANCES: (plantId: number) => `/plants/${plantId}/nurseries`,
+    
+    //PlantCombos
+    PLANT_COMBO_DETAIL: (id: number) => `/PlantCombos/${id}`,
+    NURSERIES_GOT_PLANT_COMBO: (plantComboId: number) => `/shop/plant-combos/${plantComboId}/nurseries`,
+
+    //Materials
+    MATERIAL_DETAIL: (id: number) => `/material/${id}`,
+    NURSERIES_GOT_MATERIAL: (materialId: number) => `/shop/materials/${materialId}/nurseries`,
 
     // Cart
     CART: "/Cart",

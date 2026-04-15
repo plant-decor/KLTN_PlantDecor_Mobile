@@ -15,6 +15,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, RADIUS, SPACING } from '../../constants';
+import { BrandedHeader } from '../../components/branding';
 import { RootStackParamList, CheckoutItem } from '../../types';
 import { useAuthStore, useWishlistStore } from '../../stores';
 import { plantService } from '../../services';
@@ -218,15 +219,18 @@ export default function PlantInstanceDetailScreen() {
   if (!instanceDetail || error) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.headerBtn} onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>
-            {t('plantInstanceDetail.title', { defaultValue: 'Plant instance detail' })}
-          </Text>
-          <View style={styles.headerBtn} />
-        </View>
+        <BrandedHeader
+          containerStyle={styles.header}
+          sideWidth={44}
+          brandVariant="none"
+          title={t('plantInstanceDetail.title', { defaultValue: 'Plant instance detail' })}
+          left={
+            <TouchableOpacity style={styles.headerBtn} onPress={() => navigation.goBack()}>
+              <Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} />
+            </TouchableOpacity>
+          }
+          right={<View style={styles.headerBtn} />}
+        />
 
         <View style={styles.loaderWrap}>
           <Ionicons name="alert-circle" size={54} color={COLORS.error} />
@@ -246,21 +250,26 @@ export default function PlantInstanceDetailScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.headerBtn} onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>
-          {t('plantInstanceDetail.title', { defaultValue: 'Plant instance detail' })}
-        </Text>
-        <TouchableOpacity style={styles.headerBtn} onPress={() => void handleToggleWishlist()}>
-          <Ionicons
-            name={isWishlisted ? 'heart' : 'heart-outline'}
-            size={22}
-            color={isWishlisted ? COLORS.error : COLORS.textPrimary}
-          />
-        </TouchableOpacity>
-      </View>
+      <BrandedHeader
+        containerStyle={styles.header}
+        sideWidth={44}
+        brandVariant="none"
+        title={t('plantInstanceDetail.title', { defaultValue: 'Plant instance detail' })}
+        left={
+          <TouchableOpacity style={styles.headerBtn} onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} />
+          </TouchableOpacity>
+        }
+        right={
+          <TouchableOpacity style={styles.headerBtn} onPress={() => void handleToggleWishlist()}>
+            <Ionicons
+              name={isWishlisted ? 'heart' : 'heart-outline'}
+              size={22}
+              color={isWishlisted ? COLORS.error : COLORS.textPrimary}
+            />
+          </TouchableOpacity>
+        }
+      />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
         <Image source={{ uri: imageUrl }} style={styles.heroImage} resizeMode="cover" />

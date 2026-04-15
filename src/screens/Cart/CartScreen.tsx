@@ -16,6 +16,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../constants';
+import { BrandedHeader } from '../../components/branding';
 import { CartApiItem, CheckoutItem, RootStackParamList } from '../../types';
 import { useAuthStore, useCartStore } from '../../stores';
 
@@ -25,13 +26,15 @@ type PageToken = number | 'left-ellipsis' | 'right-ellipsis';
 
 type CartDisplayItem = {
   id: string;
+  plantId: number | null;
+  materialId?: number | null;
+  plantComboId?: number | null;
   name: string;
   nurseryName: string;
   size?: string;
   image?: string;
   price: number;
   subTotal: number;
-  oldPrice?: number;
   quantity: number;
   commonPlantId: number | null;
   nurseryPlantComboId: number | null;
@@ -43,19 +46,29 @@ const mapCartItems = (
   items: CartApiItem[],
   fallbackSize: string
 ): CartDisplayItem[] =>
-  items.map((item) => ({
-    id: String(item.id),
-    name: item.productName,
-    nurseryName: item.nurseryName,
-    size: fallbackSize,
-    price: item.price,
-    subTotal: item.subTotal ?? item.price * item.quantity,
-    quantity: item.quantity,
-    commonPlantId: item.commonPlantId,
-    nurseryPlantComboId: item.nurseryPlantComboId,
-    nurseryMaterialId: item.nurseryMaterialId,
-    isAvailable: true,
-  }));
+  items.map((item) => {
+    const itemWithEntityIds = item as CartApiItem & {
+      materialId?: number | null;
+      plantComboId?: number | null;
+    };
+
+    return {
+      id: String(item.id),
+      plantId: item.plantId ?? null,
+      materialId: itemWithEntityIds.materialId ?? null,
+      plantComboId: itemWithEntityIds.plantComboId ?? null,
+      name: item.productName,
+      nurseryName: item.nurseryName,
+      size: fallbackSize,
+      price: item.price,
+      subTotal: item.subTotal ?? item.price * item.quantity,
+      quantity: item.quantity,
+      commonPlantId: item.commonPlantId,
+      nurseryPlantComboId: item.nurseryPlantComboId,
+      nurseryMaterialId: item.nurseryMaterialId,
+      isAvailable: true,
+    };
+  });
 
 export default function CartScreen() {
   const { t, i18n } = useTranslation();
@@ -173,28 +186,26 @@ export default function CartScreen() {
   }, []);
 
   const hasDetailTarget = (item: CartDisplayItem) =>
-    item.commonPlantId != null ||
-    item.nurseryMaterialId != null ||
-    item.nurseryPlantComboId != null;
+    item.plantId != null ||
+    item.materialId != null ||
+    item.plantComboId != null;
 
   const handleViewDetail = (item: CartDisplayItem) => {
-    if (item.commonPlantId != null) {
-      navigation.navigate('PlantDetail', { plantId: String(item.commonPlantId) });
+    if (item.plantId != null) {
+      navigation.navigate('PlantDetail', { plantId: String(item.plantId) });
       return;
     }
 
-    if (item.nurseryMaterialId != null) {
+    if (item.materialId != null) {
       navigation.navigate('MaterialDetail', {
-        materialId: item.nurseryMaterialId,
-        nurseryMaterialId: item.nurseryMaterialId,
+        materialId: item.materialId,
       });
       return;
     }
 
-    if (item.nurseryPlantComboId != null) {
+    if (item.plantComboId != null) {
       navigation.navigate('ComboDetail', {
-        comboId: item.nurseryPlantComboId,
-        nurseryPlantComboId: item.nurseryPlantComboId,
+        comboId: item.plantComboId,
       });
     }
   };
@@ -392,13 +403,19 @@ export default function CartScreen() {
   if (items.length === 0) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.headerIconBtn} onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>{t('cart.header')}</Text>
-          <View style={styles.headerSidePlaceholder} />
-        </View>
+        <BrandedHeader
+          containerStyle={styles.header}
+          sideWidth={56}
+          brandVariant="none"
+          title={t('cart.header')}
+          titleStyle={styles.headerContextTitle}
+          left={
+            <TouchableOpacity style={styles.headerIconBtn} onPress={() => navigation.goBack()}>
+              <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
+            </TouchableOpacity>
+          }
+          right={<View style={styles.headerSidePlaceholder} />}
+        />
         <View style={styles.emptyContainer}>
           <Ionicons name="cart-outline" size={80} color={COLORS.gray300} />
           <Text style={styles.emptyText}>{t('cart.emptyTitle')}</Text>
@@ -410,15 +427,23 @@ export default function CartScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.headerIconBtn} onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>{t('cart.headerWithCount', { count: totalItems })}</Text>
-        <TouchableOpacity style={styles.headerEditBtn} onPress={handleClearAll}>
-          <Text style={styles.headerEditText}>{t('cart.clearAll')}</Text>
-        </TouchableOpacity>
-      </View>
+      <BrandedHeader
+        containerStyle={styles.header}
+        sideWidth={88}
+        brandVariant="none"
+        title={t('cart.headerWithCount', { count: totalItems })}
+        titleStyle={styles.headerContextTitle}
+        left={
+          <TouchableOpacity style={styles.headerIconBtn} onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
+          </TouchableOpacity>
+        }
+        right={
+          <TouchableOpacity style={styles.headerEditBtn} onPress={handleClearAll}>
+            <Text style={styles.headerEditText}>{t('cart.clearAll')}</Text>
+          </TouchableOpacity>
+        }
+      />
 
       <FlatList
         data={items}
@@ -552,8 +577,8 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.lg,
     fontWeight: '700',
   },
-  headerTitle: {
-    fontSize: FONTS.sizes['2xl'],
+  headerContextTitle: {
+    fontSize: FONTS.sizes.sm,
     fontWeight: '700',
     color: COLORS.textPrimary,
     textAlign: 'center',

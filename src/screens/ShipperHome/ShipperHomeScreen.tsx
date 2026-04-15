@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS, FONTS, RADIUS, SPACING } from '../../constants';
+import { BrandMark } from '../../components/branding';
 import { useAuthStore } from '../../stores';
 import { RootStackParamList } from '../../types';
 
@@ -22,6 +23,9 @@ export default function ShipperHomeScreen() {
 
   return (
     <View style={styles.container}>
+      <View style={styles.brandWrap}>
+        <BrandMark variant="logoWithText" size="majorHeader" />
+      </View>
       <Text style={styles.badge}>SHIPPER PORTAL</Text>
       <Text style={styles.title}>Welcome, Shipper</Text>
       <Text style={styles.subtitle}>
@@ -53,6 +57,10 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
     paddingHorizontal: SPACING.xl,
     justifyContent: 'center',
+  },
+  brandWrap: {
+    alignSelf: 'center',
+    marginBottom: SPACING.xl,
   },
   badge: {
     alignSelf: 'flex-start',

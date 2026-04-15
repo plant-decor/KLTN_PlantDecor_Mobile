@@ -15,6 +15,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import i18n from '../../i18n';
 import { APP_CONFIG, COLORS, FONTS, SPACING, RADIUS, SHADOWS } from '../../constants';
+import { BrandMark } from '../../components/branding';
 import { useAuthStore, useCartStore } from '../../stores';
 import { RootStackParamList } from '../../types';
 
@@ -70,6 +71,9 @@ export default function ProfileScreen() {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.guestContainer}>
+          <View style={styles.brandWrap}>
+            <BrandMark variant="logoWithText" size="majorHeader" />
+          </View>
           <Ionicons name="person-circle-outline" size={100} color={COLORS.gray300} />
           <Text style={styles.guestTitle}>{t('profile.guestTitle')}</Text>
           <Text style={styles.guestSubtitle}>{t('profile.guestSubtitle')}</Text>
@@ -126,6 +130,10 @@ export default function ProfileScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView showsVerticalScrollIndicator={false}>
+        <View style={styles.brandWrap}>
+          <BrandMark variant="logoWithText" size="majorHeader" />
+        </View>
+
         {/* Profile Header */}
         <View style={styles.profileHeader}>
           <View style={styles.avatarContainer}>
@@ -228,6 +236,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  brandWrap: {
+    alignItems: 'center',
+    marginTop: SPACING.md,
+    marginBottom: SPACING.md,
   },
   guestContainer: {
     flex: 1,

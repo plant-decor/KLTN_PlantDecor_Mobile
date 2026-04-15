@@ -18,6 +18,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, RADIUS, SPACING } from '../../constants';
+import { BrandedHeader } from '../../components/branding';
 import { RootStackParamList } from '../../types';
 import { authService } from '../../services/authService';
 import { useAuthStore } from '../../stores/useAuthStore';
@@ -160,17 +161,21 @@ export default function VerifyCodeScreen() {
         </View>
 
         <View style={styles.contentWrap}>
-          <View style={styles.header}>
-            <TouchableOpacity
-              style={styles.headerBackBtn}
-              onPress={() => navigation.goBack()}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="arrow-back" size={20} color={COLORS.textPrimary} />
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>{t('verifyCode.headerTitle')}</Text>
-            <View style={styles.headerRightPlaceholder} />
-          </View>
+          <BrandedHeader
+            containerStyle={styles.header}
+            sideWidth={44}
+            title={t('verifyCode.headerTitle')}
+            left={
+              <TouchableOpacity
+                style={styles.headerBackBtn}
+                onPress={() => navigation.goBack()}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="arrow-back" size={20} color={COLORS.textPrimary} />
+              </TouchableOpacity>
+            }
+            right={<View style={styles.headerRightPlaceholder} />}
+          />
 
           <View style={styles.content}>
             <View style={styles.iconCircle}>

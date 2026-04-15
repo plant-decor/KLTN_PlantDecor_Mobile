@@ -3,6 +3,7 @@ import {
   Category,
   Nursery,
   NurseryCommonPlant,
+  NurseryPlantComboAndMaterialAvailability,
   NurseryPlantInstanceAvailability,
   Plant,
   SearchCommonPlantsNurseryRequest,
@@ -26,6 +27,8 @@ interface PlantState {
   shopInstancePlants: ShopInstanceSearchItem[];
   nurseriesGotPlantInstances: NurseryPlantInstanceAvailability[];
   nurseriesGotCommonPlants: NurseryPlantInstanceAvailability[];
+  nurseriesGotPlantCombos: NurseryPlantComboAndMaterialAvailability[];
+  nurseriesGotMaterials: NurseryPlantComboAndMaterialAvailability[];
   isLoading: boolean;
   isLoadingMore: boolean;
   error: string | null;
@@ -49,17 +52,27 @@ interface PlantState {
     sortBy?: string;
     sortDirection?: string;
   }) => Promise<void>;
-  fetchPlantDetail: (id: string) => Promise<void>;
+  fetchPlantDetail: (id: number) => Promise<void>;
   searchShopPlants: (request: SearchPlantsRequest) => Promise<void>;
   searchShopInstancePlants: (request: ShopInstanceSearchRequest) => Promise<void>;
   searchNurseries: (request: SearchNurseriesRequest) => Promise<void>;
   searchCommonPlants: (request: SearchCommonPlantsRequest) => Promise<void>;
   searchCommonPlantsNursery: (
-    nurseryId: string | number,
+    nurseryId: number,
     request: SearchCommonPlantsNurseryRequest
   ) => Promise<void>;
-  fetchNurseriesGotPlantInstances: (plantId: string | number) => Promise<void>;
-  fetchNurseriesGotCommonPlantByPlantId: (plantId: string | number) => Promise<void>;
+  fetchNurseriesGotPlantInstances: (
+    plantId: number
+  ) => Promise<NurseryPlantInstanceAvailability[]>;
+  fetchNurseriesGotCommonPlantByPlantId: (
+    plantId: number
+  ) => Promise<NurseryPlantInstanceAvailability[]>;
+  fetchNurseriesGotPlantComboByPlantComboId: (
+    plantComboId: number
+  ) => Promise<NurseryPlantComboAndMaterialAvailability[]>;
+  fetchNurseriesGotMaterialByMaterialId: (
+    materialId: number
+  ) => Promise<NurseryPlantComboAndMaterialAvailability[]>;
   setSelectedCategory: (categoryId: string | null) => void;
   clearPlants: () => void;
   clearError: () => void;
@@ -84,6 +97,8 @@ export const usePlantStore = create<PlantState>((set) => ({
   shopInstancePlants: [],
   nurseriesGotPlantInstances: [],
   nurseriesGotCommonPlants: [],
+  nurseriesGotPlantCombos: [],
+  nurseriesGotMaterials: [],
   isLoading: false,
   isLoadingMore: false,
   error: null,
@@ -300,13 +315,16 @@ export const usePlantStore = create<PlantState>((set) => ({
     set({ isLoading: true, error: null });
     try {
       const result = await plantService.getNurseriesGotPlantInstances(plantId);
-      set({ nurseriesGotPlantInstances: result ?? [], isLoading: false });
+      const normalizedResult = result ?? [];
+      set({ nurseriesGotPlantInstances: normalizedResult, isLoading: false });
+      return normalizedResult;
     } catch (error: any) {
       set({
         error: error.response?.data?.message || 'Không thể tải vựa có cây',
         isLoading: false,
         nurseriesGotPlantInstances: [],
       });
+      return [];
     }
   },
 
@@ -314,13 +332,50 @@ export const usePlantStore = create<PlantState>((set) => ({
     set({ isLoading: true, error: null });
     try {
       const result = await plantService.getNurseriesGotCommonPlantByPlantId(plantId);
-      set({ nurseriesGotCommonPlants: result ?? [], isLoading: false });
+      const normalizedResult = result ?? [];
+      set({ nurseriesGotCommonPlants: normalizedResult, isLoading: false });
+      return normalizedResult;
     } catch (error: any) {
       set({
         error: error.response?.data?.message || 'Không thể tải vựa có cây đại trà',
         isLoading: false,
         nurseriesGotCommonPlants: [],
       });
+      return [];
+    }
+  },
+
+  fetchNurseriesGotPlantComboByPlantComboId: async (plantComboId) => {
+    set({ isLoading: true, error: null });
+    try {
+      const result = await plantService.getNurseriesGotPlantCombo(plantComboId);
+      const normalizedResult = result ?? [];
+      set({ nurseriesGotPlantCombos: normalizedResult, isLoading: false });
+      return normalizedResult;
+    } catch (error: any) {
+      set({
+        error: error.response?.data?.message || 'Không thể tải vựa có combo',
+        isLoading: false,
+        nurseriesGotPlantCombos: [],
+      });
+      return [];
+    }
+  },
+
+  fetchNurseriesGotMaterialByMaterialId: async (materialId) => {
+    set({ isLoading: true, error: null });
+    try {
+      const result = await plantService.getNurseriesGotMaterial(materialId);
+      const normalizedResult = result ?? [];
+      set({ nurseriesGotMaterials: normalizedResult, isLoading: false });
+      return normalizedResult;
+    } catch (error: any) {
+      set({
+        error: error.response?.data?.message || 'Không thể tải vựa có vật tư',
+        isLoading: false,
+        nurseriesGotMaterials: [],
+      });
+      return [];
     }
   },
 
@@ -339,6 +394,8 @@ export const usePlantStore = create<PlantState>((set) => ({
       shopInstancePlants: [],
       nurseriesGotPlantInstances: [],
       nurseriesGotCommonPlants: [],
+      nurseriesGotPlantCombos: [],
+      nurseriesGotMaterials: [],
       pageNumber: 1,
       totalPages: 1,
       nurseriesPageNumber: 1,

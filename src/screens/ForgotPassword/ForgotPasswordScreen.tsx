@@ -16,6 +16,7 @@ import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { COLORS, RADIUS, SPACING } from '../../constants';
+import { BrandedHeader } from '../../components/branding';
 import { authService } from '../../services/authService';
 import { RootStackParamList } from '../../types';
 
@@ -173,19 +174,21 @@ export default function ForgotPasswordScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.headerRow}>
-          <TouchableOpacity
-            style={styles.backBtn}
-            activeOpacity={0.7}
-            onPress={() => navigation.goBack()}
-          >
-            <Ionicons name="arrow-back" size={20} color={COLORS.textPrimary} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>
-            {t('forgotPassword.title', { defaultValue: 'Forgot Password' })}
-          </Text>
-          <View style={styles.headerPlaceholder} />
-        </View>
+        <BrandedHeader
+          containerStyle={styles.headerRow}
+          sideWidth={44}
+          title={t('forgotPassword.title', { defaultValue: 'Forgot Password' })}
+          left={
+            <TouchableOpacity
+              style={styles.backBtn}
+              activeOpacity={0.7}
+              onPress={() => navigation.goBack()}
+            >
+              <Ionicons name="arrow-back" size={20} color={COLORS.textPrimary} />
+            </TouchableOpacity>
+          }
+          right={<View style={styles.headerPlaceholder} />}
+        />
 
         <Text style={styles.subtitle}>
           {t('forgotPassword.subtitle', {

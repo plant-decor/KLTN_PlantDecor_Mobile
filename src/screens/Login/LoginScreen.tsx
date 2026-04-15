@@ -20,6 +20,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, ICONS, RADIUS, SPACING } from '../../constants';
+import { BrandMark } from '../../components/branding';
 import { RootStackParamList } from '../../types';
 import { useAuthStore } from '../../stores/useAuthStore';
 
@@ -119,12 +120,7 @@ export default function LoginScreen() {
         <View style={styles.heroOverlay} />
 
         <View style={styles.logoWrap}>
-          <View style={styles.logoGrid}>
-            {new Array(9).fill(null).map((_, i) => (
-              <View key={i} style={styles.logoDot} />
-            ))}
-          </View>
-          <Text style={styles.logoText}>PlantDecor</Text>
+          <BrandMark variant="logoWithText" size="hero" />
         </View>
       </View>
 

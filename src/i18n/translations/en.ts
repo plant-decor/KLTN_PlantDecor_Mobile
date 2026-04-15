@@ -472,7 +472,9 @@ const en = {
     filterConfigLoadFailed: 'Could not load all filter options. Fallback values will be used.',
     loadNurseryFailed: 'Unable to load available nurseries.',
     noNurseryAvailable: 'No nursery is currently available for this plant.',
+    noNurseryAvailableForItem: 'No nursery is currently available for this item.',
     selectNurseryTitle: 'Select a nursery',
+    phone: 'Phone',
   },
   materialDetail: {
     title: 'Material detail',

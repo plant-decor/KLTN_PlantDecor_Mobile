@@ -16,6 +16,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, RADIUS, SHADOWS, SPACING } from '../../constants';
+import { BrandedHeader } from '../../components/branding';
 import { orderService, paymentService } from '../../services';
 import { useAuthStore, useEnumStore } from '../../stores';
 import { OrderPayload, RootStackParamList } from '../../types';
@@ -526,16 +527,20 @@ export default function OrderHistoryScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={handleBackToProfile}
-        >
-          <Ionicons name="chevron-back" size={22} color={COLORS.textPrimary} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle} numberOfLines={1}>{headerTitle}</Text>
-        <View style={styles.backButtonPlaceholder} />
-      </View>
+      <BrandedHeader
+        containerStyle={styles.header}
+        sideWidth={44}
+        title={headerTitle}
+        left={
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={handleBackToProfile}
+          >
+            <Ionicons name="chevron-back" size={22} color={COLORS.textPrimary} />
+          </TouchableOpacity>
+        }
+        right={<View style={styles.backButtonPlaceholder} />}
+      />
 
       {renderStatusFilters()}
 

@@ -17,6 +17,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, SPACING, RADIUS, SHADOWS } from '../../constants';
+import { BrandedHeader } from '../../components/branding';
 import {
   CheckoutItem,
   NurseryPlantInstanceAvailability,
@@ -806,29 +807,36 @@ export default function WishlistScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.headerIconBtn} onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>{headerTitle}</Text>
-        {items.length > 0 ? (
-          <TouchableOpacity
-            style={styles.headerActionBtn}
-            onPress={handleClearAll}
-            disabled={isLoading || isLoadingMore || isRefreshing || isClearingAll}
-          >
-            {isClearingAll ? (
-              <ActivityIndicator size="small" color={COLORS.primary} />
-            ) : (
-              <Text style={styles.headerActionText}>
-                {t('wishlist.clearAll', { defaultValue: 'Clear all' })}
-              </Text>
-            )}
+      <BrandedHeader
+        containerStyle={styles.header}
+        sideWidth={86}
+        brandVariant="none"
+        title={headerTitle}
+        left={
+          <TouchableOpacity style={styles.headerIconBtn} onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
           </TouchableOpacity>
-        ) : (
-          <View style={styles.headerSidePlaceholder} />
-        )}
-      </View>
+        }
+        right={
+          items.length > 0 ? (
+            <TouchableOpacity
+              style={styles.headerActionBtn}
+              onPress={handleClearAll}
+              disabled={isLoading || isLoadingMore || isRefreshing || isClearingAll}
+            >
+              {isClearingAll ? (
+                <ActivityIndicator size="small" color={COLORS.primary} />
+              ) : (
+                <Text style={styles.headerActionText}>
+                  {t('wishlist.clearAll', { defaultValue: 'Clear all' })}
+                </Text>
+              )}
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.headerSidePlaceholder} />
+          )
+        }
+      />
 
       {isLoading && items.length === 0 ? (
         <View style={styles.loaderContainer}>

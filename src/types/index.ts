@@ -370,6 +370,7 @@ export interface ShopSearchMaterialSummary {
   materialName: string;
   materialCode: string;
   unit: string;
+  basePrice: number;
   nurseryId: number;
   nurseryName: string;
   quantity: number;
@@ -377,7 +378,7 @@ export interface ShopSearchMaterialSummary {
   reservedQuantity: number;
   isActive: boolean;
   availableQuantity: number;
-  imageUrl?: string | null;
+  primaryImageUrl?: string | null;
 }
 
 export interface ShopSearchComboNursery {
@@ -393,7 +394,7 @@ export interface ShopSearchComboSummary {
   comboTypeName?: string | null;
   description?: string | null;
   price: number;
-  imageUrl?: string | null;
+  primaryImageUrl?: string | null;
   nurseries: ShopSearchComboNursery[];
   season?: number | null;
   seasonName?: string | null;
@@ -752,6 +753,22 @@ export interface NurseryPlantInstanceAvailability {
   maxPrice: number;
 }
 
+export interface NurseryPlantComboAndMaterialAvailability {
+  id: number;
+  nurseryMaterialId: number | null;
+  nurseryPlantComboId: number | null;
+  commonPlantId: number | null;
+  managerId?: number | null;
+  managerName?: string | null;
+  name: string;
+  address: string;
+  phone?: string | null;
+  isActive: boolean;
+  createdAt?: string | null;
+  quantity?: number | null;
+
+}
+
 export interface NurseriesGotPlantInstancesResponse {
   success: boolean;
   statusCode: number;
@@ -766,6 +783,20 @@ export interface NurseriesGotCommonPlantResponse {
   payload: NurseryPlantInstanceAvailability[];
 }
 
+export interface NurseriesGotPlantComboResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: NurseryPlantComboAndMaterialAvailability[];
+}
+
+export interface NurseriesGotMaterialResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: NurseryPlantComboAndMaterialAvailability[];
+}
+
 export interface PlantDetailResponse {
   success: boolean;
   statusCode: number;
@@ -774,9 +805,18 @@ export interface PlantDetailResponse {
 }
 
 // ==================== Cart ====================
+export interface CartItem {
+  id: string;
+  plant: Plant;
+  quantity: number;
+}
+
 export interface CartApiItem {
   id: number;
   cartId: number;
+  plantId?: number | null;
+  plantComboId?: number | null;
+  materialId?: number | null;
   commonPlantId: number | null;
   nurseryPlantComboId: number | null;
   nurseryMaterialId: number | null;
@@ -791,7 +831,7 @@ export interface CartApiItem {
 
 export interface AddCartItemRequest {
   commonPlantId: number | null;
-  nurseryPlantComboId: number | null;
+  nurseryPlantComboId?: number | null;
   nurseryMaterialId: number | null;
   quantity: number;
 }
@@ -852,12 +892,6 @@ export interface ClearCartResponse {
   message: string;
 }
 
-export interface CartItem {
-  id: string;
-  plant: Plant;
-  quantity: number;
-}
-
 export type CheckoutSource = 'cart' | 'buy-now';
 
 export interface CheckoutItem {
@@ -868,7 +902,7 @@ export interface CheckoutItem {
   price: number;
   quantity: number;
   cartItemId?: number;
-  buyNowItemId?: number;
+  buyNowItemId?: number | null;
   buyNowItemTypeName?: string;
   plantInstanceId?: number;
   isUniqueInstance?: boolean;

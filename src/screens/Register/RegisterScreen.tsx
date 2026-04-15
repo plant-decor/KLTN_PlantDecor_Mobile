@@ -18,6 +18,7 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useNavigation } from "@react-navigation/native";
 import { useTranslation } from "react-i18next";
 import { COLORS, ICONS, RADIUS, SPACING } from "../../constants";
+import { BrandMark } from "../../components/branding";
 import { RootStackParamList } from "../../types";
 import { useAuthStore } from "../../stores/useAuthStore";
 
@@ -121,15 +122,7 @@ export default function RegisterScreen() {
         />
 
         <View style={styles.brandWrap}>
-          <View style={styles.dotGrid}>
-            {new Array(9).fill(null).map((_, i) => (
-              <View
-                key={i}
-                style={[styles.brandDot, i % 2 === 0 && styles.brandDotMuted]}
-              />
-            ))}
-          </View>
-          <Text style={styles.brandText}>PlantDecor</Text>
+          <BrandMark variant="logoWithText" size="hero" />
         </View>
       </View>
 

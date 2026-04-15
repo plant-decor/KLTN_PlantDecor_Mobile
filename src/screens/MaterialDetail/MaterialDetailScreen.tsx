@@ -18,9 +18,14 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, SHADOWS, SPACING } from '../../constants';
-import { CheckoutItem, RootStackParamList, ShopSearchMaterialSummary } from '../../types';
-import { useAuthStore, useWishlistStore } from '../../stores';
-import { cartService, plantService } from '../../services';
+import {
+  CheckoutItem,
+  NurseryPlantComboAndMaterialAvailability,
+  RootStackParamList,
+  ShopSearchMaterialSummary,
+} from '../../types';
+import { useAuthStore, useCartStore, usePlantStore, useWishlistStore } from '../../stores';
+import { plantService } from '../../services';
 import { getWishlistKey, notify } from '../../utils';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -32,6 +37,27 @@ const ATTR_CARD_WIDTH = (Dimensions.get('window').width - SPACING.xl * 2 - 12) /
 const RELATED_CARD_WIDTH = 196;
 const RELATED_CARD_GAP = 16;
 const RELATED_IMAGE_HEIGHT = 210;
+
+const getImageUri = (imageValue: unknown): string | null => {
+  if (typeof imageValue === 'string') {
+    const trimmed = imageValue.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  if (!imageValue || typeof imageValue !== 'object') {
+    return null;
+  }
+
+  const imageRecord = imageValue as Record<string, unknown>;
+  const candidate = imageRecord.imageUrl ?? imageRecord.url ?? imageRecord.uri;
+
+  if (typeof candidate !== 'string') {
+    return null;
+  }
+
+  const trimmed = candidate.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
 
 type AttributeProps = {
   icon: keyof typeof Ionicons.glyphMap;
@@ -63,6 +89,11 @@ export default function MaterialDetailScreen() {
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
   const insets = useSafeAreaInsets();
   const { isAuthenticated } = useAuthStore();
+  const addCartItem = useCartStore((state) => state.addCartItem);
+  const cartItemCount = useCartStore((state) => state.totalItems());
+  const fetchNurseriesGotMaterialByMaterialId = usePlantStore(
+    (state) => state.fetchNurseriesGotMaterialByMaterialId
+  );
 
   const wishlistStatus = useWishlistStore((state) => state.statusByKey);
   const ensureStatus = useWishlistStore((state) => state.ensureStatus);
@@ -81,6 +112,13 @@ export default function MaterialDetailScreen() {
   const [relatedContentWidth, setRelatedContentWidth] = useState(0);
   const [relatedScrollX, setRelatedScrollX] = useState(0);
   const [bottomBarHeight, setBottomBarHeight] = useState(0);
+  const [isNurseryLoading, setIsNurseryLoading] = useState(false);
+  const [availableNurseryOptions, setAvailableNurseryOptions] = useState<
+    NurseryPlantComboAndMaterialAvailability[]
+  >([]);
+  const [selectedNurseryMaterialId, setSelectedNurseryMaterialId] = useState<number | null>(
+    nurseryMaterialId ?? null
+  );
 
   const wishlistItemId = materialId;
   const wishlistKey = getWishlistKey('Material', wishlistItemId);
@@ -151,7 +189,59 @@ export default function MaterialDetailScreen() {
 
   useEffect(() => {
     setQuantity(1);
-  }, [materialId]);
+    setSelectedNurseryMaterialId(nurseryMaterialId ?? null);
+  }, [materialId, nurseryMaterialId]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadNurseries = async () => {
+      setIsNurseryLoading(true);
+
+      try {
+        const options = await fetchNurseriesGotMaterialByMaterialId(materialId);
+        const normalizedOptions = options ?? [];
+
+        if (!isMounted) {
+          return;
+        }
+
+        setAvailableNurseryOptions(normalizedOptions);
+        setSelectedNurseryMaterialId((current) => {
+          const preferredFromRoute =
+            nurseryMaterialId &&
+            normalizedOptions.some((option) => option.nurseryMaterialId === nurseryMaterialId)
+              ? nurseryMaterialId
+              : null;
+
+          const preferredFromState =
+            current &&
+            normalizedOptions.some((option) => option.nurseryMaterialId === current)
+              ? current
+              : null;
+
+          return preferredFromRoute ?? preferredFromState ?? normalizedOptions[0]?.nurseryMaterialId ?? null;
+        });
+      } catch {
+        if (!isMounted) {
+          return;
+        }
+
+        setAvailableNurseryOptions([]);
+        setSelectedNurseryMaterialId(null);
+      } finally {
+        if (isMounted) {
+          setIsNurseryLoading(false);
+        }
+      }
+    };
+
+    void loadNurseries();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [fetchNurseriesGotMaterialByMaterialId, materialId, nurseryMaterialId]);
 
   useEffect(() => {
     if (!material) {
@@ -279,7 +369,10 @@ export default function MaterialDetailScreen() {
   }, [ensureStatus, isAuthenticated, wishlistTargets]);
 
   const isWishlisted = wishlistStatus[wishlistKey] ?? false;
-  const imageUrl = useMemo(() => material?.images?.[0] || PLACEHOLDER_IMAGE, [material?.images]);
+  const imageUrl = useMemo(
+    () => getImageUri(material?.images?.[0]) ?? PLACEHOLDER_IMAGE,
+    [material?.images]
+  );
   const hasMoreRelatedItems = relatedMaterials.length > 1;
   const showRelatedArrowLeft = relatedScrollX > 4;
   const showRelatedArrowRight = hasMoreRelatedItems
@@ -300,6 +393,13 @@ export default function MaterialDetailScreen() {
   const formatMoney = useCallback(
     (value: number) => `${Math.max(0, value).toLocaleString(locale)}₫`,
     [locale]
+  );
+  const selectedNursery = useMemo(
+    () =>
+      availableNurseryOptions.find(
+        (option) => option.nurseryMaterialId === selectedNurseryMaterialId
+      ) ?? null,
+    [availableNurseryOptions, selectedNurseryMaterialId]
   );
   const handleBottomBarLayout = useCallback((event: LayoutChangeEvent) => {
     const nextHeight = event.nativeEvent.layout.height;
@@ -374,78 +474,85 @@ export default function MaterialDetailScreen() {
     [navigation, resolveMaterialEntityId]
   );
 
-  const handleAddToCart = useCallback(async () => {
-    if (!requireAuth()) {
-      return;
-    }
+  const handleConfirmNurseryAction = useCallback(
+    async (goToCheckout = false) => {
+      if (!requireAuth() || !material || !selectedNursery?.nurseryMaterialId) {
+        if (material && !selectedNursery?.nurseryMaterialId) {
+          notify({
+            message: t('cart.addFailed', {
+              defaultValue: 'Unable to add to cart.',
+            }),
+          });
+        }
+        return;
+      }
 
-    const resolvedNurseryMaterialId = nurseryMaterialId ?? material?.id ?? wishlistItemId;
+      const finalQuantity = Math.max(1, quantity);
 
-    if (!resolvedNurseryMaterialId) {
-      notify({
-        message: t('checkout.invalidCheckoutItems', {
-          defaultValue: 'Cannot resolve buy now item for order creation.',
-        }),
-      });
-      return;
-    }
+      if (goToCheckout) {
+        const checkoutItem: CheckoutItem = {
+          id: `buy_now_material_${selectedNursery.nurseryMaterialId}`,
+          name: material.name,
+          image: getImageUri(material.images?.[0]) ?? undefined,
+          price: material.basePrice,
+          quantity: finalQuantity,
+          buyNowItemId: selectedNursery.nurseryMaterialId,
+          buyNowItemTypeName: 'NurseryMaterial',
+          isUniqueInstance: false,
+        };
+        navigation.navigate('Checkout', {
+          source: 'buy-now',
+          items: [checkoutItem],
+        });
+        return;
+      }
 
-    setIsSubmitting(true);
-    try {
-      await cartService.addCartItem({
-        commonPlantId: null,
-        nurseryPlantComboId: null,
-        nurseryMaterialId: resolvedNurseryMaterialId,
-        quantity: Math.max(1, quantity),
-      });
+      setIsSubmitting(true);
+      try {
+        const payload = await addCartItem({
+          commonPlantId: null,
+          nurseryPlantComboId: null,
+          nurseryMaterialId: selectedNursery.nurseryMaterialId,
+          quantity: finalQuantity,
+        });
 
-      notify({
-        message: t('cart.addedMessage', { defaultValue: 'Added to cart.' }),
-      });
-    } catch (cartError: any) {
-      notify({
-        message:
-          cartError?.response?.data?.message ||
-          t('cart.addFailed', { defaultValue: 'Unable to add to cart.' }),
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  }, [material?.id, nurseryMaterialId, quantity, requireAuth, t, wishlistItemId]);
+        if (!payload) {
+          notify({
+            message: t('cart.addFailed', { defaultValue: 'Unable to add to cart.' }),
+          });
+          return;
+        }
+
+        notify({
+          message: t('cart.addedMessage', { defaultValue: 'Added to cart.' }),
+        });
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    [
+      addCartItem,
+      material,
+      navigation,
+      quantity,
+      requireAuth,
+      selectedNursery,
+      t,
+    ]
+  );
+
+  const handleAddToCart = useCallback(() => {
+    void handleConfirmNurseryAction(false);
+  }, [handleConfirmNurseryAction]);
 
   const handleBuyNow = useCallback(() => {
-    if (!requireAuth() || !material) {
-      return;
-    }
+    void handleConfirmNurseryAction(true);
+  }, [handleConfirmNurseryAction]);
 
-    const buyNowItemId = nurseryMaterialId ?? material.id ?? materialId;
-
-    if (!buyNowItemId) {
-      notify({
-        message: t('checkout.invalidCheckoutItems', {
-          defaultValue: 'Cannot resolve buy now item for order creation.',
-        }),
-        useAlert: true,
-      });
-      return;
-    }
-
-    const checkoutItem: CheckoutItem = {
-      id: `buy_now_material_${buyNowItemId}`,
-      name: material.name,
-      image: material.images?.[0] ?? undefined,
-      price: material.basePrice,
-      quantity: Math.max(1, quantity),
-      buyNowItemId,
-      buyNowItemTypeName: 'NurseryMaterial',
-      isUniqueInstance: false,
-    };
-
-    navigation.navigate('Checkout', {
-      source: 'buy-now',
-      items: [checkoutItem],
-    });
-  }, [material, materialId, navigation, nurseryMaterialId, quantity, requireAuth, t]);
+  const isNurseryActionDisabled =
+    isSubmitting ||
+    isNurseryLoading ||
+    !selectedNursery?.nurseryMaterialId;
 
   if (isLoading) {
     return (
@@ -486,16 +593,27 @@ export default function MaterialDetailScreen() {
       </View>
 
       <View style={styles.heroOverlay} pointerEvents="box-none">
-        <TouchableOpacity style={styles.navBtn} onPress={() => navigation.goBack()}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
           <Ionicons name="chevron-back" size={22} color="#0D1B12" />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.navBtn} onPress={() => void handleToggleWishlist()}>
-          <Ionicons
-            name={isWishlisted ? 'heart' : 'heart-outline'}
-            size={20}
-            color={isWishlisted ? COLORS.error : COLORS.white}
-          />
-        </TouchableOpacity>
+
+        <View style={styles.heroActions}>
+          <TouchableOpacity style={styles.heartBtn} onPress={() => void handleToggleWishlist()}>
+            <Ionicons
+              name={isWishlisted ? 'heart' : 'heart-outline'}
+              size={20}
+              color={isWishlisted ? COLORS.error : COLORS.white}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.cartBtn}
+            onPress={() => requireAuth(() => navigation.navigate('Cart'))}
+          >
+            <Ionicons name="cart-outline" size={20} color={COLORS.white} />
+            {cartItemCount > 0 ? <View style={styles.cartDot} /> : null}
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -632,6 +750,63 @@ export default function MaterialDetailScreen() {
 
           <View style={styles.sectionWrap}>
             <Text style={styles.sectionTitle}>
+              {t('plantDetail.availableNurseries', {
+                defaultValue: 'Available nurseries',
+              })}
+            </Text>
+            {isNurseryLoading ? (
+              <View style={styles.nurseryLoadingWrap}>
+                <ActivityIndicator size="small" color={COLORS.primary} />
+              </View>
+            ) : availableNurseryOptions.length > 0 ? (
+              <View style={styles.nurseryList}>
+                {availableNurseryOptions.map((nursery) => {
+                  const isSelected = nursery.nurseryMaterialId === selectedNurseryMaterialId;
+
+                  return (
+                    <TouchableOpacity
+                      key={`${nursery.id}-${nursery.nurseryMaterialId}`}
+                      style={[styles.nurseryCard, isSelected && styles.nurseryCardSelected]}
+                      activeOpacity={0.82}
+                      onPress={() => setSelectedNurseryMaterialId(nursery.nurseryMaterialId ?? null)}
+                    >
+                      <View style={styles.nurseryHeader}>
+                        <Ionicons name="business-outline" size={18} color="#15803D" />
+                        <Text style={styles.nurseryName}>{nursery.name}</Text>
+                        {isSelected ? (
+                          <Ionicons name="checkmark-circle" size={16} color="#13EC5B" />
+                        ) : null}
+                      </View>
+                      <Text style={styles.nurseryAddress}>{nursery.address}</Text>
+                      <View style={styles.nurseryMetaRow}>
+                        <Ionicons name="call-outline" size={14} color={COLORS.textSecondary} />
+                        <Text style={styles.nurseryMetaText}>
+                          {nursery.phone || t('common.updating', { defaultValue: 'Updating' })}
+                        </Text>
+                      </View>
+                      <View style={styles.nurseryFooter}>
+                        <Text style={styles.nurseryAvailability}>
+                          {`${t('catalog.stock', { defaultValue: 'Stock' })}: ${Math.max(
+                            0,
+                            nursery.quantity ?? 0
+                          )}`}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ) : (
+              <Text style={styles.emptyText}>
+                {t('catalog.noNurseryAvailableForItem', {
+                  defaultValue: 'No nursery is currently available for this item.',
+                })}
+              </Text>
+            )}
+          </View>
+
+          <View style={styles.sectionWrap}>
+            <Text style={styles.sectionTitle}>
               {t('plantDetail.youMayAlsoLike', { defaultValue: 'You may also like' })}
             </Text>
             {isLoadingRelated ? (
@@ -657,6 +832,7 @@ export default function MaterialDetailScreen() {
                   onScroll={(event) => setRelatedScrollX(event.nativeEvent.contentOffset.x)}
                   scrollEventThrottle={16}
                   renderItem={({ item }) => {
+                    const relatedImageUrl = getImageUri(item.primaryImageUrl);
                     const relatedMaterialId = resolveMaterialEntityId(item);
                     const relatedWishlistKey = getWishlistKey('Material', relatedMaterialId);
                     const isRelatedWishlisted = wishlistStatus[relatedWishlistKey] ?? false;
@@ -668,9 +844,9 @@ export default function MaterialDetailScreen() {
                         onPress={() => handleOpenRelatedMaterial(item)}
                       >
                         <View style={styles.relatedImageWrap}>
-                          {item.imageUrl?.trim() ? (
+                          {relatedImageUrl ? (
                             <Image
-                              source={{ uri: item.imageUrl }}
+                              source={{ uri: relatedImageUrl }}
                               style={styles.relatedImage}
                               resizeMode="cover"
                             />
@@ -767,16 +943,16 @@ export default function MaterialDetailScreen() {
 
         <View style={styles.bottomActionRow}>
           <TouchableOpacity
-            style={[styles.buyNowButton, isSubmitting && styles.actionDisabled]}
-            disabled={isSubmitting}
+            style={[styles.buyNowButton, isNurseryActionDisabled && styles.actionDisabled]}
+            disabled={isNurseryActionDisabled}
             onPress={handleBuyNow}
           >
             <Text style={styles.buyNowText}>{t('plantDetail.buyNow', { defaultValue: 'Buy now' })}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.addToCartButton, isSubmitting && styles.actionDisabled]}
-            disabled={isSubmitting}
+            style={[styles.addToCartButton, isNurseryActionDisabled && styles.actionDisabled]}
+            disabled={isNurseryActionDisabled}
             onPress={() => void handleAddToCart()}
           >
             {isSubmitting ? (
@@ -848,23 +1024,54 @@ const styles = StyleSheet.create({
   },
   heroOverlay: {
     position: 'absolute',
-    top: 12,
+    top: 0,
     left: 0,
     right: 0,
-    paddingHorizontal: SPACING.lg,
+    paddingTop: 48,
+    paddingHorizontal: 16,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     zIndex: 2,
     elevation: 2,
   },
-  navBtn: {
+  backBtn: {
     width: 36,
     height: 36,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.30)',
+    borderRadius: 9999,
+    backgroundColor: 'rgba(255,255,255,0.20)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  heroActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  heartBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 9999,
+    backgroundColor: 'rgba(255,255,255,0.30)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cartBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 9999,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cartDot: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.error,
   },
   scrollView: {
     flex: 1,
@@ -1259,5 +1466,61 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#102216',
     fontWeight: '700',
+  },
+  nurseryLoadingWrap: {
+    marginTop: SPACING.md,
+    alignItems: 'flex-start',
+  },
+  nurseryList: {
+    marginTop: SPACING.md,
+    gap: SPACING.sm,
+  },
+  nurseryCard: {
+    borderWidth: 1,
+    borderColor: '#D7E4DB',
+    borderRadius: 12,
+    padding: SPACING.sm,
+    backgroundColor: COLORS.white,
+  },
+  nurseryCardSelected: {
+    borderColor: '#13EC5B',
+    backgroundColor: '#EDFEF3',
+  },
+  nurseryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  nurseryName: {
+    fontSize: FONTS.sizes.md,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    flex: 1,
+    marginHorizontal: 8,
+  },
+  nurseryAddress: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+  },
+  nurseryMetaRow: {
+    marginTop: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  nurseryMetaText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+  },
+  nurseryFooter: {
+    marginTop: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  nurseryAvailability: {
+    fontSize: FONTS.sizes.sm,
+    color: '#4C9A66',
+    fontWeight: '600',
   },
 });

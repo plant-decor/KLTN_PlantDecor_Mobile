@@ -21,10 +21,10 @@ import { useNavigation } from '@react-navigation/native';
 import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, RADIUS, SHADOWS, SPACING } from '../../constants';
+import { BrandMark } from '../../components/branding';
 import {
   AddCartItemRequest,
   CheckoutItem,
-  NurseryPlantInstanceAvailability,
   RootStackParamList,
   ShopSearchConfigGroup,
   ShopSearchItem,
@@ -34,8 +34,8 @@ import {
   ShopSearchRequest,
   WishlistItemType,
 } from '../../types';
-import { useAuthStore, useCartStore, useWishlistStore } from '../../stores';
-import { cartService, plantService } from '../../services';
+import { useAuthStore, useCartStore, usePlantStore, useWishlistStore } from '../../stores';
+import { plantService } from '../../services';
 import { getWishlistKey, notify } from '../../utils';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -56,6 +56,27 @@ type FilterSectionKey =
   | 'categories'
   | 'tags'
   | 'nursery';
+
+type NurseryPickerMode = 'plant' | 'material' | 'combo';
+
+type NurseryPickerOption = {
+  nurseryId: number;
+  nurseryName: string;
+  address: string;
+  phone?: string | null;
+  actionId: number | null;
+  availableCount?: number;
+  minPrice?: number;
+  maxPrice?: number;
+};
+
+type PendingNurserySelection = {
+  mode: NurseryPickerMode;
+  displayName: string;
+  image?: string;
+  unitPrice: number;
+  buyNowItemTypeName: 'CommonPlant' | 'NurseryMaterial' | 'NurseryPlantCombo';
+};
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - SPACING.lg * 3) / 2;
@@ -193,7 +214,13 @@ export default function CatalogScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
   const { isAuthenticated } = useAuthStore();
+  const {
+    fetchNurseriesGotCommonPlantByPlantId,
+    fetchNurseriesGotMaterialByMaterialId,
+    fetchNurseriesGotPlantComboByPlantComboId,
+  } = usePlantStore();
   const cartItemCount = useCartStore((state) => state.totalItems());
+  const addCartItem = useCartStore((state) => state.addCartItem);
   const fetchCart = useCartStore((state) => state.fetchCart);
   const hasLoadedCart = useCartStore((state) => state.hasLoadedCart);
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
@@ -292,9 +319,10 @@ export default function CatalogScreen() {
 
   const [isNurseryPickerVisible, setIsNurseryPickerVisible] = useState(false);
   const [isNurseryPickerLoading, setIsNurseryPickerLoading] = useState(false);
-  const [pendingCartPlant, setPendingCartPlant] = useState<ShopSearchPlantSummary | null>(null);
+  const [pendingNurserySelection, setPendingNurserySelection] =
+    useState<PendingNurserySelection | null>(null);
   const [availableNurseryOptions, setAvailableNurseryOptions] =
-    useState<NurseryPlantInstanceAvailability[]>([]);
+    useState<NurseryPickerOption[]>([]);
   const [selectedCartNurseryId, setSelectedCartNurseryId] = useState<number | null>(null);
   const [selectedCartQuantity, setSelectedCartQuantity] = useState(1);
 
@@ -667,169 +695,53 @@ export default function CatalogScreen() {
         return null;
       }
 
-      try {
-        const payload = await cartService.addCartItem(request);
-        void fetchCart({ pageNumber: 1, pageSize: 20 }).catch(() => {
-          // Keep optimistic UI if syncing cart count fails.
+      console.log('[Catalog][submitAddToCart] request:', request);
+      const payload = await addCartItem(request);
+
+      if (!payload) {
+        console.warn('[Catalog][submitAddToCart] failed:', {
+          request,
+          error: 'Store addCartItem returned null',
         });
-        return payload;
-      } catch (cartError: any) {
         notify({
-          message:
-            cartError?.response?.data?.message ||
-            t('cart.addFailed', {
-              defaultValue: 'Unable to add to cart.',
-            }),
+          message: t('cart.addFailed', {
+            defaultValue: 'Unable to add to cart.',
+          }),
         });
         return null;
       }
-    },
-    [fetchCart, requireAuth, t]
-  );
 
-  const handleAddMaterialToCart = useCallback(
-    async (material: ShopSearchMaterialSummary) => {
-      const payload = await submitAddToCart({
-        commonPlantId: null,
-        nurseryPlantComboId: null,
-        nurseryMaterialId: material.id,
-        quantity: 1,
+      console.log('[Catalog][submitAddToCart] response:', {
+        cartItemId: payload.id,
+        commonPlantId: payload.commonPlantId,
+        nurseryPlantComboId: payload.nurseryPlantComboId,
+        nurseryMaterialId: payload.nurseryMaterialId,
       });
 
-      if (payload) {
-        notify({
-          message: t('cart.addedMessage', { defaultValue: 'Added to cart.' }),
-        });
-      }
+      return payload;
     },
-    [submitAddToCart, t]
-  );
-
-  const handleBuyNowMaterial = useCallback(
-    async (material: ShopSearchMaterialSummary) => {
-      if (!requireAuth()) {
-        return;
-      }
-
-      const buyNowItemId = toPositiveInt(material.id);
-      if (!buyNowItemId) {
-        notify({
-          message: t('checkout.invalidCheckoutItems', {
-            defaultValue: 'Cannot resolve buy now item for order creation.',
-          }),
-          useAlert: true,
-        });
-        return;
-      }
-
-      const detailMaterialId = toPositiveInt(material.materialId) ?? buyNowItemId;
-      let materialPrice = 0;
-
-      try {
-        const materialDetail = await plantService.getMaterialDetail(detailMaterialId);
-        materialPrice = Math.max(0, materialDetail.basePrice || 0);
-      } catch {
-        // Buy-now payload can still be created with backend price resolution.
-      }
-
-      const checkoutItem: CheckoutItem = {
-        id: `buy_now_material_${buyNowItemId}`,
-        name: material.materialName,
-        image: material.imageUrl?.trim() || undefined,
-        price: materialPrice,
-        quantity: 1,
-        buyNowItemId,
-        buyNowItemTypeName: 'NurseryMaterial',
-        isUniqueInstance: false,
-      };
-
-      navigation.navigate('Checkout', {
-        source: 'buy-now',
-        items: [checkoutItem],
-      });
-    },
-    [navigation, requireAuth, t]
-  );
-
-  const handleAddComboToCart = useCallback(
-    async (combo: ShopSearchComboSummary) => {
-      const payload = await submitAddToCart({
-        commonPlantId: null,
-        nurseryPlantComboId: combo.id,
-        nurseryMaterialId: null,
-        quantity: 1,
-      });
-
-      if (payload) {
-        notify({
-          message: t('cart.addedMessage', { defaultValue: 'Added to cart.' }),
-        });
-      }
-    },
-    [submitAddToCart, t]
-  );
-
-  const handleBuyNowCombo = useCallback(
-    (combo: ShopSearchComboSummary) => {
-      if (!requireAuth()) {
-        return;
-      }
-
-      const buyNowItemId = toPositiveInt(combo.id);
-      if (!buyNowItemId) {
-        notify({
-          message: t('checkout.invalidCheckoutItems', {
-            defaultValue: 'Cannot resolve buy now item for order creation.',
-          }),
-          useAlert: true,
-        });
-        return;
-      }
-
-      const checkoutItem: CheckoutItem = {
-        id: `buy_now_combo_${buyNowItemId}`,
-        name: combo.name,
-        image: combo.imageUrl?.trim() || undefined,
-        price: Math.max(0, combo.price || 0),
-        quantity: 1,
-        buyNowItemId,
-        buyNowItemTypeName: 'NurseryPlantCombo',
-        isUniqueInstance: false,
-      };
-
-      navigation.navigate('Checkout', {
-        source: 'buy-now',
-        items: [checkoutItem],
-      });
-    },
-    [navigation, requireAuth, t]
+    [addCartItem, requireAuth, t]
   );
 
   const closeNurseryPicker = useCallback(() => {
     setIsNurseryPickerVisible(false);
     setIsNurseryPickerLoading(false);
-    setPendingCartPlant(null);
+    setPendingNurserySelection(null);
     setAvailableNurseryOptions([]);
     setSelectedCartNurseryId(null);
     setSelectedCartQuantity(1);
   }, []);
 
-  const handleSelectNurseryForCart = useCallback(
-    async (plant: ShopSearchPlantSummary) => {
+  const openNurseryPicker = useCallback(
+    async (
+      selection: PendingNurserySelection,
+      fetchOptions: () => Promise<NurseryPickerOption[]>
+    ) => {
       if (!requireAuth()) {
         return;
       }
 
-      if (plant.isUniqueInstance) {
-        notify({
-          message: t('catalog.uniquePlantCannotCart', {
-            defaultValue: 'Unique plants cannot be added to cart directly.',
-          }),
-        });
-        return;
-      }
-
-      setPendingCartPlant(plant);
+      setPendingNurserySelection(selection);
       setIsNurseryPickerVisible(true);
       setIsNurseryPickerLoading(true);
       setAvailableNurseryOptions([]);
@@ -837,9 +749,10 @@ export default function CatalogScreen() {
       setSelectedCartQuantity(1);
 
       try {
-        const options = await plantService.getNurseriesGotCommonPlantByPlantId(plant.id);
-        setAvailableNurseryOptions(options ?? []);
-        setSelectedCartNurseryId(options?.[0]?.nurseryId ?? null);
+        const options = await fetchOptions();
+        const normalizedOptions = options ?? [];
+        setAvailableNurseryOptions(normalizedOptions);
+        setSelectedCartNurseryId(normalizedOptions[0]?.nurseryId ?? null);
       } catch (pickerError: any) {
         notify({
           message:
@@ -857,23 +770,26 @@ export default function CatalogScreen() {
   );
 
   const formatNurseryPrice = useCallback(
-    (minPrice: number, maxPrice: number) => {
-      if (!minPrice && !maxPrice) {
+    (minPrice?: number, maxPrice?: number) => {
+      const safeMin = minPrice ?? 0;
+      const safeMax = maxPrice ?? 0;
+
+      if (!safeMin && !safeMax) {
         return t('plantDetail.priceContact', { defaultValue: 'Contact' });
       }
 
-      if (minPrice === maxPrice) {
-        return formatMoney(minPrice, locale);
+      if (safeMin === safeMax) {
+        return formatMoney(safeMin, locale);
       }
 
-      return `${formatMoney(minPrice, locale)} - ${formatMoney(maxPrice, locale)}`;
+      return `${formatMoney(safeMin, locale)} - ${formatMoney(safeMax, locale)}`;
     },
     [locale, t]
   );
 
   const handleConfirmNurseryAdd = useCallback(
     async (goToCheckout = false) => {
-      if (!pendingCartPlant || selectedCartNurseryId === null) {
+      if (!pendingNurserySelection || selectedCartNurseryId === null) {
         return;
       }
 
@@ -881,7 +797,7 @@ export default function CatalogScreen() {
         (option) => option.nurseryId === selectedCartNurseryId
       );
 
-      if (!selectedNursery || selectedNursery.commonPlantId == null) {
+      if (!selectedNursery || selectedNursery.actionId == null) {
         notify({
           message: t('cart.addFailed', {
             defaultValue: 'Unable to add to cart.',
@@ -894,13 +810,13 @@ export default function CatalogScreen() {
 
       if (goToCheckout) {
         const checkoutItem: CheckoutItem = {
-          id: `buy_now_${pendingCartPlant.id}_${selectedNursery.nurseryId}`,
-          name: pendingCartPlant.name,
-          image: pendingCartPlant.primaryImageUrl ?? undefined,
-          price: selectedNursery.minPrice || pendingCartPlant.basePrice,
+          id: `buy_now_${pendingNurserySelection.mode}_${selectedNursery.actionId}`,
+          name: pendingNurserySelection.displayName,
+          image: pendingNurserySelection.image,
+          price: selectedNursery.minPrice ?? pendingNurserySelection.unitPrice,
           quantity,
-          buyNowItemId: selectedNursery.commonPlantId,
-          buyNowItemTypeName: 'CommonPlant',
+          buyNowItemId: selectedNursery.actionId,
+          buyNowItemTypeName: pendingNurserySelection.buyNowItemTypeName,
           isUniqueInstance: false,
         };
 
@@ -912,12 +828,17 @@ export default function CatalogScreen() {
         return;
       }
 
-      const payload = await submitAddToCart({
-        commonPlantId: selectedNursery.commonPlantId,
-        nurseryPlantComboId: null,
-        nurseryMaterialId: null,
+      const request: AddCartItemRequest = {
+        commonPlantId:
+          pendingNurserySelection.mode === 'plant' ? selectedNursery.actionId : null,
+        nurseryPlantComboId:
+          pendingNurserySelection.mode === 'combo' ? selectedNursery.actionId : null,
+        nurseryMaterialId:
+          pendingNurserySelection.mode === 'material' ? selectedNursery.actionId : null,
         quantity,
-      });
+      };
+
+      const payload = await submitAddToCart(request);
 
       if (!payload) {
         return;
@@ -932,12 +853,110 @@ export default function CatalogScreen() {
       availableNurseryOptions,
       closeNurseryPicker,
       navigation,
-      pendingCartPlant,
+      pendingNurserySelection,
       selectedCartNurseryId,
       selectedCartQuantity,
       submitAddToCart,
       t,
     ]
+  );
+
+  const handleSelectNurseryForCart = useCallback(
+    async (plant: ShopSearchPlantSummary) => {
+      if (plant.isUniqueInstance) {
+        notify({
+          message: t('catalog.uniquePlantCannotCart', {
+            defaultValue: 'Unique plants cannot be added to cart directly.',
+          }),
+        });
+        return;
+      }
+
+      await openNurseryPicker(
+        {
+          mode: 'plant',
+          displayName: plant.name,
+          image: plant.primaryImageUrl ?? undefined,
+          unitPrice: plant.basePrice,
+          buyNowItemTypeName: 'CommonPlant',
+        },
+        async () => {
+          const options = await fetchNurseriesGotCommonPlantByPlantId(plant.id);
+          return (options ?? []).map((option) => ({
+            nurseryId: option.nurseryId,
+            nurseryName: option.nurseryName,
+            address: option.address,
+            phone: option.phone,
+            actionId: option.commonPlantId ?? null,
+            availableCount: option.availableInstanceCount,
+            minPrice: option.minPrice,
+            maxPrice: option.maxPrice,
+          }));
+        }
+      );
+    },
+    [fetchNurseriesGotCommonPlantByPlantId, openNurseryPicker, t]
+  );
+
+  const handleAddMaterialToCart = useCallback(
+    async (material: ShopSearchMaterialSummary) => {
+      const materialEntityId = toPositiveInt(material.materialId) ?? toPositiveInt(material.id);
+      if (!materialEntityId) {
+        notify({
+          message: t('checkout.invalidCheckoutItems', {
+            defaultValue: 'Cannot resolve buy now item for order creation.',
+          }),
+          useAlert: true,
+        });
+        return;
+      }
+
+      await openNurseryPicker(
+        {
+          mode: 'material',
+          displayName: material.materialName,
+          image: material.primaryImageUrl?.trim() || undefined,
+          unitPrice: material.basePrice,
+          buyNowItemTypeName: 'NurseryMaterial',
+        },
+        async () => {
+          const options = await fetchNurseriesGotMaterialByMaterialId(materialEntityId);
+          return (options ?? []).map((option) => ({
+            nurseryId: option.id,
+            nurseryName: option.name,
+            address: option.address,
+            phone: option.phone,
+            actionId: option.nurseryMaterialId ?? null,
+          }));
+        }
+      );
+    },
+    [fetchNurseriesGotMaterialByMaterialId, openNurseryPicker, t]
+  );
+
+  const handleAddComboToCart = useCallback(
+    async (combo: ShopSearchComboSummary) => {
+      await openNurseryPicker(
+        {
+          mode: 'combo',
+          displayName: combo.name,
+          image: combo.primaryImageUrl?.trim() || undefined,
+          unitPrice: Math.max(0, combo.price || 0),
+          buyNowItemTypeName: 'NurseryPlantCombo',
+        },
+        async () => {
+          const options = await fetchNurseriesGotPlantComboByPlantComboId(combo.id);
+          return (options ?? []).map((option) => ({
+            nurseryId: option.id,
+            nurseryName: option.name,
+            address: option.address,
+            phone: option.phone,
+            actionId: option.nurseryPlantComboId ?? null,
+          }));
+        }
+      );
+    },
+    [fetchNurseriesGotPlantComboByPlantComboId, openNurseryPicker]
   );
 
   const handleSearch = useCallback(() => {
@@ -1206,6 +1225,7 @@ export default function CatalogScreen() {
 
   const renderMaterialCard = (item: ShopSearchItem, material: ShopSearchMaterialSummary) => {
     const materialId = material.materialId || material.id;
+    const materialImageUrl = material.primaryImageUrl?.trim() || '';
 
     return (
       <TouchableOpacity
@@ -1218,7 +1238,11 @@ export default function CatalogScreen() {
         }
       >
         <View style={[styles.productImageContainer, styles.materialImageContainer]}>
-          <Ionicons name="cube-outline" size={48} color={COLORS.primary} />
+          {materialImageUrl ? (
+            <Image source={{ uri: materialImageUrl }} style={styles.productImage} resizeMode="cover" />
+          ) : (
+            <Ionicons name="cube-outline" size={48} color={COLORS.primary} />
+          )}
           <TouchableOpacity
             style={styles.favoriteButton}
             onPress={(event) => {
@@ -1247,17 +1271,8 @@ export default function CatalogScreen() {
             {`${material.nurseryName} • ${t('catalog.stock', { defaultValue: 'Stock' })}: ${material.availableQuantity}`}
           </Text>
           <View style={styles.productFooter}>
-            <Text style={styles.productPrice}>{material.unit}</Text>
+            <Text style={styles.productPrice}>{material.basePrice}</Text>
             <View style={styles.productActions}>
-              <TouchableOpacity
-                style={styles.buyNowButton}
-                onPress={(event) => {
-                  event.stopPropagation();
-                  void handleBuyNowMaterial(material);
-                }}
-              >
-                <Ionicons name="flash-outline" size={13} color="#13A454" />
-              </TouchableOpacity>
               <TouchableOpacity
                 style={styles.addButton}
                 onPress={(event) => {
@@ -1275,18 +1290,23 @@ export default function CatalogScreen() {
   };
 
   const renderComboCard = (item: ShopSearchItem, combo: ShopSearchComboSummary) => {
+    const comboImageUrl = combo.primaryImageUrl?.trim() || '';
+
     return (
       <TouchableOpacity
         style={styles.productCard}
         onPress={() =>
           navigation.navigate('ComboDetail', {
             comboId: combo.id,
-            nurseryPlantComboId: combo.id,
           })
         }
       >
         <View style={[styles.productImageContainer, styles.comboImageContainer]}>
-          <Ionicons name="albums-outline" size={46} color={COLORS.primaryDark} />
+          {comboImageUrl ? (
+            <Image source={{ uri: comboImageUrl }} style={styles.productImage} resizeMode="cover" />
+          ) : (
+            <Ionicons name="albums-outline" size={46} color={COLORS.primaryDark} />
+          )}
           <TouchableOpacity
             style={styles.favoriteButton}
             onPress={(event) => {
@@ -1315,15 +1335,6 @@ export default function CatalogScreen() {
           <View style={styles.productFooter}>
             <Text style={styles.productPrice}>{formatMoney(combo.price, locale)}</Text>
             <View style={styles.productActions}>
-              <TouchableOpacity
-                style={styles.buyNowButton}
-                onPress={(event) => {
-                  event.stopPropagation();
-                  void handleBuyNowCombo(combo);
-                }}
-              >
-                <Ionicons name="flash-outline" size={13} color="#13A454" />
-              </TouchableOpacity>
               <TouchableOpacity
                 style={styles.addButton}
                 onPress={(event) => {
@@ -1657,7 +1668,7 @@ export default function CatalogScreen() {
               <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
             </TouchableOpacity>
           </View>
-          <Text style={styles.headerTitle}>{t('catalog.headerTitle')}</Text>
+          <BrandMark variant="logoWithText" size="majorHeader" />
           <View style={[styles.headerSide, styles.headerActions]}>
             <TouchableOpacity
               style={styles.iconBtn}
@@ -1690,7 +1701,7 @@ export default function CatalogScreen() {
               <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
             </TouchableOpacity>
           </View>
-          <Text style={styles.headerTitle}>{t('catalog.headerTitle')}</Text>
+          <BrandMark variant="logoWithText" size="majorHeader" />
           <View style={[styles.headerSide, styles.headerActions]}>
             <TouchableOpacity
               style={styles.iconBtn}
@@ -1726,7 +1737,7 @@ export default function CatalogScreen() {
             <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
           </TouchableOpacity>
         </View>
-        <Text style={styles.headerTitle}>{t('catalog.headerTitle')}</Text>
+        <BrandMark variant="logoWithText" size="majorHeader" />
         <View style={[styles.headerSide, styles.headerActions]}>
           <TouchableOpacity
             style={styles.iconBtn}
@@ -1951,9 +1962,9 @@ export default function CatalogScreen() {
               </TouchableOpacity>
             </View>
 
-            {pendingCartPlant && (
+            {pendingNurserySelection && (
               <Text style={styles.nurseryPickerPlantName} numberOfLines={1}>
-                {pendingCartPlant.name}
+                {pendingNurserySelection.displayName}
               </Text>
             )}
 
@@ -1963,8 +1974,8 @@ export default function CatalogScreen() {
               </View>
             ) : availableNurseryOptions.length === 0 ? (
               <Text style={styles.nurseryPickerEmptyText}>
-                {t('catalog.noNurseryAvailable', {
-                  defaultValue: 'No nursery is currently available for this plant.',
+                {t('catalog.noNurseryAvailableForItem', {
+                  defaultValue: 'No nursery is currently available for this item.',
                 })}
               </Text>
             ) : (
@@ -1977,7 +1988,7 @@ export default function CatalogScreen() {
 
                   return (
                     <TouchableOpacity
-                      key={`${nursery.nurseryId}-${nursery.commonPlantId ?? 'none'}`}
+                      key={`${nursery.nurseryId}-${nursery.actionId ?? 'none'}`}
                       style={[
                         styles.nurseryPickerItem,
                         isSelected && styles.nurseryPickerItemSelected,
@@ -1992,12 +2003,15 @@ export default function CatalogScreen() {
                       </View>
 
                       <Text style={styles.nurseryPickerItemAddress}>{nursery.address}</Text>
+                      <Text style={styles.nurseryPickerItemPhone}>
+                        {`${t('catalog.phone', { defaultValue: 'Phone' })}: ${nursery.phone || '-'}`}
+                      </Text>
                       <View style={styles.nurseryPickerItemMetaRow}>
                         <Text style={styles.nurseryPickerItemMetaText}>
                           {t('plantDetail.availableCount', {
                             defaultValue: 'Available',
                           })}
-                          : {nursery.availableInstanceCount}
+                          : {nursery.availableCount ?? 0}
                         </Text>
                         <Text style={styles.nurseryPickerItemPrice}>
                           {formatNurseryPrice(nursery.minPrice, nursery.maxPrice)}
@@ -2551,16 +2565,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: SPACING.xs,
   },
-  buyNowButton: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#13A454',
-    backgroundColor: COLORS.white,
-  },
   addButton: {
     width: 26,
     height: 26,
@@ -2664,6 +2668,11 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
   },
   nurseryPickerItemAddress: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+  },
+  nurseryPickerItemPhone: {
+    marginTop: 2,
     fontSize: FONTS.sizes.sm,
     color: COLORS.textSecondary,
   },

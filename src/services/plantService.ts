@@ -4,6 +4,8 @@ import {
   MaterialDetailResponse,
   NurseriesGotPlantInstancesResponse,
   NurseriesGotCommonPlantResponse,
+  NurseriesGotMaterialResponse,
+  NurseriesGotPlantComboResponse,
   PlantInstanceDetailResponse,
   PlantComboDetailResponse,
   PlantDetailResponse,
@@ -96,7 +98,7 @@ export const plantService = {
     }
   },
 
-  getMaterialDetail: async (id: string | number) => {
+  getMaterialDetail: async (id: number) => {
     try {
       const response = await api.get<MaterialDetailResponse>(
         API.ENDPOINTS.MATERIAL_DETAIL(id)
@@ -108,7 +110,7 @@ export const plantService = {
     }
   },
 
-  getPlantComboDetail: async (id: string | number) => {
+  getPlantComboDetail: async (id: number) => {
     try {
       const response = await api.get<PlantComboDetailResponse>(
         API.ENDPOINTS.PLANT_COMBO_DETAIL(id)
@@ -120,7 +122,7 @@ export const plantService = {
     }
   },
 
-  getPlantDetail: async (id: string) => {
+  getPlantDetail: async (id: number) => {
     try {
       const response = await api.get<PlantDetailResponse>(
         API.ENDPOINTS.PLANT_DETAIL(id)
@@ -184,12 +186,12 @@ export const plantService = {
   },
 
   searchCommonPlantsNursery: async (
-    nurseryId: string | number,
+    nurseryId: number,
     request: SearchCommonPlantsNurseryRequest
   ) => {
     try {
       const response = await api.post<SearchCommonPlantsNurseryResponse>(
-        API.ENDPOINTS.COMMON_PLANTS_BY_NURSERY(String(nurseryId)),
+        API.ENDPOINTS.COMMON_PLANTS_BY_NURSERY(nurseryId),
         request
       );
       return response.data.payload;
@@ -212,10 +214,10 @@ export const plantService = {
     }
   },
 
-  getNurseriesGotPlantInstances: async (plantId: string | number) => {
+  getNurseriesGotPlantInstances: async (plantId: number) => {
     try {
       const response = await api.get<NurseriesGotPlantInstancesResponse>(
-        API.ENDPOINTS.NURSERIES_GOT_PLANT_INSTANCES(String(plantId))
+        API.ENDPOINTS.NURSERIES_GOT_PLANT_INSTANCES(plantId)
       );
       return response.data.payload;
     } catch (error: any) {
@@ -224,14 +226,38 @@ export const plantService = {
     }
   },
 
-  getNurseriesGotCommonPlantByPlantId: async (plantId: string | number) => {
+  getNurseriesGotCommonPlantByPlantId: async (plantId: number) => {
     try {
       const response = await api.get<NurseriesGotCommonPlantResponse>(
-        API.ENDPOINTS.NURSERIES_GOT_COMMON_PLANT_BY_PLANT_ID(String(plantId))
+        API.ENDPOINTS.NURSERIES_GOT_COMMON_PLANT_BY_PLANT_ID(plantId)
       );
       return response.data.payload;
     } catch (error: any) {
       console.error('getNurseriesGotCommonPlantByPlantId error:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  getNurseriesGotPlantCombo: async (plantComboId: number) => {
+    try {
+      const response = await api.get<NurseriesGotPlantComboResponse>(
+        API.ENDPOINTS.NURSERIES_GOT_PLANT_COMBO(plantComboId)
+      );
+      return response.data.payload;
+    } catch (error: any) {
+      console.error('getNurseriesGotPlantCombo error:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  getNurseriesGotMaterial: async (materialId: number) => {
+    try {
+      const response = await api.get<NurseriesGotMaterialResponse>(
+        API.ENDPOINTS.NURSERIES_GOT_MATERIAL(materialId)
+      );
+      return response.data.payload;
+    } catch (error: any) {
+      console.error('getNurseriesGotMaterial error:', error.response?.data || error.message);
       throw error;
     }
   },

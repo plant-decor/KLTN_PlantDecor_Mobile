@@ -5,18 +5,11 @@ import {
   CartItem,
   GetCartPayload,
   GetCartRequest,
-  Plant,
   UpdateCartItemRequest,
 } from '../types';
 import { cartService } from '../services/cartService';
 
 type CartMeta = Omit<GetCartPayload, 'items'>;
-
-type AddToCartOptions = {
-  commonPlantId?: number | null;
-  nurseryPlantComboId?: number | null;
-  nurseryMaterialId?: number | null;
-};
 
 interface CartState {
   // State
@@ -31,11 +24,7 @@ interface CartState {
   totalPrice: () => number;
 
   // Actions
-  addToCart: (
-    plant: Plant,
-    quantity?: number,
-    options?: AddToCartOptions
-  ) => Promise<CartApiItem | null>;
+  addCartItem: (request: AddCartItemRequest) => Promise<CartApiItem | null>;
   fetchCart: (params?: GetCartRequest) => Promise<void>;
   removeFromCart: (plantId: string) => void;
   updateQuantity: (plantId: string, quantity: number) => void;
@@ -79,58 +68,18 @@ export const useCartStore = create<CartState>((set, get) => ({
   },
 
   // Actions
-  addToCart: async (plant, quantity = 1, options) => {
-    if (plant.isUniqueInstance) {
-      console.warn('[Cart] Unique plant instances cannot be added to cart.');
-      return null;
-    }
-
-    set((state) => {
-      const existingItem = state.items.find(
-        (item) => item.plant.id === plant.id
-      );
-
-      if (existingItem) {
-        return {
-          items: state.items.map((item) =>
-            item.plant.id === plant.id
-              ? { ...item, quantity: item.quantity + quantity }
-              : item
-          ),
-        };
-      }
-
-      return {
-        items: [
-          ...state.items,
-          {
-            id: `cart_${plant.id}_${Date.now()}`,
-            plant,
-            quantity,
-          },
-        ],
-      };
-    });
-
-    const toSafeId = (value: unknown) => {
-      const numericValue = Number(value);
-      return Number.isFinite(numericValue) ? numericValue : 0;
-    };
-
-    const commonPlantId = toSafeId(
-      options?.commonPlantId ?? plant.commonPlantId ?? plant.id
-    );
-
-    const request: AddCartItemRequest = {
-      commonPlantId,
-      nurseryPlantComboId: null,
-      nurseryMaterialId: null,
-      quantity,
-    };
-    console.log('[Cart] Adding to cart with request:', request);
+  addCartItem: async (request) => {
+    console.log('[Cart][addCartItem] Request payload:', request);
 
     try {
       const payload = await cartService.addCartItem(request);
+      console.log('[Cart][addCartItem] API success:', {
+        cartItemId: payload.id,
+        commonPlantId: payload.commonPlantId,
+        nurseryPlantComboId: payload.nurseryPlantComboId,
+        nurseryMaterialId: payload.nurseryMaterialId,
+      });
+
       set((state) => {
         const existingIndex = state.cartItems.findIndex(
           (item) => item.id === payload.id
@@ -162,10 +111,10 @@ export const useCartStore = create<CartState>((set, get) => ({
 
       return payload;
     } catch (error: any) {
-      console.warn(
-        '[Cart] addToCart API failed:',
-        error?.response?.data || error?.message || error
-      );
+      console.warn('[Cart][addCartItem] API failed:', {
+        request,
+        error: error?.response?.data || error?.message || error,
+      });
       return null;
     }
   },

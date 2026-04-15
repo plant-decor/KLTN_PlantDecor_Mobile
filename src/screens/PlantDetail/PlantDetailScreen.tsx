@@ -138,7 +138,8 @@ export default function PlantDetailScreen() {
     fetchNurseriesGotPlantInstances,
     fetchNurseriesGotCommonPlantByPlantId,
   } = usePlantStore();
-  const { addToCart } = useCartStore();
+  const { addCartItem } = useCartStore();
+  const cartItemCount = useCartStore((state) => state.totalItems());
   const { isAuthenticated } = useAuthStore();
   const [relatedListWidth, setRelatedListWidth] = useState(0);
   const [relatedContentWidth, setRelatedContentWidth] = useState(0);
@@ -195,7 +196,15 @@ export default function PlantDetailScreen() {
     setIsResolvingPlant(true);
 
     void (async () => {
-      await fetchPlantDetail(plantId);
+      const numericPlantId = Number(plantId);
+      if (!Number.isFinite(numericPlantId)) {
+        if (isActive) {
+          setIsResolvingPlant(false);
+        }
+        return;
+      }
+
+      await fetchPlantDetail(numericPlantId);
       if (isActive) {
         setIsResolvingPlant(false);
       }
@@ -683,8 +692,23 @@ export default function PlantDetailScreen() {
       return;
     }
 
-    void addToCart(targetPlant, quantity, {
-      commonPlantId: overrideCommonPlantId,
+    const resolvedCommonPlantId =
+      toPositiveInt(overrideCommonPlantId) ??
+      toPositiveInt(targetPlant.commonPlantId) ??
+      toPositiveInt(targetPlant.id);
+
+    if (!resolvedCommonPlantId) {
+      notify({
+        message: t('cart.addFailed', { defaultValue: 'Unable to add to cart.' }),
+      });
+      return;
+    }
+
+    void addCartItem({
+      commonPlantId: resolvedCommonPlantId,
+      nurseryPlantComboId: null,
+      nurseryMaterialId: null,
+      quantity: Math.max(1, quantity),
     }).then((payload) => {
       notify({
         message: payload
@@ -1059,22 +1083,32 @@ export default function PlantDetailScreen() {
           <Ionicons name="chevron-back" size={22} color="#0D1B12" />
         </TouchableOpacity>
 
-        {!isInstancePlant && (
+        <View style={styles.heroActions}>
+          {!isInstancePlant && (
+            <TouchableOpacity
+              style={styles.heartBtn}
+              onPress={() => {
+                if (plant) {
+                  handleToggleWishlist(plant);
+                }
+              }}
+            >
+              <Ionicons
+                name={plant && isWishlisted(plant) ? 'heart' : 'heart-outline'}
+                size={20}
+                color={plant && isWishlisted(plant) ? COLORS.error : COLORS.white}
+              />
+            </TouchableOpacity>
+          )}
+
           <TouchableOpacity
-            style={styles.heartBtn}
-            onPress={() => {
-              if (plant) {
-                handleToggleWishlist(plant);
-              }
-            }}
+            style={styles.cartBtn}
+            onPress={() => requireAuth(() => navigation.navigate('Cart'))}
           >
-            <Ionicons
-              name={plant && isWishlisted(plant) ? 'heart' : 'heart-outline'}
-              size={20}
-              color={plant && isWishlisted(plant) ? COLORS.error : COLORS.white}
-            />
+            <Ionicons name="cart-outline" size={20} color={COLORS.white} />
+            {cartItemCount > 0 && <View style={styles.cartDot} />}
           </TouchableOpacity>
-        )}
+        </View>
       </View>
 
       <ScrollView
@@ -1649,6 +1683,28 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.30)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  heroActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  cartBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 9999,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cartDot: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.error,
   },
 
   // ---- Content card ----

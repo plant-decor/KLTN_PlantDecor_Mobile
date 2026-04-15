@@ -21,18 +21,19 @@ import { CompositeNavigationProp, useNavigation } from '@react-navigation/native
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, SPACING, RADIUS, SHADOWS } from '../../constants';
+import { BrandMark } from '../../components/branding';
 import { usePlantStore, useCartStore, useAuthStore, useWishlistStore, useEnumStore } from '../../stores';
 import {
   AddCartItemRequest,
   CheckoutItem,
   MainTabParamList,
-  NurseryPlantInstanceAvailability,
   Plant,
   RootStackParamList,
   ShopSearchComboSummary,
   ShopSearchMaterialSummary,
+  WishlistItemType,
 } from '../../types';
-import { cartService, plantService } from '../../services';
+import { plantService } from '../../services';
 import { getWishlistKey, notify, resolveWishlistTarget } from '../../utils';
 
 type NavigationProp = CompositeNavigationProp<
@@ -50,6 +51,32 @@ type HomePlant = {
 };
 
 type HomeSortKey = 'newest' | 'priceAsc' | 'priceDesc';
+
+type WishlistTarget = {
+  itemType: WishlistItemType;
+  itemId: number;
+};
+
+type NurseryPickerMode = 'plant' | 'material' | 'combo';
+
+type NurseryPickerOption = {
+  nurseryId: number;
+  nurseryName: string;
+  address: string;
+  phone?: string | null;
+  actionId: number | null;
+  availableCount?: number;
+  minPrice?: number;
+  maxPrice?: number;
+};
+
+type PendingNurserySelection = {
+  mode: NurseryPickerMode;
+  displayName: string;
+  image?: string;
+  unitPrice: number;
+  buyNowItemTypeName: 'CommonPlant' | 'NurseryMaterial' | 'NurseryPlantCombo';
+};
 
 const parseSortDescriptor = (
   value: unknown
@@ -88,14 +115,49 @@ const CARD_WIDTH = (width - SPACING.lg * 3) / 2 - 2;
 const formatMoney = (amount: number, locale: string): string =>
   `${Math.max(0, amount).toLocaleString(locale)}₫`;
 
+const toPositiveInt = (value: unknown): number | null => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed <= 0) {
+    return null;
+  }
+  return parsed;
+};
+
+const resolveMaterialWishlistTarget = (
+  material: ShopSearchMaterialSummary
+): WishlistTarget | null => {
+  const materialId = toPositiveInt(material.materialId) ?? toPositiveInt(material.id);
+  if (!materialId) {
+    return null;
+  }
+
+  return { itemType: 'Material', itemId: materialId };
+};
+
+const resolveComboWishlistTarget = (combo: ShopSearchComboSummary): WishlistTarget | null => {
+  const comboId = toPositiveInt(combo.id);
+  if (!comboId) {
+    return null;
+  }
+
+  return { itemType: 'PlantCombo', itemId: comboId };
+};
+
 export default function HomeScreen() {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
-  const { plants, fetchPlants } = usePlantStore();
+  const {
+    plants,
+    fetchPlants,
+    fetchNurseriesGotCommonPlantByPlantId,
+    fetchNurseriesGotMaterialByMaterialId,
+    fetchNurseriesGotPlantComboByPlantComboId,
+  } = usePlantStore();
   const loadEnumResource = useEnumStore((state) => state.loadResource);
   const getEnumValues = useEnumStore((state) => state.getEnumValues);
   const enumGroups = useEnumStore((state) => state.groups);
   const cartItemCount = useCartStore((state) => state.totalItems());
+  const addCartItem = useCartStore((state) => state.addCartItem);
   const fetchCart = useCartStore((state) => state.fetchCart);
   const hasLoadedCart = useCartStore((state) => state.hasLoadedCart);
   const { isAuthenticated } = useAuthStore();
@@ -111,9 +173,10 @@ export default function HomeScreen() {
   const clearWishlistStatus = useWishlistStore((state) => state.clearStatus);
   const [isNurseryPickerVisible, setIsNurseryPickerVisible] = useState(false);
   const [isNurseryPickerLoading, setIsNurseryPickerLoading] = useState(false);
-  const [pendingCartPlant, setPendingCartPlant] = useState<Plant | null>(null);
+  const [pendingNurserySelection, setPendingNurserySelection] =
+    useState<PendingNurserySelection | null>(null);
   const [availableNurseryOptions, setAvailableNurseryOptions] =
-    useState<NurseryPlantInstanceAvailability[]>([]);
+    useState<NurseryPickerOption[]>([]);
   const [selectedCartNurseryId, setSelectedCartNurseryId] = useState<number | null>(null);
   const [selectedCartQuantity, setSelectedCartQuantity] = useState(1);
   const [featuredMaterials, setFeaturedMaterials] = useState<ShopSearchMaterialSummary[]>([]);
@@ -261,16 +324,26 @@ export default function HomeScreen() {
 
   const homePlantEntities = useMemo(() => plants.slice(0, 4), [plants]);
 
-  const wishlistTargets = useMemo(
-    () =>
-      homePlantEntities
-        .map(resolveWishlistTarget)
-        .filter(
-          (target): target is NonNullable<ReturnType<typeof resolveWishlistTarget>> =>
-            target !== null
-        ),
-    [homePlantEntities]
-  );
+  const wishlistTargets = useMemo(() => {
+    const plantTargets = homePlantEntities
+      .map(resolveWishlistTarget)
+      .filter((target): target is WishlistTarget => target !== null);
+
+    const materialTargets = featuredMaterials
+      .map(resolveMaterialWishlistTarget)
+      .filter((target): target is WishlistTarget => target !== null);
+
+    const comboTargets = featuredCombos
+      .map(resolveComboWishlistTarget)
+      .filter((target): target is WishlistTarget => target !== null);
+
+    const dedupedTargets = new Map<string, WishlistTarget>();
+    [...plantTargets, ...materialTargets, ...comboTargets].forEach((target) => {
+      dedupedTargets.set(getWishlistKey(target.itemType, target.itemId), target);
+    });
+
+    return Array.from(dedupedTargets.values());
+  }, [featuredCombos, featuredMaterials, homePlantEntities]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -314,172 +387,53 @@ export default function HomeScreen() {
         return null;
       }
 
-      try {
-        const payload = await cartService.addCartItem(request);
-        void fetchCart({ pageNumber: 1, pageSize: 20 }).catch(() => {
-          // Keep optimistic UI if syncing cart count fails.
+      console.log('[Home][submitAddToCart] request:', request);
+      const payload = await addCartItem(request);
+
+      if (!payload) {
+        console.warn('[Home][submitAddToCart] failed:', {
+          request,
+          error: 'Store addCartItem returned null',
         });
-        return payload;
-      } catch (cartError: any) {
         notify({
-          message:
-            cartError?.response?.data?.message ||
-            t('cart.addFailed', {
-              defaultValue: 'Unable to add to cart.',
-            }),
+          message: t('cart.addFailed', {
+            defaultValue: 'Unable to add to cart.',
+          }),
         });
         return null;
       }
-    },
-    [fetchCart, requireAuth, t]
-  );
 
-  const handleAddMaterialToCart = useCallback(
-    async (material: ShopSearchMaterialSummary) => {
-      const payload = await submitAddToCart({
-        commonPlantId: null,
-        nurseryPlantComboId: null,
-        nurseryMaterialId: material.id,
-        quantity: 1,
+      console.log('[Home][submitAddToCart] response:', {
+        cartItemId: payload.id,
+        commonPlantId: payload.commonPlantId,
+        nurseryPlantComboId: payload.nurseryPlantComboId,
+        nurseryMaterialId: payload.nurseryMaterialId,
       });
 
-      if (payload) {
-        notify({
-          message: t('cart.addedMessage', { defaultValue: 'Added to cart.' }),
-        });
-      }
+      return payload;
     },
-    [submitAddToCart, t]
-  );
-
-  const handleAddComboToCart = useCallback(
-    async (combo: ShopSearchComboSummary) => {
-      const payload = await submitAddToCart({
-        commonPlantId: null,
-        nurseryPlantComboId: combo.id,
-        nurseryMaterialId: null,
-        quantity: 1,
-      });
-
-      if (payload) {
-        notify({
-          message: t('cart.addedMessage', { defaultValue: 'Added to cart.' }),
-        });
-      }
-    },
-    [submitAddToCart, t]
-  );
-
-  const handleBuyNowMaterial = useCallback(
-    async (material: ShopSearchMaterialSummary) => {
-      if (!requireAuth()) {
-        return;
-      }
-
-      const buyNowItemId = Number.isInteger(material.id) && material.id > 0 ? material.id : null;
-      if (!buyNowItemId) {
-        notify({
-          message: t('checkout.invalidCheckoutItems', {
-            defaultValue: 'Cannot resolve buy now item for order creation.',
-          }),
-          useAlert: true,
-        });
-        return;
-      }
-
-      const detailMaterialId =
-        Number.isInteger(material.materialId) && material.materialId > 0
-          ? material.materialId
-          : buyNowItemId;
-
-      let materialPrice = 0;
-      try {
-        const materialDetail = await plantService.getMaterialDetail(detailMaterialId);
-        materialPrice = Math.max(0, materialDetail.basePrice || 0);
-      } catch {
-        // Buy-now payload can still be created with backend price resolution.
-      }
-
-      const checkoutItem: CheckoutItem = {
-        id: `buy_now_material_${buyNowItemId}`,
-        name: material.materialName,
-        image: material.imageUrl?.trim() || undefined,
-        price: materialPrice,
-        quantity: 1,
-        buyNowItemId,
-        buyNowItemTypeName: 'NurseryMaterial',
-        isUniqueInstance: false,
-      };
-
-      navigation.navigate('Checkout', {
-        source: 'buy-now',
-        items: [checkoutItem],
-      });
-    },
-    [navigation, requireAuth, t]
-  );
-
-  const handleBuyNowCombo = useCallback(
-    (combo: ShopSearchComboSummary) => {
-      if (!requireAuth()) {
-        return;
-      }
-
-      const buyNowItemId = Number.isInteger(combo.id) && combo.id > 0 ? combo.id : null;
-      if (!buyNowItemId) {
-        notify({
-          message: t('checkout.invalidCheckoutItems', {
-            defaultValue: 'Cannot resolve buy now item for order creation.',
-          }),
-          useAlert: true,
-        });
-        return;
-      }
-
-      const checkoutItem: CheckoutItem = {
-        id: `buy_now_combo_${buyNowItemId}`,
-        name: combo.name,
-        image: combo.imageUrl?.trim() || undefined,
-        price: Math.max(0, combo.price || 0),
-        quantity: 1,
-        buyNowItemId,
-        buyNowItemTypeName: 'NurseryPlantCombo',
-        isUniqueInstance: false,
-      };
-
-      navigation.navigate('Checkout', {
-        source: 'buy-now',
-        items: [checkoutItem],
-      });
-    },
-    [navigation, requireAuth, t]
+    [addCartItem, requireAuth, t]
   );
 
   const closeNurseryPicker = useCallback(() => {
     setIsNurseryPickerVisible(false);
     setIsNurseryPickerLoading(false);
-    setPendingCartPlant(null);
+    setPendingNurserySelection(null);
     setAvailableNurseryOptions([]);
     setSelectedCartNurseryId(null);
     setSelectedCartQuantity(1);
   }, []);
 
-  const handleSelectNurseryForCart = useCallback(
-    async (plant: Plant) => {
+  const openNurseryPicker = useCallback(
+    async (
+      selection: PendingNurserySelection,
+      fetchOptions: () => Promise<NurseryPickerOption[]>
+    ) => {
       if (!requireAuth()) {
         return;
       }
 
-      if (plant.isUniqueInstance) {
-        notify({
-          message: t('catalog.uniquePlantCannotCart', {
-            defaultValue: 'Unique plants cannot be added to cart directly.',
-          }),
-        });
-        return;
-      }
-
-      setPendingCartPlant(plant);
+      setPendingNurserySelection(selection);
       setIsNurseryPickerVisible(true);
       setIsNurseryPickerLoading(true);
       setAvailableNurseryOptions([]);
@@ -487,9 +441,10 @@ export default function HomeScreen() {
       setSelectedCartQuantity(1);
 
       try {
-        const options = await plantService.getNurseriesGotCommonPlantByPlantId(plant.id);
-        setAvailableNurseryOptions(options ?? []);
-        setSelectedCartNurseryId(options?.[0]?.nurseryId ?? null);
+        const options = await fetchOptions();
+        const normalizedOptions = options ?? [];
+        setAvailableNurseryOptions(normalizedOptions);
+        setSelectedCartNurseryId(normalizedOptions[0]?.nurseryId ?? null);
       } catch (pickerError: any) {
         notify({
           message:
@@ -507,23 +462,26 @@ export default function HomeScreen() {
   );
 
   const formatNurseryPrice = useCallback(
-    (minPrice: number, maxPrice: number) => {
-      if (!minPrice && !maxPrice) {
+    (minPrice?: number, maxPrice?: number) => {
+      const safeMin = minPrice ?? 0;
+      const safeMax = maxPrice ?? 0;
+
+      if (!safeMin && !safeMax) {
         return t('plantDetail.priceContact', { defaultValue: 'Contact' });
       }
 
-      if (minPrice === maxPrice) {
-        return formatMoney(minPrice, locale);
+      if (safeMin === safeMax) {
+        return formatMoney(safeMin, locale);
       }
 
-      return `${formatMoney(minPrice, locale)} - ${formatMoney(maxPrice, locale)}`;
+      return `${formatMoney(safeMin, locale)} - ${formatMoney(safeMax, locale)}`;
     },
     [locale, t]
   );
 
   const handleConfirmNurseryAdd = useCallback(
     async (goToCheckout = false) => {
-      if (!pendingCartPlant || selectedCartNurseryId === null) {
+      if (!pendingNurserySelection || selectedCartNurseryId === null) {
         return;
       }
 
@@ -531,7 +489,7 @@ export default function HomeScreen() {
         (option) => option.nurseryId === selectedCartNurseryId
       );
 
-      if (!selectedNursery || selectedNursery.commonPlantId == null) {
+      if (!selectedNursery || selectedNursery.actionId == null) {
         notify({
           message: t('cart.addFailed', {
             defaultValue: 'Unable to add to cart.',
@@ -544,15 +502,13 @@ export default function HomeScreen() {
 
       if (goToCheckout) {
         const checkoutItem: CheckoutItem = {
-          id: `buy_now_${pendingCartPlant.id}_${selectedNursery.nurseryId}`,
-          name: pendingCartPlant.name,
-          image: pendingCartPlant.images?.find(
-            (image) => typeof image === 'string' && image.trim().length > 0
-          ),
-          price: selectedNursery.minPrice || pendingCartPlant.basePrice,
+          id: `buy_now_${pendingNurserySelection.mode}_${selectedNursery.actionId}`,
+          name: pendingNurserySelection.displayName,
+          image: pendingNurserySelection.image,
+          price: selectedNursery.minPrice ?? pendingNurserySelection.unitPrice,
           quantity,
-          buyNowItemId: selectedNursery.commonPlantId,
-          buyNowItemTypeName: 'CommonPlant',
+          buyNowItemId: selectedNursery.actionId,
+          buyNowItemTypeName: pendingNurserySelection.buyNowItemTypeName,
           isUniqueInstance: false,
         };
 
@@ -564,12 +520,17 @@ export default function HomeScreen() {
         return;
       }
 
-      const payload = await submitAddToCart({
-        commonPlantId: selectedNursery.commonPlantId,
-        nurseryPlantComboId: null,
-        nurseryMaterialId: null,
+      const request: AddCartItemRequest = {
+        commonPlantId:
+          pendingNurserySelection.mode === 'plant' ? selectedNursery.actionId : null,
+        nurseryPlantComboId:
+          pendingNurserySelection.mode === 'combo' ? selectedNursery.actionId : null,
+        nurseryMaterialId:
+          pendingNurserySelection.mode === 'material' ? selectedNursery.actionId : null,
         quantity,
-      });
+      };
+
+      const payload = await submitAddToCart(request);
 
       if (!payload) {
         return;
@@ -584,7 +545,7 @@ export default function HomeScreen() {
       availableNurseryOptions,
       closeNurseryPicker,
       navigation,
-      pendingCartPlant,
+      pendingNurserySelection,
       selectedCartNurseryId,
       selectedCartQuantity,
       submitAddToCart,
@@ -592,61 +553,191 @@ export default function HomeScreen() {
     ]
   );
 
-  const handleAddToCart = useCallback(async (plantId: string) => {
-    const targetPlant = plants.find((plant) => String(plant.id) === plantId);
-    if (!targetPlant) {
-      return;
-    }
+  const handleSelectPlantNursery = useCallback(
+    async (plant: Plant) => {
+      if (plant.isUniqueInstance) {
+        notify({
+          message: t('catalog.uniquePlantCannotCart', {
+            defaultValue: 'Unique plants cannot be added to cart directly.',
+          }),
+        });
+        return;
+      }
 
-    await handleSelectNurseryForCart(targetPlant);
-  }, [handleSelectNurseryForCart, plants]);
+      await openNurseryPicker(
+        {
+          mode: 'plant',
+          displayName: plant.name,
+          image: plant.images?.find((image) => typeof image === 'string' && image.trim().length > 0),
+          unitPrice: plant.basePrice ?? 0,
+          buyNowItemTypeName: 'CommonPlant',
+        },
+        async () => {
+          const options = await fetchNurseriesGotCommonPlantByPlantId(Number(plant.id));
+          return (options ?? []).map((option) => ({
+            nurseryId: option.nurseryId,
+            nurseryName: option.nurseryName,
+            address: option.address,
+            phone: option.phone,
+            actionId: option.commonPlantId ?? null,
+            availableCount: option.availableInstanceCount,
+            minPrice: option.minPrice,
+            maxPrice: option.maxPrice,
+          }));
+        }
+      );
+    },
+    [fetchNurseriesGotCommonPlantByPlantId, openNurseryPicker, t]
+  );
 
-  const handleToggleWishlist = async (plantId: string) => {
-    const targetPlant = plants.find((plant) => String(plant.id) === plantId);
-    if (!targetPlant) {
-      return;
-    }
+  const handleAddMaterialToCart = useCallback(
+    async (material: ShopSearchMaterialSummary) => {
+      const materialEntityId =
+        Number.isInteger(material.materialId) && material.materialId > 0
+          ? material.materialId
+          : material.id;
 
-    if (!requireAuth()) {
-      return;
-    }
+      await openNurseryPicker(
+        {
+          mode: 'material',
+          displayName: material.materialName,
+          image: material.primaryImageUrl?.trim() || undefined,
+          unitPrice: material.basePrice,
+          buyNowItemTypeName: 'NurseryMaterial',
+        },
+        async () => {
+          const options = await fetchNurseriesGotMaterialByMaterialId(materialEntityId);
+          return (options ?? []).map((option) => ({
+            nurseryId: option.id,
+            nurseryName: option.name,
+            address: option.address,
+            phone: option.phone,
+            actionId: option.nurseryMaterialId ?? null,
+          }));
+        }
+      );
+    },
+    [fetchNurseriesGotMaterialByMaterialId, openNurseryPicker]
+  );
 
-    const wishlistTarget = resolveWishlistTarget(targetPlant);
-    if (!wishlistTarget) {
-      notify({
-        message: t('wishlist.invalidItem', {
-          defaultValue: 'Unable to add this item to wishlist.',
-        }),
-      });
-      return;
-    }
+  const handleAddComboToCart = useCallback(
+    async (combo: ShopSearchComboSummary) => {
+      await openNurseryPicker(
+        {
+          mode: 'combo',
+          displayName: combo.name,
+          image: combo.primaryImageUrl?.trim() || undefined,
+          unitPrice: Math.max(0, combo.price || 0),
+          buyNowItemTypeName: 'NurseryPlantCombo',
+        },
+        async () => {
+          const options = await fetchNurseriesGotPlantComboByPlantComboId(combo.id);
+          return (options ?? []).map((option) => ({
+            nurseryId: option.id,
+            nurseryName: option.name,
+            address: option.address,
+            phone: option.phone,
+            actionId: option.nurseryPlantComboId ?? null,
+          }));
+        }
+      );
+    },
+    [fetchNurseriesGotPlantComboByPlantComboId, openNurseryPicker]
+  );
 
-    const wishlistKey = getWishlistKey(wishlistTarget.itemType, wishlistTarget.itemId);
-    const wasInWishlist = wishlistStatus[wishlistKey] ?? false;
+  const handleAddToCart = useCallback(
+    async (plantId: string) => {
+      const targetPlant = plants.find((plant) => String(plant.id) === plantId);
+      if (!targetPlant) {
+        return;
+      }
 
-    try {
-      await toggleWishlist(wishlistTarget.itemType, wishlistTarget.itemId);
-      notify({
-        message: wasInWishlist
-          ? t('wishlist.removeSuccess', { defaultValue: 'Removed from wishlist.' })
-          : t('wishlist.addedMessage', { defaultValue: 'Added to wishlist.' }),
-      });
-    } catch (error) {
-      const apiMessage = (error as { response?: { data?: { message?: string } } })?.response
-        ?.data?.message;
-      notify({
-        message:
-          apiMessage ||
-          (wasInWishlist
-            ? t('wishlist.removeFailed', {
-                defaultValue: 'Unable to remove from wishlist.',
-              })
-            : t('wishlist.addFailed', {
-                defaultValue: 'Unable to add to wishlist.',
-              })),
-      });
-    }
-  };
+      await handleSelectPlantNursery(targetPlant);
+    },
+    [handleSelectPlantNursery, plants]
+  );
+
+  const isWishlistTargetActive = useCallback(
+    (wishlistTarget: WishlistTarget | null) => {
+      if (!wishlistTarget) {
+        return false;
+      }
+
+      const wishlistKey = getWishlistKey(wishlistTarget.itemType, wishlistTarget.itemId);
+      return wishlistStatus[wishlistKey] ?? false;
+    },
+    [wishlistStatus]
+  );
+
+  const handleToggleWishlistTarget = useCallback(
+    async (wishlistTarget: WishlistTarget | null) => {
+      if (!wishlistTarget) {
+        notify({
+          message: t('wishlist.invalidItem', {
+            defaultValue: 'Unable to add this item to wishlist.',
+          }),
+        });
+        return;
+      }
+
+      if (!requireAuth()) {
+        return;
+      }
+
+      const wishlistKey = getWishlistKey(wishlistTarget.itemType, wishlistTarget.itemId);
+      const wasInWishlist = wishlistStatus[wishlistKey] ?? false;
+
+      try {
+        await toggleWishlist(wishlistTarget.itemType, wishlistTarget.itemId);
+        notify({
+          message: wasInWishlist
+            ? t('wishlist.removeSuccess', { defaultValue: 'Removed from wishlist.' })
+            : t('wishlist.addedMessage', { defaultValue: 'Added to wishlist.' }),
+        });
+      } catch (error) {
+        const apiMessage = (error as { response?: { data?: { message?: string } } })?.response
+          ?.data?.message;
+        notify({
+          message:
+            apiMessage ||
+            (wasInWishlist
+              ? t('wishlist.removeFailed', {
+                  defaultValue: 'Unable to remove from wishlist.',
+                })
+              : t('wishlist.addFailed', {
+                  defaultValue: 'Unable to add to wishlist.',
+                })),
+        });
+      }
+    },
+    [requireAuth, t, toggleWishlist, wishlistStatus]
+  );
+
+  const handleToggleWishlist = useCallback(
+    async (plantId: string) => {
+      const targetPlant = plants.find((plant) => String(plant.id) === plantId);
+      if (!targetPlant) {
+        return;
+      }
+
+      await handleToggleWishlistTarget(resolveWishlistTarget(targetPlant));
+    },
+    [handleToggleWishlistTarget, plants]
+  );
+
+  const handleToggleMaterialWishlist = useCallback(
+    async (material: ShopSearchMaterialSummary) => {
+      await handleToggleWishlistTarget(resolveMaterialWishlistTarget(material));
+    },
+    [handleToggleWishlistTarget]
+  );
+
+  const handleToggleComboWishlist = useCallback(
+    async (combo: ShopSearchComboSummary) => {
+      await handleToggleWishlistTarget(resolveComboWishlistTarget(combo));
+    },
+    [handleToggleWishlistTarget]
+  );
 
   const isWishlisted = useCallback(
     (plantId: string) => {
@@ -654,14 +745,10 @@ export default function HomeScreen() {
       if (!targetPlant) {
         return false;
       }
-      const wishlistTarget = resolveWishlistTarget(targetPlant);
-      if (!wishlistTarget) {
-        return false;
-      }
-      const wishlistKey = getWishlistKey(wishlistTarget.itemType, wishlistTarget.itemId);
-      return wishlistStatus[wishlistKey] ?? false;
+
+      return isWishlistTargetActive(resolveWishlistTarget(targetPlant));
     },
-    [plants, wishlistStatus]
+    [isWishlistTargetActive, plants]
   );
 
   const renderPlantCard = ({ item }: { item: HomePlant }) => {
@@ -731,9 +818,11 @@ export default function HomeScreen() {
   };
 
   const renderMaterialCard = ({ item }: { item: ShopSearchMaterialSummary }) => {
-    const imageUri = item.imageUrl?.trim();
+    const imageUri = item.primaryImageUrl?.trim();
     const materialId =
       Number.isInteger(item.materialId) && item.materialId > 0 ? item.materialId : item.id;
+    const materialWishlistTarget = resolveMaterialWishlistTarget(item);
+    const isMaterialWishlisted = isWishlistTargetActive(materialWishlistTarget);
 
     return (
       <TouchableOpacity
@@ -755,6 +844,20 @@ export default function HomeScreen() {
             </View>
           )}
 
+          <TouchableOpacity
+            style={styles.favoriteBtn}
+            onPress={(event) => {
+              event.stopPropagation();
+              void handleToggleMaterialWishlist(item);
+            }}
+          >
+            <Ionicons
+              name={isMaterialWishlisted ? 'heart' : 'heart-outline'}
+              size={16}
+              color={isMaterialWishlisted ? COLORS.error : COLORS.white}
+            />
+          </TouchableOpacity>
+
           <View style={[styles.productTypeBadge, styles.productTypeBadgeMaterial]}>
             <Text style={styles.productTypeBadgeText}>
               {t('catalog.typeMaterial', { defaultValue: 'Material' })}
@@ -771,18 +874,9 @@ export default function HomeScreen() {
           </Text>
           <View style={styles.priceRow}>
             <Text style={styles.plantPrice} numberOfLines={1}>
-              {item.unit}
+              {formatMoney(item.basePrice, locale)}
             </Text>
             <View style={styles.quickActionRow}>
-              <TouchableOpacity
-                style={styles.quickBuyBtn}
-                onPress={(event) => {
-                  event.stopPropagation();
-                  void handleBuyNowMaterial(item);
-                }}
-              >
-                <Ionicons name="flash-outline" size={13} color="#13A454" />
-              </TouchableOpacity>
               <TouchableOpacity
                 style={styles.plusBtn}
                 onPress={(event) => {
@@ -800,7 +894,9 @@ export default function HomeScreen() {
   };
 
   const renderComboCard = ({ item }: { item: ShopSearchComboSummary }) => {
-    const imageUri = item.imageUrl?.trim();
+    const imageUri = item.primaryImageUrl?.trim();
+    const comboWishlistTarget = resolveComboWishlistTarget(item);
+    const isComboWishlisted = isWishlistTargetActive(comboWishlistTarget);
 
     return (
       <TouchableOpacity
@@ -808,7 +904,6 @@ export default function HomeScreen() {
         onPress={() =>
           navigation.navigate('ComboDetail', {
             comboId: item.id,
-            nurseryPlantComboId: item.id,
           })
         }
         activeOpacity={0.75}
@@ -821,6 +916,20 @@ export default function HomeScreen() {
               <Ionicons name="albums-outline" size={32} color={COLORS.gray500} />
             </View>
           )}
+
+          <TouchableOpacity
+            style={styles.favoriteBtn}
+            onPress={(event) => {
+              event.stopPropagation();
+              void handleToggleComboWishlist(item);
+            }}
+          >
+            <Ionicons
+              name={isComboWishlisted ? 'heart' : 'heart-outline'}
+              size={16}
+              color={isComboWishlisted ? COLORS.error : COLORS.white}
+            />
+          </TouchableOpacity>
 
           <View style={[styles.productTypeBadge, styles.productTypeBadgeCombo]}>
             <Text style={styles.productTypeBadgeText}>
@@ -841,15 +950,6 @@ export default function HomeScreen() {
               {formatMoney(item.price, locale)}
             </Text>
             <View style={styles.quickActionRow}>
-              <TouchableOpacity
-                style={styles.quickBuyBtn}
-                onPress={(event) => {
-                  event.stopPropagation();
-                  void handleBuyNowCombo(item);
-                }}
-              >
-                <Ionicons name="flash-outline" size={13} color="#13A454" />
-              </TouchableOpacity>
               <TouchableOpacity
                 style={styles.plusBtn}
                 onPress={(event) => {
@@ -892,8 +992,7 @@ export default function HomeScreen() {
             </View>
 
             <View style={styles.brandRow}>
-              <Ionicons name="leaf" size={18} color={COLORS.primaryLight} />
-              <Text style={styles.brandText}>PlantDecor</Text>
+              <BrandMark variant="logoWithText" size="majorHeader" />
             </View>
 
             <View style={[styles.headerSide, styles.headerActions]}>
@@ -1069,9 +1168,9 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </View>
 
-            {pendingCartPlant && (
+            {pendingNurserySelection && (
               <Text style={styles.nurseryPickerPlantName} numberOfLines={1}>
-                {pendingCartPlant.name}
+                {pendingNurserySelection?.displayName}
               </Text>
             )}
 
@@ -1081,8 +1180,8 @@ export default function HomeScreen() {
               </View>
             ) : availableNurseryOptions.length === 0 ? (
               <Text style={styles.nurseryPickerEmptyText}>
-                {t('catalog.noNurseryAvailable', {
-                  defaultValue: 'No nursery is currently available for this plant.',
+                {t('catalog.noNurseryAvailableForItem', {
+                  defaultValue: 'No nursery is currently available for this item.',
                 })}
               </Text>
             ) : (
@@ -1095,7 +1194,7 @@ export default function HomeScreen() {
 
                   return (
                     <TouchableOpacity
-                      key={`${nursery.nurseryId}-${nursery.commonPlantId ?? 'none'}`}
+                      key={`${nursery.nurseryId}-${nursery.actionId ?? 'none'}`}
                       style={[
                         styles.nurseryPickerItem,
                         isSelected && styles.nurseryPickerItemSelected,
@@ -1110,12 +1209,15 @@ export default function HomeScreen() {
                       </View>
 
                       <Text style={styles.nurseryPickerItemAddress}>{nursery.address}</Text>
+                      <Text style={styles.nurseryPickerItemPhone}>
+                        {`${t('catalog.phone', { defaultValue: 'Phone' })}: ${nursery.phone || '-'}`}
+                      </Text>
                       <View style={styles.nurseryPickerItemMetaRow}>
                         <Text style={styles.nurseryPickerItemMetaText}>
                           {t('plantDetail.availableCount', {
                             defaultValue: 'Available',
                           })}
-                          : {nursery.availableInstanceCount}
+                          : {nursery.availableCount ?? 0}
                         </Text>
                         <Text style={styles.nurseryPickerItemPrice}>
                           {formatNurseryPrice(nursery.minPrice, nursery.maxPrice)}
@@ -1476,16 +1578,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: SPACING.xs,
   },
-  quickBuyBtn: {
-    width: 22,
-    height: 22,
-    borderRadius: RADIUS.full,
-    borderWidth: 1,
-    borderColor: '#13A454',
-    backgroundColor: COLORS.white,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   plusBtn: {
     width: 22,
     height: 22,
@@ -1658,6 +1750,11 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
   },
   nurseryPickerItemAddress: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+  },
+  nurseryPickerItemPhone: {
+    marginTop: 2,
     fontSize: FONTS.sizes.sm,
     color: COLORS.textSecondary,
   },

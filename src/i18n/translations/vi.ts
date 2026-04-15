@@ -472,7 +472,9 @@ const vi = {
     filterConfigLoadFailed: 'Không thể tải đầy đủ tùy chọn bộ lọc. Sẽ dùng giá trị dự phòng.',
     loadNurseryFailed: 'Không thể tải danh sách vựa khả dụng.',
     noNurseryAvailable: 'Hiện chưa có vựa khả dụng cho cây này.',
+    noNurseryAvailableForItem: 'Hiện chưa có vựa khả dụng cho sản phẩm này.',
     selectNurseryTitle: 'Chọn vựa',
+    phone: 'Điện thoại',
   },
   materialDetail: {
     title: 'Chi tiết vật tư',

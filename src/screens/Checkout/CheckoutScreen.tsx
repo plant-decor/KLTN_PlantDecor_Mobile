@@ -16,6 +16,7 @@ import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../constants';
+import { BrandedHeader } from '../../components/branding';
 import {
   CartApiItem,
   CartItem,
@@ -707,15 +708,21 @@ export default function CheckoutScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.headerIconBtn} onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>{t('checkout.headerTitle')}</Text>
-        <TouchableOpacity style={styles.headerIconBtn}>
-          <Ionicons name="ellipsis-vertical" size={18} color={COLORS.textPrimary} />
-        </TouchableOpacity>
-      </View>
+      <BrandedHeader
+        containerStyle={styles.header}
+        sideWidth={44}
+        title={t('checkout.headerTitle')}
+        left={
+          <TouchableOpacity style={styles.headerIconBtn} onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} />
+          </TouchableOpacity>
+        }
+        right={
+          <TouchableOpacity style={styles.headerIconBtn}>
+            <Ionicons name="ellipsis-vertical" size={18} color={COLORS.textPrimary} />
+          </TouchableOpacity>
+        }
+      />
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {isLoadingCheckout && (

@@ -14,6 +14,7 @@ import { RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navig
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, RADIUS, SHADOWS, SPACING } from '../../constants';
+import { BrandedHeader } from '../../components/branding';
 import { orderService, paymentService } from '../../services';
 import { useEnumStore } from '../../stores';
 import { OrderPayload, RootStackParamList } from '../../types';
@@ -240,15 +241,17 @@ export default function OrderDetailScreen() {
   if (!order) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.headerIconBtn} onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>
-            {t('orderDetail.title', { defaultValue: 'Order detail' })}
-          </Text>
-          <View style={styles.headerPlaceholder} />
-        </View>
+        <BrandedHeader
+          containerStyle={styles.header}
+          sideWidth={44}
+          title={t('orderDetail.title', { defaultValue: 'Order detail' })}
+          left={
+            <TouchableOpacity style={styles.headerIconBtn} onPress={() => navigation.goBack()}>
+              <Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} />
+            </TouchableOpacity>
+          }
+          right={<View style={styles.headerPlaceholder} />}
+        />
 
         <View style={styles.emptyContainer}>
           <Ionicons name="alert-circle-outline" size={70} color={COLORS.gray300} />
@@ -273,18 +276,20 @@ export default function OrderDetailScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.headerIconBtn} onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle} numberOfLines={1}>
-          {t('orderDetail.orderCode', {
-            defaultValue: 'Order #{{id}}',
-            id: order.id,
-          })}
-        </Text>
-        <View style={styles.headerPlaceholder} />
-      </View>
+      <BrandedHeader
+        containerStyle={styles.header}
+        sideWidth={44}
+        title={t('orderDetail.orderCode', {
+          defaultValue: 'Order #{{id}}',
+          id: order.id,
+        })}
+        left={
+          <TouchableOpacity style={styles.headerIconBtn} onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} />
+          </TouchableOpacity>
+        }
+        right={<View style={styles.headerPlaceholder} />}
+      />
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.card}>

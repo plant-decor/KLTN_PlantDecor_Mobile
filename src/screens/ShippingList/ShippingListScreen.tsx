@@ -17,6 +17,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, RADIUS, SHADOWS, SPACING } from '../../constants';
+import { BrandedHeader } from '../../components/branding';
 import { orderService } from '../../services';
 import { useAuthStore } from '../../stores';
 import { OrderNursery, RootStackParamList } from '../../types';
@@ -675,20 +676,22 @@ export default function ShippingListScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.headerButton} onPress={() => navigation.goBack()}>
-          <Ionicons name="chevron-back" size={22} color={TEXT_DARK} />
-        </TouchableOpacity>
-
-        <Text style={styles.headerTitle} numberOfLines={1}>
-          {t('shippingList.screenTitle', { defaultValue: 'Danh sách Giao hàng' })}
-        </Text>
-
-        <View style={styles.notificationButton}>
-          <Ionicons name="notifications-outline" size={20} color={TEXT_DARK} />
-          <View style={styles.notificationDot} />
-        </View>
-      </View>
+      <BrandedHeader
+        containerStyle={styles.header}
+        sideWidth={52}
+        title={t('shippingList.screenTitle', { defaultValue: 'Danh sách Giao hàng' })}
+        left={
+          <TouchableOpacity style={styles.headerButton} onPress={() => navigation.goBack()}>
+            <Ionicons name="chevron-back" size={22} color={TEXT_DARK} />
+          </TouchableOpacity>
+        }
+        right={
+          <View style={styles.notificationButton}>
+            <Ionicons name="notifications-outline" size={20} color={TEXT_DARK} />
+            <View style={styles.notificationDot} />
+          </View>
+        }
+      />
 
       {activeShippingOrder ? (
         <View style={styles.lockBanner}>

@@ -14,6 +14,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { WebView } from 'react-native-webview';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, SPACING } from '../../constants';
+import { BrandedHeader } from '../../components/branding';
 import { useCartStore } from '../../stores';
 import { RootStackParamList } from '../../types';
 
@@ -118,19 +119,21 @@ export default function PaymentWebViewScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-          disabled={isProcessingResult}
-        >
-          <Ionicons name="chevron-back" size={22} color={COLORS.textPrimary} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>
-          {t('checkout.paymentMethod', { defaultValue: 'Payment' })}
-        </Text>
-        <View style={styles.backButtonPlaceholder} />
-      </View>
+      <BrandedHeader
+        containerStyle={styles.header}
+        sideWidth={44}
+        title={t('checkout.paymentMethod', { defaultValue: 'Payment' })}
+        left={
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+            disabled={isProcessingResult}
+          >
+            <Ionicons name="chevron-back" size={22} color={COLORS.textPrimary} />
+          </TouchableOpacity>
+        }
+        right={<View style={styles.backButtonPlaceholder} />}
+      />
 
       <WebView
         source={{ uri: paymentUrl }}

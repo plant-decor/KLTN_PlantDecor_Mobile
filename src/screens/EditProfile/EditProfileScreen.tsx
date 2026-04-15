@@ -19,6 +19,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, RADIUS, SHADOWS, SPACING } from '../../constants';
+import { BrandedHeader } from '../../components/branding';
 import {
   RootStackParamList,
   UpdateProfileRequest,
@@ -299,17 +300,21 @@ export default function EditProfileScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.container}
       >
-        <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.headerButton}
-            onPress={() => navigation.goBack()}
-            activeOpacity={0.75}
-          >
-            <Ionicons name="chevron-back" size={22} color={COLORS.textPrimary} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>{t('profile.editProfile')}</Text>
-          <View style={styles.headerButtonPlaceholder} />
-        </View>
+        <BrandedHeader
+          containerStyle={styles.header}
+          sideWidth={44}
+          title={t('profile.editProfile')}
+          left={
+            <TouchableOpacity
+              style={styles.headerButton}
+              onPress={() => navigation.goBack()}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="chevron-back" size={22} color={COLORS.textPrimary} />
+            </TouchableOpacity>
+          }
+          right={<View style={styles.headerButtonPlaceholder} />}
+        />
 
         <ScrollView
           style={styles.scrollView}
