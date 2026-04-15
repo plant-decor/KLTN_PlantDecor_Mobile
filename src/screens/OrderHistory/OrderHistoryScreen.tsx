@@ -528,6 +528,7 @@ export default function OrderHistoryScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <BrandedHeader
+        brandVariant="none"
         containerStyle={styles.header}
         sideWidth={44}
         title={headerTitle}

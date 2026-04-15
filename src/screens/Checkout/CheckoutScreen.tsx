@@ -260,29 +260,31 @@ export default function CheckoutScreen() {
     setSelectedPaymentStrategy(preferredVNPay?.value ?? paymentOptions[0].value);
   }, [isPlantInstanceBuyNow, paymentOptions, selectedPaymentStrategy]);
 
-  const resolvedGenderCode = useMemo(() => {
-    const normalizedCode = normalizeEnumCode(user?.genderCode);
-    if (normalizedCode !== null) {
-      return normalizedCode;
+  const resolvedGenderName = useMemo(() => {
+    if (typeof user?.gender === 'string' && user.gender.trim().length > 0) {
+      return user.gender.trim();
     }
 
-    if (typeof user?.gender === 'string' && user.gender.trim().length > 0) {
-      const normalizedGenderName = user.gender.trim().toLowerCase();
+    const normalizedCode = normalizeEnumCode(user?.genderCode);
+    if (normalizedCode !== null) {
       const matchedGender = genderEnumValues.find(
-        (item) => item.name.trim().toLowerCase() === normalizedGenderName
+        (item) => normalizeEnumCode(item.value) === normalizedCode
       );
-      const matchedCode = normalizeEnumCode(matchedGender?.value);
-      if (matchedCode !== null) {
-        return matchedCode;
+
+      if (matchedGender?.name.trim()) {
+        return matchedGender.name.trim();
       }
     }
 
-    const firstGenderCode = normalizeEnumCode(genderEnumValues[0]?.value);
-    if (firstGenderCode !== null) {
-      return firstGenderCode;
+    const unknownGender = genderEnumValues.find(
+      (item) => item.name.trim().toLowerCase() === 'unknown'
+    );
+
+    if (unknownGender?.name.trim()) {
+      return unknownGender.name.trim();
     }
 
-    return 1;
+    return String(normalizedCode ?? 0);
   }, [genderEnumValues, user?.gender, user?.genderCode]);
 
   const resolveOrderType = (isPlantInstanceOrder: boolean, isBuyNowOrder: boolean): number => {
@@ -380,7 +382,7 @@ export default function CheckoutScreen() {
     typeof user?.address === 'string'
       ? user.address.trim()
       : user?.address?.fullAddress?.trim() ?? '';
-  const userPhone = user?.phone?.trim() ?? '';
+  const userPhone = user?.phoneNumber?.trim() ?? user?.phone?.trim() ?? '';
   const [deliveryAddress, setDeliveryAddress] = useState(userAddress);
   const [deliveryPhone, setDeliveryPhone] = useState(userPhone);
   const [orderNote, setOrderNote] = useState('');
@@ -478,6 +480,16 @@ export default function CheckoutScreen() {
     const username = user.username?.trim() ?? '';
     const fullName = user.fullName?.trim() ?? '';
     const birthYear = user.birthYear;
+    const resolvedPhoneNumber =
+      trimmedPhone || user.phoneNumber?.trim() || user.phone?.trim() || '';
+    const payloadLatitude =
+      typeof user.latitude === 'number' && Number.isFinite(user.latitude)
+        ? user.latitude
+        : 0;
+    const payloadLongitude =
+      typeof user.longitude === 'number' && Number.isFinite(user.longitude)
+        ? user.longitude
+        : 0;
 
     if (!username || !fullName || typeof birthYear !== 'number' || !Number.isInteger(birthYear)) {
       Alert.alert(
@@ -502,13 +514,25 @@ export default function CheckoutScreen() {
       return;
     }
 
+    if (!resolvedPhoneNumber) {
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        t('checkout.phoneRequired', {
+          defaultValue: 'Please enter phone number.',
+        })
+      );
+      return;
+    }
+
     const payload: UpdateProfileRequest = {
-      username,
+      userName: username,
+      phoneNumber: resolvedPhoneNumber,
       fullName,
-      phoneNumber: trimmedPhone || user.phone?.trim() || undefined,
       address: trimmedAddress,
       birthYear,
-      gender: resolvedGenderCode,
+      gender: resolvedGenderName,
+      latitude: payloadLatitude,
+      longitude: payloadLongitude,
       receiveNotifications:
         user.receiveNotifications ?? user.receiveNotification ?? false,
     };

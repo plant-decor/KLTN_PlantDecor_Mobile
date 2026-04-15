@@ -89,8 +89,52 @@ const normalizeGender = (
   return {};
 };
 
+const normalizeCoordinate = (rawCoordinate: unknown): number | undefined => {
+  if (typeof rawCoordinate === 'number' && Number.isFinite(rawCoordinate)) {
+    return rawCoordinate;
+  }
+
+  if (typeof rawCoordinate === 'string' && rawCoordinate.trim().length > 0) {
+    const parsed = Number(rawCoordinate);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  return undefined;
+};
+
+const normalizeUpdateGender = (rawGender: unknown): UserGender => {
+  if (typeof rawGender === 'string') {
+    const trimmed = rawGender.trim();
+    if (trimmed.length > 0) {
+      return trimmed;
+    }
+  }
+
+  if (typeof rawGender === 'number' && Number.isInteger(rawGender)) {
+    return String(rawGender);
+  }
+
+  return 'Unknown';
+};
+
 const normalizeUser = (rawUser: any): User => {
   const normalizedGender = normalizeGender(rawUser?.gender);
+  const normalizedPhoneNumber =
+    typeof rawUser?.phoneNumber === 'string' && rawUser.phoneNumber.trim().length > 0
+      ? rawUser.phoneNumber
+      : typeof rawUser?.phone === 'string' && rawUser.phone.trim().length > 0
+        ? rawUser.phone
+        : undefined;
+  const normalizedAvatarUrl =
+    typeof rawUser?.avatarUrl === 'string' && rawUser.avatarUrl.trim().length > 0
+      ? rawUser.avatarUrl
+      : typeof rawUser?.avatarURL === 'string' && rawUser.avatarURL.trim().length > 0
+        ? rawUser.avatarURL
+        : typeof rawUser?.avatar === 'string' && rawUser.avatar.trim().length > 0
+          ? rawUser.avatar
+          : undefined;
+  const normalizedLatitude = normalizeCoordinate(rawUser?.latitude);
+  const normalizedLongitude = normalizeCoordinate(rawUser?.longitude);
   const normalizedReceiveNotifications =
     typeof rawUser?.receiveNotifications === 'boolean'
       ? rawUser.receiveNotifications
@@ -103,8 +147,10 @@ const normalizeUser = (rawUser: any): User => {
     email: rawUser?.email ?? '',
     username: rawUser?.username ?? rawUser?.userName ?? undefined,
     fullName: rawUser?.fullName ?? rawUser?.username ?? rawUser?.name ?? '',
-    phone: rawUser?.phone ?? rawUser?.phoneNumber ?? undefined,
-    avatar: rawUser?.avatar ?? rawUser?.avatarUrl ?? rawUser?.avatarURL ?? undefined,
+    phone: normalizedPhoneNumber,
+    phoneNumber: normalizedPhoneNumber,
+    avatar: normalizedAvatarUrl,
+    avatarUrl: normalizedAvatarUrl,
     address:
       typeof rawUser?.address === 'string'
         ? rawUser.address
@@ -112,6 +158,8 @@ const normalizeUser = (rawUser: any): User => {
     birthYear: normalizeBirthYear(rawUser?.birthYear),
     gender: normalizedGender.gender,
     genderCode: normalizedGender.genderCode,
+    latitude: normalizedLatitude,
+    longitude: normalizedLongitude,
     receiveNotifications: normalizedReceiveNotifications,
     receiveNotification: normalizedReceiveNotifications,
     profileCompleteness:
@@ -258,9 +306,21 @@ export const authService = {
   },
 
   updateProfile: async (data: UpdateProfileRequest) => {
+    const requestPayload: UpdateProfileRequest = {
+      userName: data.userName.trim(),
+      phoneNumber: data.phoneNumber.trim(),
+      fullName: data.fullName.trim(),
+      address: data.address.trim(),
+      birthYear: data.birthYear,
+      gender: normalizeUpdateGender(data.gender),
+      latitude: Number.isFinite(data.latitude) ? data.latitude : 0,
+      longitude: Number.isFinite(data.longitude) ? data.longitude : 0,
+      receiveNotifications: Boolean(data.receiveNotifications),
+    };
+
     const response = await api.put<ApiResponse<User>>(
       API.ENDPOINTS.UPDATE_PROFILE,
-      data
+      requestPayload
     );
     return normalizeUser(getEnvelopeData(response.data));
   },

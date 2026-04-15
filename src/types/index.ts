@@ -7,11 +7,15 @@ export interface User {
   username?: string;
   fullName: string;
   phone?: string;
+  phoneNumber?: string;
   avatar?: string;
+  avatarUrl?: string;
   address?: string | Address;
   birthYear?: number;
   gender?: UserGender;
   genderCode?: number;
+  latitude?: number;
+  longitude?: number;
   receiveNotifications?: boolean;
   receiveNotification?: boolean;
   profileCompleteness?: number;
@@ -26,12 +30,14 @@ export type UserGender = string;
 export type UserGenderCode = number;
 
 export interface UpdateProfileRequest {
-  username: string;
+  userName: string;
+  phoneNumber: string;
   fullName: string;
-  phoneNumber?: string;
   address: string;
   birthYear: number;
-  gender: UserGenderCode;
+  gender: UserGender;
+  latitude: number;
+  longitude: number;
   receiveNotifications: boolean;
 }
 

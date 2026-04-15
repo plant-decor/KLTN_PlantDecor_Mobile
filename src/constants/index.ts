@@ -247,6 +247,18 @@ export const API = {
     MARK_DELIVERY_FAILED: (orderId: number) =>
       `/shipper/nursery-orders/${orderId}/mark-delivery-failed`,
 
+    //CareService
+    CARE_SERVICE_PACKAGES: "/care-service-packages",
+    CARE_SERVICE_PACKAGES_DETAIL: (id: number) => `/care-service-packages/${id}`,
+    NURSERIES_NEARBY: "/nurseries/nearby",
+
+    SERVICE_REGISTRATION: "/service-registrations",
+    MY_SERVICE_REGISTRATIONS: "/service-registrations/my",
+    SERVICE_REGISTRATION_DETAIL: (id: number) => `/service-registrations/${id}`,
+    CANCEL_SERVICE_REGISTRATION: (id: number) => `/service-registrations/${id}/cancel`,
+
+    CARETAKER_ASSGINED_SERVICE_REGISTRATIONS: "/service-registrations/my-tasks",
+
   },
 } as const;
 

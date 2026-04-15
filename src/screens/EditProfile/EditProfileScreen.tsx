@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -45,6 +46,54 @@ const normalizeGenderCode = (rawCode: unknown): UserGenderCode | null => {
   }
 
   return null;
+};
+
+const normalizeCoordinate = (rawCoordinate: unknown): number | null => {
+  if (typeof rawCoordinate === 'number' && Number.isFinite(rawCoordinate)) {
+    return rawCoordinate;
+  }
+
+  if (typeof rawCoordinate === 'string' && rawCoordinate.trim().length > 0) {
+    const parsed = Number(rawCoordinate);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+};
+
+type ReverseGeocodeAddress = {
+  name?: string | null;
+  street?: string | null;
+  district?: string | null;
+  subregion?: string | null;
+  city?: string | null;
+  region?: string | null;
+  country?: string | null;
+};
+
+const formatReverseGeocodeAddress = (rawAddress: ReverseGeocodeAddress): string => {
+  const parts = [
+    rawAddress.name,
+    rawAddress.street,
+    rawAddress.district,
+    rawAddress.subregion,
+    rawAddress.city,
+    rawAddress.region,
+    rawAddress.country,
+  ]
+    .map((part) => (typeof part === 'string' ? part.trim() : ''))
+    .filter((part) => part.length > 0);
+
+  return Array.from(new Set(parts)).join(', ');
+};
+
+const formatCoordinateValue = (rawCoordinate: string): string | null => {
+  const normalizedCoordinate = normalizeCoordinate(rawCoordinate);
+  if (normalizedCoordinate === null) {
+    return null;
+  }
+
+  return normalizedCoordinate.toFixed(6);
 };
 
 export default function EditProfileScreen() {
@@ -124,10 +173,21 @@ export default function EditProfileScreen() {
   }, [genderOptions, user?.gender, user?.genderCode]);
 
   const [username, setUsername] = useState(user?.username ?? '');
+  const [phoneNumber, setPhoneNumber] = useState(
+    user?.phoneNumber ?? user?.phone ?? ''
+  );
   const [fullName, setFullName] = useState(user?.fullName ?? '');
   const [address, setAddress] = useState(
     typeof user?.address === 'string' ? user.address : user?.address?.fullAddress ?? ''
   );
+  const [latitude, setLatitude] = useState(() => {
+    const normalizedLatitude = normalizeCoordinate(user?.latitude);
+    return normalizedLatitude !== null ? String(normalizedLatitude) : '';
+  });
+  const [longitude, setLongitude] = useState(() => {
+    const normalizedLongitude = normalizeCoordinate(user?.longitude);
+    return normalizedLongitude !== null ? String(normalizedLongitude) : '';
+  });
   const [birthYear, setBirthYear] = useState(
     typeof user?.birthYear === 'number' ? String(user.birthYear) : ''
   );
@@ -138,6 +198,7 @@ export default function EditProfileScreen() {
     user?.receiveNotifications ?? user?.receiveNotification ?? false
   );
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [isResolvingLocation, setIsResolvingLocation] = useState(false);
 
   const avatarUri =
     typeof user?.avatar === 'string' && user.avatar.trim().length > 0
@@ -215,7 +276,9 @@ export default function EditProfileScreen() {
 
   useEffect(() => {
     if (preferredGenderCode !== null) {
-      setGender(preferredGenderCode);
+      setGender((previousGender) =>
+        previousGender === preferredGenderCode ? previousGender : preferredGenderCode
+      );
       return;
     }
 
@@ -223,19 +286,165 @@ export default function EditProfileScreen() {
       return;
     }
 
-    const hasCurrentGender = genderOptions.some((option) => option.value === gender);
-    if (!hasCurrentGender) {
-      setGender(genderOptions[0].value);
+    setGender((previousGender) => {
+      const hasCurrentGender = genderOptions.some(
+        (option) => option.value === previousGender
+      );
+      return hasCurrentGender ? previousGender : genderOptions[0].value;
+    });
+  }, [genderOptions, preferredGenderCode]);
+
+  const resolveAddressFromCoordinates = useCallback(
+    async (resolvedLatitude: number, resolvedLongitude: number): Promise<string | null> => {
+      try {
+        const addresses = await Location.reverseGeocodeAsync({
+          latitude: resolvedLatitude,
+          longitude: resolvedLongitude,
+        });
+
+        const primaryAddress = addresses[0] as ReverseGeocodeAddress | undefined;
+        if (!primaryAddress) {
+          return null;
+        }
+
+        const formattedAddress = formatReverseGeocodeAddress(primaryAddress);
+        return formattedAddress.length > 0 ? formattedAddress : null;
+      } catch {
+        return null;
+      }
+    },
+    []
+  );
+
+  const selectedGenderName = useMemo(() => {
+    const selectedOption = genderOptions.find((option) => option.value === gender);
+    if (selectedOption?.rawName.trim()) {
+      return selectedOption.rawName.trim();
     }
-  }, [gender, genderOptions, preferredGenderCode]);
+
+    return String(gender);
+  }, [gender, genderOptions]);
+
+  const latitudeDisplayValue = useMemo(
+    () => formatCoordinateValue(latitude),
+    [latitude]
+  );
+  const longitudeDisplayValue = useMemo(
+    () => formatCoordinateValue(longitude),
+    [longitude]
+  );
+
+  const handleUseCurrentLocation = useCallback(async () => {
+    if (isResolvingLocation || isLoading) {
+      return;
+    }
+
+    try {
+      setIsResolvingLocation(true);
+
+      const isLocationServiceEnabled = await Location.hasServicesEnabledAsync();
+      if (!isLocationServiceEnabled) {
+        Alert.alert(
+          t('common.error', { defaultValue: 'Error' }),
+          t('profile.editFormLocationServiceDisabled', {
+            defaultValue: 'Please enable location services and try again.',
+          })
+        );
+        return;
+      }
+
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          t('common.error', { defaultValue: 'Error' }),
+          t('profile.editFormLocationPermissionDenied', {
+            defaultValue: 'Location permission is required to use current coordinates.',
+          })
+        );
+        return;
+      }
+
+      let position: Location.LocationObject | null = null;
+
+      try {
+        position = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.High,
+        });
+      } catch {
+        position = await Location.getLastKnownPositionAsync({
+          maxAge: 5 * 60 * 1000,
+          requiredAccuracy: 150,
+        });
+      }
+
+      if (!position) {
+        Alert.alert(
+          t('common.error', { defaultValue: 'Error' }),
+          t('profile.editFormLocationUnavailable', {
+            defaultValue: 'Unable to determine your current location. Please move to an open area and try again.',
+          })
+        );
+        return;
+      }
+
+      const resolvedLatitude = Number(position.coords.latitude.toFixed(6));
+      const resolvedLongitude = Number(position.coords.longitude.toFixed(6));
+
+      setLatitude(String(resolvedLatitude));
+      setLongitude(String(resolvedLongitude));
+
+      const reverseGeocodedAddress = await resolveAddressFromCoordinates(
+        resolvedLatitude,
+        resolvedLongitude
+      );
+
+      if (reverseGeocodedAddress) {
+        setAddress(reverseGeocodedAddress);
+      }
+    } catch {
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        t('profile.editFormLocationFailed', {
+          defaultValue: 'Unable to fetch current location. Please try again.',
+        })
+      );
+    } finally {
+      setIsResolvingLocation(false);
+    }
+  }, [isLoading, isResolvingLocation, resolveAddressFromCoordinates, t]);
 
   const handleUpdateProfile = async () => {
     const trimmedUsername = username.trim();
+    const trimmedPhoneNumber = phoneNumber.trim();
     const trimmedFullName = fullName.trim();
-    const trimmedAddress = address.trim();
+    let trimmedAddress = address.trim();
+    const normalizedLatitude = normalizeCoordinate(latitude);
+    const normalizedLongitude = normalizeCoordinate(longitude);
     const parsedBirthYear = Number(birthYear);
 
-    if (!trimmedUsername || !trimmedFullName || !trimmedAddress || !birthYear.trim()) {
+    if (
+      !trimmedAddress &&
+      normalizedLatitude !== null &&
+      normalizedLongitude !== null
+    ) {
+      const reverseGeocodedAddress = await resolveAddressFromCoordinates(
+        normalizedLatitude,
+        normalizedLongitude
+      );
+
+      if (reverseGeocodedAddress) {
+        trimmedAddress = reverseGeocodedAddress;
+        setAddress(reverseGeocodedAddress);
+      }
+    }
+
+    if (
+      !trimmedUsername ||
+      !trimmedPhoneNumber ||
+      !trimmedFullName ||
+      !trimmedAddress ||
+      !birthYear.trim()
+    ) {
       Alert.alert(
         t('common.error', { defaultValue: 'Error' }),
         t('profile.editFormRequired', {
@@ -261,12 +470,18 @@ export default function EditProfileScreen() {
       return;
     }
 
+    const payloadLatitude = normalizedLatitude ?? normalizeCoordinate(user?.latitude) ?? 0;
+    const payloadLongitude = normalizedLongitude ?? normalizeCoordinate(user?.longitude) ?? 0;
+
     const payload: UpdateProfileRequest = {
-      username: trimmedUsername,
+      userName: trimmedUsername,
+      phoneNumber: trimmedPhoneNumber,
       fullName: trimmedFullName,
       address: trimmedAddress,
       birthYear: parsedBirthYear,
-      gender,
+      gender: selectedGenderName,
+      latitude: payloadLatitude,
+      longitude: payloadLongitude,
       receiveNotifications,
     };
 
@@ -301,6 +516,7 @@ export default function EditProfileScreen() {
         style={styles.container}
       >
         <BrandedHeader
+          brandVariant="none"
           containerStyle={styles.header}
           sideWidth={44}
           title={t('profile.editProfile')}
@@ -371,6 +587,25 @@ export default function EditProfileScreen() {
             </View>
 
             <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>
+                {t('profile.editFormPhoneNumber', { defaultValue: 'Phone number' })}
+              </Text>
+              <TextInput
+                style={styles.input}
+                value={phoneNumber}
+                onChangeText={setPhoneNumber}
+                placeholder={t('profile.editFormPhoneNumberPlaceholder', {
+                  defaultValue: 'Enter your phone number',
+                })}
+                placeholderTextColor={COLORS.gray500}
+                keyboardType="phone-pad"
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!isLoading}
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>{t('profile.editFormFullName')}</Text>
               <TextInput
                 style={styles.input}
@@ -409,6 +644,65 @@ export default function EditProfileScreen() {
                 maxLength={4}
                 editable={!isLoading}
               />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>
+                {t('profile.editFormLocation', { defaultValue: 'Location' })}
+              </Text>
+              <View style={styles.coordinateRow}>
+                <View style={[styles.input, styles.coordinateInput, styles.coordinateDisplay]}>
+                  <Text
+                    style={[
+                      styles.coordinateValueText,
+                      !latitudeDisplayValue && styles.coordinatePlaceholderText,
+                    ]}
+                  >
+                    {latitudeDisplayValue ??
+                      t('profile.editFormLatitudePlaceholder', {
+                        defaultValue: 'Latitude',
+                      })}
+                  </Text>
+                </View>
+                <View style={[styles.input, styles.coordinateInput, styles.coordinateDisplay]}>
+                  <Text
+                    style={[
+                      styles.coordinateValueText,
+                      !longitudeDisplayValue && styles.coordinatePlaceholderText,
+                    ]}
+                  >
+                    {longitudeDisplayValue ??
+                      t('profile.editFormLongitudePlaceholder', {
+                        defaultValue: 'Longitude',
+                      })}
+                  </Text>
+                </View>
+              </View>
+
+              <TouchableOpacity
+                style={[
+                  styles.locationButton,
+                  (isLoading || isResolvingLocation) && styles.locationButtonDisabled,
+                ]}
+                onPress={() => void handleUseCurrentLocation()}
+                activeOpacity={0.8}
+                disabled={isLoading || isResolvingLocation}
+              >
+                {isResolvingLocation ? (
+                  <ActivityIndicator size="small" color={COLORS.primary} />
+                ) : (
+                  <Ionicons name="locate-outline" size={16} color={COLORS.primary} />
+                )}
+                <Text style={styles.locationButtonText}>
+                  {isResolvingLocation
+                    ? t('profile.editFormLocationLoading', {
+                        defaultValue: 'Getting current location...',
+                      })
+                    : t('profile.editFormUseCurrentLocation', {
+                        defaultValue: 'Use current location',
+                      })}
+                </Text>
+              </TouchableOpacity>
             </View>
 
             <View style={styles.inputGroup}>
@@ -602,6 +896,44 @@ const styles = StyleSheet.create({
   },
   addressInput: {
     minHeight: 84,
+  },
+  coordinateRow: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+  },
+  coordinateInput: {
+    flex: 1,
+  },
+  coordinateDisplay: {
+    justifyContent: 'center',
+    backgroundColor: COLORS.gray100,
+  },
+  coordinateValueText: {
+    fontSize: FONTS.sizes.md,
+    color: COLORS.textPrimary,
+  },
+  coordinatePlaceholderText: {
+    color: COLORS.textLight,
+  },
+  locationButton: {
+    marginTop: SPACING.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.sm,
+    backgroundColor: COLORS.secondaryLight,
+  },
+  locationButtonDisabled: {
+    opacity: 0.7,
+  },
+  locationButtonText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.primary,
+    fontWeight: '700',
   },
   genderRow: {
     flexDirection: 'row',

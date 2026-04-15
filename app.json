@@ -36,6 +36,12 @@
           "photosPermission": "PlantDecor cần truy cập thư viện ảnh để chọn ảnh không gian cho AI thiết kế.",
           "cameraPermission": "PlantDecor cần truy cập camera để chụp ảnh không gian."
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "PlantDecor needs your location to autofill latitude and longitude in your profile."
+        }
       ]
     ]
   }
