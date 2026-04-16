@@ -921,7 +921,7 @@ export default function MaterialDetailScreen() {
         onLayout={handleBottomBarLayout}
       >
         <View style={styles.quantityControl}>
-          <Text style={styles.quantityLabel}>{t('cart.quantity', { defaultValue: 'Quantity' })}</Text>
+          <Text style={styles.quantityLabel}>{t('cart.quantityLabel', { defaultValue: 'Quantity' })}</Text>
           <View style={styles.quantityStepper}>
             <TouchableOpacity
               style={[styles.quantityBtn, quantity <= 1 && styles.quantityBtnDisabled]}
@@ -1052,7 +1052,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 9999,
-    backgroundColor: 'rgba(255,255,255,0.30)',
+    backgroundColor: 'rgba(0,0,0,0.35)',
     justifyContent: 'center',
     alignItems: 'center',
   },

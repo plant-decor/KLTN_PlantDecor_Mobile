@@ -105,6 +105,22 @@ const FALLBACK_GROUPS: Record<string, SystemEnumValue[]> = {
     { value: 2, name: 'Afternoon' },
     { value: 3, name: 'Evening' },
   ],
+  LightRequirement: [
+    { value: 1, name: 'LowLight' },
+    { value: 2, name: 'IndirectLight' },
+    { value: 3, name: 'PartialSun' },
+    { value: 4, name: 'FullSun' },
+  ],
+  RoomType: [
+    { value: 1, name: 'LivingRoom' },
+    { value: 2, name: 'Bedroom' },
+    { value: 3, name: 'Kitchen' },
+    { value: 4, name: 'Bathroom' },
+    { value: 5, name: 'HomeOffice' },
+    { value: 6, name: 'Balcony' },
+    { value: 7, name: 'Corridor' },
+    { value: 8, name: 'DiningRoom' },
+  ],
 };
 
 const GROUP_ALIASES: Record<string, string[]> = {
@@ -123,6 +139,13 @@ const GROUP_ALIASES: Record<string, string[]> = {
   BuyNowItemType: ['BuyNowItemType', 'buyNowItemType'],
   OrderStatus: ['OrderStatus', 'orderStatus', 'status'],
   PreferredShift: ['PreferredShift', 'preferredShift', 'shift', 'workShift'],
+  LightRequirement: [
+    'LightRequirement',
+    'lightRequirement',
+    'suitableSpace',
+    'light',
+  ],
+  RoomType: ['RoomType', 'roomType', 'suitableRooms', 'room'],
   WishlistItemType: [
     'WishlistItemType',
     'wishlistItemType',
@@ -149,6 +172,9 @@ const RESOURCE_GROUPS: Record<string, string[]> = {
   payments: ['PaymentStrategy'],
   wishlist: ['WishlistItemType'],
   wishlisttypes: ['WishlistItemType'],
+  lightrequirement: ['LightRequirement'],
+  roomtype: ['RoomType'],
+  combodetail: ['LightRequirement', 'RoomType'],
 };
 
 const normalizedAliasMap = Object.entries(GROUP_ALIASES).reduce<Record<string, string>>(

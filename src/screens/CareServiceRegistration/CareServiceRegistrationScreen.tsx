@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -61,6 +61,29 @@ const DEFAULT_RADIUS_KM = 20;
 const DEFAULT_REGISTRATION_PAGE_SIZE = 10;
 const ONE_TIME_MIN_LEAD_HOURS = 24;
 const PERIOD_MIN_LEAD_HOURS = 48;
+const ADDRESS_SUGGESTION_MIN_LENGTH = 3;
+const ADDRESS_SUGGESTION_LIMIT = 5;
+const ADDRESS_SUGGESTION_DEBOUNCE_MS = 350;
+const ADDRESS_SUGGESTION_REQUEST_TIMEOUT_MS = 7000;
+
+type ResolvedCoordinates = {
+  lat: number;
+  lng: number;
+};
+
+type AddressSuggestion = {
+  id: string;
+  label: string;
+  lat: number;
+  lng: number;
+};
+
+type NominatimSearchItem = {
+  place_id?: number | string;
+  display_name?: string;
+  lat?: string;
+  lon?: string;
+};
 
 const normalizeEnumCode = (rawCode: unknown): number | null => {
   if (typeof rawCode === 'number' && Number.isInteger(rawCode)) {
@@ -232,6 +255,12 @@ export default function CareServiceRegistrationScreen() {
   const [latitude, setLatitude] = useState<number | null>(initialLatitude);
   const [longitude, setLongitude] = useState<number | null>(initialLongitude);
   const [isResolvingLocation, setIsResolvingLocation] = useState(false);
+  const [isGeocodingAddress, setIsGeocodingAddress] = useState(false);
+  const [isAddressFocused, setIsAddressFocused] = useState(false);
+  const [isLoadingAddressSuggestions, setIsLoadingAddressSuggestions] = useState(false);
+  const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
+  const [hasAddressSuggestionQueryFinished, setHasAddressSuggestionQueryFinished] =
+    useState(false);
 
   const [nurseries, setNurseries] = useState<NurseryNearby[]>([]);
   const [selectedNurseryId, setSelectedNurseryId] = useState<number | null>(null);
@@ -263,6 +292,12 @@ export default function CareServiceRegistrationScreen() {
   const [registrationHasNextPage, setRegistrationHasNextPage] = useState(false);
   const [registrationTotalCount, setRegistrationTotalCount] = useState(0);
   const [activeRegistrationStatus, setActiveRegistrationStatus] = useState<number | null>(null);
+
+  const lastGeocodedAddressRef = useRef<string>(
+    initialLatitude !== null && initialLongitude !== null ? initialAddress.trim() : ''
+  );
+  const addressSuggestionRequestIdRef = useRef(0);
+  const isSelectingAddressSuggestionRef = useRef(false);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -809,12 +844,273 @@ export default function CareServiceRegistrationScreen() {
     []
   );
 
+  const resolveCoordinatesFromAddress = useCallback(
+    async (rawAddress: string): Promise<ResolvedCoordinates | null> => {
+      const trimmedAddress = rawAddress.trim();
+      if (!trimmedAddress) {
+        return null;
+      }
+
+      try {
+        const geocoded = await Location.geocodeAsync(trimmedAddress);
+        const firstResult = geocoded[0];
+        if (!firstResult) {
+          return null;
+        }
+
+        return {
+          lat: Number(firstResult.latitude.toFixed(6)),
+          lng: Number(firstResult.longitude.toFixed(6)),
+        };
+      } catch {
+        return null;
+      }
+    },
+    []
+  );
+
+  const searchAddressSuggestions = useCallback(
+    async (query: string): Promise<AddressSuggestion[]> => {
+      const trimmedQuery = query.trim();
+      if (trimmedQuery.length < ADDRESS_SUGGESTION_MIN_LENGTH) {
+        return [];
+      }
+
+      let mappedSuggestions: AddressSuggestion[] = [];
+
+      try {
+        const endpoint =
+          `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1` +
+          `&limit=${ADDRESS_SUGGESTION_LIMIT}&q=${encodeURIComponent(trimmedQuery)}`;
+
+        const abortController = new AbortController();
+        const timeoutId = setTimeout(() => {
+          abortController.abort();
+        }, ADDRESS_SUGGESTION_REQUEST_TIMEOUT_MS);
+
+        let response: Response | null = null;
+
+        try {
+          response = await fetch(endpoint, {
+            headers: {
+              Accept: 'application/json',
+              'Accept-Language': i18n.language === 'vi' ? 'vi' : 'en',
+            },
+            signal: abortController.signal,
+          });
+        } finally {
+          clearTimeout(timeoutId);
+        }
+
+        if (response?.ok) {
+          const payload = (await response.json()) as NominatimSearchItem[];
+          if (Array.isArray(payload)) {
+            const seenLabels = new Set<string>();
+
+            mappedSuggestions = payload
+              .map((item) => {
+                const label =
+                  typeof item.display_name === 'string' ? item.display_name.trim() : '';
+                const lat = normalizeCoordinate(item.lat);
+                const lng = normalizeCoordinate(item.lon);
+
+                if (!label || lat === null || lng === null) {
+                  return null;
+                }
+
+                if (seenLabels.has(label)) {
+                  return null;
+                }
+
+                seenLabels.add(label);
+
+                const id =
+                  typeof item.place_id === 'string' || typeof item.place_id === 'number'
+                    ? String(item.place_id)
+                    : `${label}-${lat}-${lng}`;
+
+                return {
+                  id,
+                  label,
+                  lat: Number(lat.toFixed(6)),
+                  lng: Number(lng.toFixed(6)),
+                };
+              })
+              .filter((item): item is AddressSuggestion => Boolean(item));
+          }
+        }
+      } catch {
+        mappedSuggestions = [];
+      }
+
+      if (mappedSuggestions.length > 0) {
+        return mappedSuggestions;
+      }
+
+      const fallbackCoordinates = await resolveCoordinatesFromAddress(trimmedQuery);
+      if (!fallbackCoordinates) {
+        return [];
+      }
+
+      const fallbackAddress = await resolveAddressFromCoordinates(
+        fallbackCoordinates.lat,
+        fallbackCoordinates.lng
+      );
+      const fallbackLabel =
+        typeof fallbackAddress === 'string' && fallbackAddress.trim().length > 0
+          ? fallbackAddress.trim()
+          : trimmedQuery;
+
+      return [
+        {
+          id: `fallback-${fallbackCoordinates.lat}-${fallbackCoordinates.lng}`,
+          label: fallbackLabel,
+          lat: fallbackCoordinates.lat,
+          lng: fallbackCoordinates.lng,
+        },
+      ];
+    },
+    [i18n.language, resolveAddressFromCoordinates, resolveCoordinatesFromAddress]
+  );
+
+  useEffect(() => {
+    const trimmedAddress = address.trim();
+
+    if (
+      !isAddressFocused ||
+      trimmedAddress.length < ADDRESS_SUGGESTION_MIN_LENGTH ||
+      trimmedAddress === lastGeocodedAddressRef.current
+    ) {
+      setAddressSuggestions([]);
+      setIsLoadingAddressSuggestions(false);
+      setHasAddressSuggestionQueryFinished(false);
+      return;
+    }
+
+    const currentRequestId = addressSuggestionRequestIdRef.current + 1;
+    addressSuggestionRequestIdRef.current = currentRequestId;
+    setIsLoadingAddressSuggestions(true);
+
+    const debounceTimeout = setTimeout(() => {
+      void (async () => {
+        const suggestions = await searchAddressSuggestions(trimmedAddress);
+
+        if (addressSuggestionRequestIdRef.current !== currentRequestId) {
+          return;
+        }
+
+        setAddressSuggestions(suggestions);
+        setIsLoadingAddressSuggestions(false);
+        setHasAddressSuggestionQueryFinished(true);
+      })();
+    }, ADDRESS_SUGGESTION_DEBOUNCE_MS);
+
+    return () => {
+      clearTimeout(debounceTimeout);
+    };
+  }, [address, isAddressFocused, searchAddressSuggestions]);
+
+  const handleChangeAddress = useCallback((nextAddress: string) => {
+    const trimmedNextAddress = nextAddress.trim();
+
+    setAddress(nextAddress);
+
+    if (!trimmedNextAddress) {
+      setLatitude(null);
+      setLongitude(null);
+      setAddressSuggestions([]);
+      setHasAddressSuggestionQueryFinished(false);
+      lastGeocodedAddressRef.current = '';
+      return;
+    }
+
+    if (trimmedNextAddress !== lastGeocodedAddressRef.current) {
+      setLatitude(null);
+      setLongitude(null);
+    }
+  }, []);
+
+  const handleSelectAddressSuggestion = useCallback((selectedItem: AddressSuggestion) => {
+    isSelectingAddressSuggestionRef.current = false;
+
+    setAddress(selectedItem.label);
+    setLatitude(selectedItem.lat);
+    setLongitude(selectedItem.lng);
+    setAddressSuggestions([]);
+    setHasAddressSuggestionQueryFinished(false);
+    setIsAddressFocused(false);
+    lastGeocodedAddressRef.current = selectedItem.label.trim();
+  }, []);
+
+  const handleAddressBlur = useCallback(async () => {
+    if (isSelectingAddressSuggestionRef.current) {
+      return;
+    }
+
+    setIsAddressFocused(false);
+    setAddressSuggestions([]);
+    setHasAddressSuggestionQueryFinished(false);
+
+    const trimmedAddress = address.trim();
+
+    if (!trimmedAddress || isGeocodingAddress || isResolvingLocation) {
+      return;
+    }
+
+    if (trimmedAddress === lastGeocodedAddressRef.current) {
+      return;
+    }
+
+    try {
+      setIsGeocodingAddress(true);
+
+      const resolvedCoordinates = await resolveCoordinatesFromAddress(trimmedAddress);
+      if (!resolvedCoordinates) {
+        return;
+      }
+
+      setLatitude(resolvedCoordinates.lat);
+      setLongitude(resolvedCoordinates.lng);
+      lastGeocodedAddressRef.current = trimmedAddress;
+    } finally {
+      setIsGeocodingAddress(false);
+    }
+  }, [
+    address,
+    isGeocodingAddress,
+    isResolvingLocation,
+    resolveCoordinatesFromAddress,
+  ]);
+
+  const shouldShowAddressSuggestionPanel =
+    isAddressFocused &&
+    address.trim().length >= ADDRESS_SUGGESTION_MIN_LENGTH;
+
   const resolveCoordinatesForNurserySearch = useCallback(async () => {
-    if (latitude !== null && longitude !== null) {
+    const trimmedAddress = address.trim();
+
+    if (
+      latitude !== null &&
+      longitude !== null &&
+      (trimmedAddress.length === 0 || trimmedAddress === lastGeocodedAddressRef.current)
+    ) {
       return {
         lat: latitude,
         lng: longitude,
       };
+    }
+
+    if (trimmedAddress.length > 0) {
+      const resolvedCoordinates = await resolveCoordinatesFromAddress(trimmedAddress);
+      if (!resolvedCoordinates) {
+        return null;
+      }
+
+      setLatitude(resolvedCoordinates.lat);
+      setLongitude(resolvedCoordinates.lng);
+      lastGeocodedAddressRef.current = trimmedAddress;
+
+      return resolvedCoordinates;
     }
 
     const profileLatitude = normalizeCoordinate(user?.latitude);
@@ -830,35 +1126,18 @@ export default function CareServiceRegistrationScreen() {
       };
     }
 
-    const trimmedAddress = address.trim();
-    if (!trimmedAddress) {
-      return null;
-    }
-
-    try {
-      const geocoded = await Location.geocodeAsync(trimmedAddress);
-      const firstResult = geocoded[0];
-      if (!firstResult) {
-        return null;
-      }
-
-      const resolvedLatitude = Number(firstResult.latitude.toFixed(6));
-      const resolvedLongitude = Number(firstResult.longitude.toFixed(6));
-
-      setLatitude(resolvedLatitude);
-      setLongitude(resolvedLongitude);
-
-      return {
-        lat: resolvedLatitude,
-        lng: resolvedLongitude,
-      };
-    } catch {
-      return null;
-    }
-  }, [address, latitude, longitude, user?.latitude, user?.longitude]);
+    return null;
+  }, [
+    address,
+    latitude,
+    longitude,
+    resolveCoordinatesFromAddress,
+    user?.latitude,
+    user?.longitude,
+  ]);
 
   const handleUseCurrentLocation = useCallback(async () => {
-    if (isResolvingLocation || isLoadingNurseries || isSubmitting) {
+    if (isResolvingLocation || isLoadingNurseries || isSubmitting || isGeocodingAddress) {
       return;
     }
 
@@ -924,6 +1203,9 @@ export default function CareServiceRegistrationScreen() {
 
       if (resolvedAddress) {
         setAddress(resolvedAddress);
+        setAddressSuggestions([]);
+        setIsAddressFocused(false);
+        lastGeocodedAddressRef.current = resolvedAddress.trim();
       }
     } catch {
       Alert.alert(
@@ -936,6 +1218,7 @@ export default function CareServiceRegistrationScreen() {
       setIsResolvingLocation(false);
     }
   }, [
+    isGeocodingAddress,
     isLoadingNurseries,
     isResolvingLocation,
     isSubmitting,
@@ -944,6 +1227,10 @@ export default function CareServiceRegistrationScreen() {
   ]);
 
   const handleLoadNearbyNurseries = useCallback(async () => {
+    if (isGeocodingAddress) {
+      return;
+    }
+
     if (!selectedPackageId) {
       Alert.alert(
         t('common.error', { defaultValue: 'Error' }),
@@ -992,7 +1279,7 @@ export default function CareServiceRegistrationScreen() {
     } finally {
       setIsLoadingNurseries(false);
     }
-  }, [resolveCoordinatesForNurserySearch, selectedPackageId, t]);
+  }, [isGeocodingAddress, resolveCoordinatesForNurserySearch, selectedPackageId, t]);
 
   const getMatchedService = useCallback(
     (nursery: NurseryNearby): NurseryCareService | null => {
@@ -1544,7 +1831,11 @@ export default function CareServiceRegistrationScreen() {
             <TextInput
               style={[styles.input, styles.addressInput]}
               value={address}
-              onChangeText={setAddress}
+              onChangeText={handleChangeAddress}
+              onFocus={() => setIsAddressFocused(true)}
+              onBlur={() => {
+                void handleAddressBlur();
+              }}
               placeholder={t('careService.addressPlaceholder', {
                 defaultValue: 'Enter your address',
               })}
@@ -1553,6 +1844,57 @@ export default function CareServiceRegistrationScreen() {
               numberOfLines={3}
               textAlignVertical="top"
             />
+
+            {shouldShowAddressSuggestionPanel ? (
+              <View style={styles.addressSuggestionList}>
+                {isLoadingAddressSuggestions ? (
+                  <View style={styles.addressSuggestionStateRow}>
+                    <ActivityIndicator size="small" color={COLORS.primary} />
+                    <Text style={styles.addressSuggestionStateText}>
+                      {t('careService.addressSuggestionLoading', {
+                        defaultValue: 'Searching address suggestions...',
+                      })}
+                    </Text>
+                  </View>
+                ) : addressSuggestions.length > 0 ? (
+                  addressSuggestions.map((item, index) => (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={[
+                        styles.addressSuggestionItem,
+                        index === addressSuggestions.length - 1 &&
+                          styles.addressSuggestionItemLast,
+                      ]}
+                      activeOpacity={0.8}
+                      onPressIn={() => {
+                        isSelectingAddressSuggestionRef.current = true;
+                      }}
+                      onPress={() => handleSelectAddressSuggestion(item)}
+                    >
+                      <Ionicons
+                        name="location-outline"
+                        size={16}
+                        color={COLORS.primary}
+                        style={styles.addressSuggestionIcon}
+                      />
+                      <Text style={styles.addressSuggestionText} numberOfLines={2}>
+                        {item.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))
+                ) : hasAddressSuggestionQueryFinished ? (
+                  <View style={styles.addressSuggestionStateRow}>
+                    <Text style={styles.addressSuggestionStateText}>
+                      {t('careService.addressSuggestionEmpty', {
+                        defaultValue: 'No address suggestions found.',
+                      })}
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={styles.addressSuggestionStateRow} />
+                )}
+              </View>
+            ) : null}
 
             <View style={styles.coordinateInfoWrap}>
               <Text style={styles.coordinateInfoText}>
@@ -1573,10 +1915,10 @@ export default function CareServiceRegistrationScreen() {
               <TouchableOpacity
                 style={[
                   styles.secondaryActionButton,
-                  isResolvingLocation && styles.disabledActionButton,
+                  (isResolvingLocation || isGeocodingAddress) && styles.disabledActionButton,
                 ]}
                 onPress={() => void handleUseCurrentLocation()}
-                disabled={isResolvingLocation}
+                disabled={isResolvingLocation || isGeocodingAddress}
               >
                 {isResolvingLocation ? (
                   <ActivityIndicator size="small" color={COLORS.primary} />
@@ -1597,10 +1939,10 @@ export default function CareServiceRegistrationScreen() {
               <TouchableOpacity
                 style={[
                   styles.secondaryActionButton,
-                  isLoadingNurseries && styles.disabledActionButton,
+                  (isLoadingNurseries || isGeocodingAddress) && styles.disabledActionButton,
                 ]}
                 onPress={() => void handleLoadNearbyNurseries()}
-                disabled={isLoadingNurseries}
+                disabled={isLoadingNurseries || isGeocodingAddress}
               >
                 {isLoadingNurseries ? (
                   <ActivityIndicator size="small" color={COLORS.primary} />
@@ -2641,6 +2983,48 @@ const styles = StyleSheet.create({
   },
   addressInput: {
     minHeight: 80,
+  },
+  addressSuggestionList: {
+    marginTop: SPACING.xs,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
+    maxHeight: 220,
+    overflow: 'hidden',
+  },
+  addressSuggestionStateRow: {
+    minHeight: 44,
+    paddingHorizontal: SPACING.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  addressSuggestionStateText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  addressSuggestionItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderLight,
+    backgroundColor: COLORS.white,
+  },
+  addressSuggestionItemLast: {
+    borderBottomWidth: 0,
+  },
+  addressSuggestionIcon: {
+    marginTop: 2,
+  },
+  addressSuggestionText: {
+    flex: 1,
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textPrimary,
   },
   noteInput: {
     minHeight: 100,

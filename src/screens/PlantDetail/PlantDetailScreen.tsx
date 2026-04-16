@@ -32,6 +32,64 @@ const RELATED_CARD_WIDTH = 196;
 const RELATED_CARD_GAP = 16;
 const RELATED_IMAGE_HEIGHT = 215;
 
+const resolveImageUri = (rawImage: unknown): string | null => {
+  if (typeof rawImage === 'string') {
+    const trimmed = rawImage.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  if (!rawImage || typeof rawImage !== 'object') {
+    return null;
+  }
+
+  const imageRecord = rawImage as {
+    imageUrl?: unknown;
+    url?: unknown;
+    uri?: unknown;
+  };
+
+  const possibleValues = [imageRecord.imageUrl, imageRecord.url, imageRecord.uri];
+  for (const value of possibleValues) {
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (trimmed.length > 0) {
+        return trimmed;
+      }
+    }
+  }
+
+  return null;
+};
+
+const resolvePrimaryImageFromCollection = (rawImages: unknown): string | null => {
+  if (!Array.isArray(rawImages) || rawImages.length === 0) {
+    return null;
+  }
+
+  const primaryImage = rawImages.find((item) => {
+    if (!item || typeof item !== 'object') {
+      return false;
+    }
+
+    const imageRecord = item as { isPrimary?: unknown };
+    return imageRecord.isPrimary === true;
+  });
+
+  const primaryUri = resolveImageUri(primaryImage);
+  if (primaryUri) {
+    return primaryUri;
+  }
+
+  for (const item of rawImages) {
+    const uri = resolveImageUri(item);
+    if (uri) {
+      return uri;
+    }
+  }
+
+  return null;
+};
+
 const normalizeEnumCode = (rawCode: unknown): number | null => {
   if (typeof rawCode === 'number' && Number.isInteger(rawCode)) {
     return rawCode;
@@ -291,7 +349,7 @@ export default function PlantDetailScreen() {
         subtitle: t('plantDetail.defaultSubtitle'),
         price: p.basePrice ?? 0,
         isUniqueInstance: p.isUniqueInstance,
-        image: p.images?.[0] ?? '',
+        image: resolvePrimaryImageFromCollection(p.images) ?? '',
       }));
   }, [plants, plantId, t]);
 
@@ -362,7 +420,7 @@ export default function PlantDetailScreen() {
     wishlistTargetsEnsureKey,
   ]);
 
-  const plantImage = plant?.images?.[0] ?? '';
+  const plantImage = resolvePrimaryImageFromCollection(plant?.images) ?? '';
   const isInstancePlant = Boolean(plant?.isUniqueInstance);
   const commonNurseries = nurseriesGotCommonPlants;
   const baseNurseries = commonNurseries.slice(0, 3);
@@ -665,7 +723,7 @@ export default function PlantDetailScreen() {
       id: `buy_now_${plant.id}`,
       name: plant.name,
       size: plant.sizeName || t('common.updating', { defaultValue: 'Updating' }),
-      image: plant.images?.[0] ?? undefined,
+      image: resolvePrimaryImageFromCollection(plant.images) ?? undefined,
       price: selectedNursery?.minPrice || plant.basePrice || 0,
       quantity: checkoutQuantity,
       buyNowItemId,
@@ -1533,7 +1591,7 @@ export default function PlantDetailScreen() {
           <View style={styles.bottomActionWrap}>
             <View style={styles.quantityControl}>
               <Text style={styles.quantityLabel}>
-                {t('cart.quantity', { defaultValue: 'Quantity' })}
+                {t('cart.quantityLabel', { defaultValue: 'Quantity' })}
               </Text>
               <View style={styles.quantityStepper}>
                 <TouchableOpacity
@@ -1680,7 +1738,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 9999,
-    backgroundColor: 'rgba(255,255,255,0.30)',
+    backgroundColor: 'rgba(0,0,0,0.35)',
     justifyContent: 'center',
     alignItems: 'center',
   },

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -32,6 +32,9 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'EditProfile
 
 const CURRENT_YEAR = new Date().getFullYear();
 const MIN_BIRTH_YEAR = 1900;
+const ADDRESS_SUGGESTION_MIN_LENGTH = 3;
+const ADDRESS_SUGGESTION_LIMIT = 5;
+const ADDRESS_SUGGESTION_DEBOUNCE_MS = 350;
 
 const normalizeGenderCode = (rawCode: unknown): UserGenderCode | null => {
   if (typeof rawCode === 'number' && Number.isInteger(rawCode)) {
@@ -71,6 +74,25 @@ type ReverseGeocodeAddress = {
   country?: string | null;
 };
 
+type GeocodeCoordinates = {
+  latitude: number;
+  longitude: number;
+};
+
+type AddressSuggestion = {
+  id: string;
+  label: string;
+  latitude: number;
+  longitude: number;
+};
+
+type NominatimSearchItem = {
+  place_id?: number | string;
+  display_name?: string;
+  lat?: string;
+  lon?: string;
+};
+
 const formatReverseGeocodeAddress = (rawAddress: ReverseGeocodeAddress): string => {
   const parts = [
     rawAddress.name,
@@ -98,7 +120,7 @@ const formatCoordinateValue = (rawCoordinate: string): string | null => {
 
 export default function EditProfileScreen() {
   const navigation = useNavigation<NavigationProp>();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   const user = useAuthStore((state) => state.user);
   const updateProfile = useAuthStore((state) => state.updateProfile);
@@ -199,6 +221,23 @@ export default function EditProfileScreen() {
   );
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [isResolvingLocation, setIsResolvingLocation] = useState(false);
+  const [isGeocodingAddress, setIsGeocodingAddress] = useState(false);
+  const [isAddressFocused, setIsAddressFocused] = useState(false);
+  const [isLoadingAddressSuggestions, setIsLoadingAddressSuggestions] = useState(false);
+  const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
+
+  const lastGeocodedAddressRef = useRef<string>(
+    normalizeCoordinate(user?.latitude) !== null &&
+      normalizeCoordinate(user?.longitude) !== null
+      ? (
+          typeof user?.address === 'string'
+            ? user.address
+            : user?.address?.fullAddress ?? ''
+        ).trim()
+      : ''
+  );
+  const addressSuggestionRequestIdRef = useRef(0);
+  const isSelectingAddressSuggestionRef = useRef(false);
 
   const avatarUri =
     typeof user?.avatar === 'string' && user.avatar.trim().length > 0
@@ -316,6 +355,214 @@ export default function EditProfileScreen() {
     []
   );
 
+  const resolveCoordinatesFromAddress = useCallback(
+    async (rawAddress: string): Promise<GeocodeCoordinates | null> => {
+      const trimmedAddress = rawAddress.trim();
+      if (!trimmedAddress) {
+        return null;
+      }
+
+      try {
+        const geocodedLocations = await Location.geocodeAsync(trimmedAddress);
+        const firstLocation = geocodedLocations[0];
+        if (!firstLocation) {
+          return null;
+        }
+
+        return {
+          latitude: Number(firstLocation.latitude.toFixed(6)),
+          longitude: Number(firstLocation.longitude.toFixed(6)),
+        };
+      } catch {
+        return null;
+      }
+    },
+    []
+  );
+
+  const searchAddressSuggestions = useCallback(
+    async (query: string): Promise<AddressSuggestion[]> => {
+      const trimmedQuery = query.trim();
+      if (trimmedQuery.length < ADDRESS_SUGGESTION_MIN_LENGTH) {
+        return [];
+      }
+
+      try {
+        const queryParams = new URLSearchParams({
+          format: 'jsonv2',
+          limit: String(ADDRESS_SUGGESTION_LIMIT),
+          addressdetails: '1',
+          q: trimmedQuery,
+        });
+
+        const response = await fetch(
+          `https://nominatim.openstreetmap.org/search?${queryParams.toString()}`,
+          {
+            headers: {
+              Accept: 'application/json',
+              'Accept-Language': i18n.language === 'vi' ? 'vi' : 'en',
+              'User-Agent': 'PlantDecorMobile/1.0',
+            },
+          }
+        );
+
+        if (!response.ok) {
+          return [];
+        }
+
+        const payload = (await response.json()) as NominatimSearchItem[];
+        if (!Array.isArray(payload)) {
+          return [];
+        }
+
+        const seenLabels = new Set<string>();
+
+        return payload
+          .map((item) => {
+            const label =
+              typeof item.display_name === 'string' ? item.display_name.trim() : '';
+            const latitudeValue = normalizeCoordinate(item.lat);
+            const longitudeValue = normalizeCoordinate(item.lon);
+
+            if (!label || latitudeValue === null || longitudeValue === null) {
+              return null;
+            }
+
+            if (seenLabels.has(label)) {
+              return null;
+            }
+
+            seenLabels.add(label);
+
+            const id =
+              typeof item.place_id === 'string' || typeof item.place_id === 'number'
+                ? String(item.place_id)
+                : `${label}-${latitudeValue}-${longitudeValue}`;
+
+            return {
+              id,
+              label,
+              latitude: Number(latitudeValue.toFixed(6)),
+              longitude: Number(longitudeValue.toFixed(6)),
+            };
+          })
+          .filter((item): item is AddressSuggestion => Boolean(item));
+      } catch {
+        return [];
+      }
+    },
+    [i18n.language]
+  );
+
+  useEffect(() => {
+    const trimmedAddress = address.trim();
+
+    if (
+      !isAddressFocused ||
+      trimmedAddress.length < ADDRESS_SUGGESTION_MIN_LENGTH ||
+      trimmedAddress === lastGeocodedAddressRef.current
+    ) {
+      setAddressSuggestions([]);
+      setIsLoadingAddressSuggestions(false);
+      return;
+    }
+
+    const currentRequestId = addressSuggestionRequestIdRef.current + 1;
+    addressSuggestionRequestIdRef.current = currentRequestId;
+    setIsLoadingAddressSuggestions(true);
+
+    const debounceTimeout = setTimeout(() => {
+      void (async () => {
+        const suggestions = await searchAddressSuggestions(trimmedAddress);
+
+        if (addressSuggestionRequestIdRef.current !== currentRequestId) {
+          return;
+        }
+
+        setAddressSuggestions(suggestions);
+        setIsLoadingAddressSuggestions(false);
+      })();
+    }, ADDRESS_SUGGESTION_DEBOUNCE_MS);
+
+    return () => {
+      clearTimeout(debounceTimeout);
+    };
+  }, [address, isAddressFocused, searchAddressSuggestions]);
+
+  const handleChangeAddress = useCallback((nextAddress: string) => {
+    const trimmedNextAddress = nextAddress.trim();
+
+    setAddress(nextAddress);
+
+    if (!trimmedNextAddress) {
+      setLatitude('');
+      setLongitude('');
+      setAddressSuggestions([]);
+      lastGeocodedAddressRef.current = '';
+      return;
+    }
+
+    if (trimmedNextAddress !== lastGeocodedAddressRef.current) {
+      setLatitude('');
+      setLongitude('');
+    }
+  }, []);
+
+  const handleSelectAddressSuggestion = useCallback((selectedItem: AddressSuggestion) => {
+    isSelectingAddressSuggestionRef.current = false;
+
+    setAddress(selectedItem.label);
+    setLatitude(String(selectedItem.latitude));
+    setLongitude(String(selectedItem.longitude));
+    setAddressSuggestions([]);
+    setIsAddressFocused(false);
+    lastGeocodedAddressRef.current = selectedItem.label.trim();
+  }, []);
+
+  const handleAddressBlur = useCallback(async () => {
+    if (isSelectingAddressSuggestionRef.current) {
+      return;
+    }
+
+    setIsAddressFocused(false);
+    setAddressSuggestions([]);
+
+    const trimmedAddress = address.trim();
+
+    if (!trimmedAddress || isGeocodingAddress || isResolvingLocation) {
+      return;
+    }
+
+    if (trimmedAddress === lastGeocodedAddressRef.current) {
+      return;
+    }
+
+    try {
+      setIsGeocodingAddress(true);
+
+      const resolvedCoordinates = await resolveCoordinatesFromAddress(trimmedAddress);
+      if (!resolvedCoordinates) {
+        return;
+      }
+
+      setLatitude(String(resolvedCoordinates.latitude));
+      setLongitude(String(resolvedCoordinates.longitude));
+      lastGeocodedAddressRef.current = trimmedAddress;
+    } finally {
+      setIsGeocodingAddress(false);
+    }
+  }, [
+    address,
+    isGeocodingAddress,
+    isResolvingLocation,
+    resolveCoordinatesFromAddress,
+  ]);
+
+  const shouldShowAddressSuggestionPanel =
+    isAddressFocused &&
+    address.trim().length >= ADDRESS_SUGGESTION_MIN_LENGTH &&
+    (isLoadingAddressSuggestions || addressSuggestions.length > 0);
+
   const selectedGenderName = useMemo(() => {
     const selectedOption = genderOptions.find((option) => option.value === gender);
     if (selectedOption?.rawName.trim()) {
@@ -335,7 +582,7 @@ export default function EditProfileScreen() {
   );
 
   const handleUseCurrentLocation = useCallback(async () => {
-    if (isResolvingLocation || isLoading) {
+    if (isResolvingLocation || isLoading || isGeocodingAddress) {
       return;
     }
 
@@ -400,6 +647,7 @@ export default function EditProfileScreen() {
 
       if (reverseGeocodedAddress) {
         setAddress(reverseGeocodedAddress);
+        lastGeocodedAddressRef.current = reverseGeocodedAddress.trim();
       }
     } catch {
       Alert.alert(
@@ -411,30 +659,41 @@ export default function EditProfileScreen() {
     } finally {
       setIsResolvingLocation(false);
     }
-  }, [isLoading, isResolvingLocation, resolveAddressFromCoordinates, t]);
+  }, [
+    isGeocodingAddress,
+    isLoading,
+    isResolvingLocation,
+    resolveAddressFromCoordinates,
+    t,
+  ]);
 
   const handleUpdateProfile = async () => {
+    if (isLoading || isGeocodingAddress) {
+      return;
+    }
+
     const trimmedUsername = username.trim();
     const trimmedPhoneNumber = phoneNumber.trim();
     const trimmedFullName = fullName.trim();
     let trimmedAddress = address.trim();
-    const normalizedLatitude = normalizeCoordinate(latitude);
-    const normalizedLongitude = normalizeCoordinate(longitude);
+    let resolvedLatitude = normalizeCoordinate(latitude);
+    let resolvedLongitude = normalizeCoordinate(longitude);
     const parsedBirthYear = Number(birthYear);
 
     if (
       !trimmedAddress &&
-      normalizedLatitude !== null &&
-      normalizedLongitude !== null
+      resolvedLatitude !== null &&
+      resolvedLongitude !== null
     ) {
       const reverseGeocodedAddress = await resolveAddressFromCoordinates(
-        normalizedLatitude,
-        normalizedLongitude
+        resolvedLatitude,
+        resolvedLongitude
       );
 
       if (reverseGeocodedAddress) {
         trimmedAddress = reverseGeocodedAddress;
         setAddress(reverseGeocodedAddress);
+        lastGeocodedAddressRef.current = reverseGeocodedAddress.trim();
       }
     }
 
@@ -470,8 +729,41 @@ export default function EditProfileScreen() {
       return;
     }
 
-    const payloadLatitude = normalizedLatitude ?? normalizeCoordinate(user?.latitude) ?? 0;
-    const payloadLongitude = normalizedLongitude ?? normalizeCoordinate(user?.longitude) ?? 0;
+    const shouldResolveCoordinatesFromAddress =
+      trimmedAddress.length > 0 &&
+      (resolvedLatitude === null ||
+        resolvedLongitude === null ||
+        trimmedAddress !== lastGeocodedAddressRef.current);
+
+    if (shouldResolveCoordinatesFromAddress) {
+      try {
+        setIsGeocodingAddress(true);
+
+        const geocodedCoordinates = await resolveCoordinatesFromAddress(trimmedAddress);
+        if (!geocodedCoordinates) {
+          Alert.alert(
+            t('common.error', { defaultValue: 'Error' }),
+            t('profile.editFormAddressGeocodeFailed', {
+              defaultValue:
+                'Unable to determine coordinates from this address. Please verify your address or use current location.',
+            })
+          );
+          return;
+        }
+
+        resolvedLatitude = geocodedCoordinates.latitude;
+        resolvedLongitude = geocodedCoordinates.longitude;
+
+        setLatitude(String(geocodedCoordinates.latitude));
+        setLongitude(String(geocodedCoordinates.longitude));
+        lastGeocodedAddressRef.current = trimmedAddress;
+      } finally {
+        setIsGeocodingAddress(false);
+      }
+    }
+
+    const payloadLatitude = resolvedLatitude ?? normalizeCoordinate(user?.latitude) ?? 0;
+    const payloadLongitude = resolvedLongitude ?? normalizeCoordinate(user?.longitude) ?? 0;
 
     const payload: UpdateProfileRequest = {
       userName: trimmedUsername,
@@ -622,14 +914,59 @@ export default function EditProfileScreen() {
               <TextInput
                 style={[styles.input, styles.addressInput]}
                 value={address}
-                onChangeText={setAddress}
+                onChangeText={handleChangeAddress}
+                onFocus={() => setIsAddressFocused(true)}
+                onBlur={() => {
+                  void handleAddressBlur();
+                }}
                 placeholder={t('profile.editFormAddressPlaceholder')}
                 placeholderTextColor={COLORS.gray500}
                 multiline
                 numberOfLines={3}
                 textAlignVertical="top"
-                editable={!isLoading}
+                editable={!isLoading && !isGeocodingAddress}
               />
+
+              {shouldShowAddressSuggestionPanel ? (
+                <View style={styles.addressSuggestionList}>
+                  {isLoadingAddressSuggestions ? (
+                    <View style={styles.addressSuggestionStateRow}>
+                      <ActivityIndicator size="small" color={COLORS.primary} />
+                      <Text style={styles.addressSuggestionStateText}>
+                        {t('profile.editFormAddressSuggestionLoading', {
+                          defaultValue: 'Searching address suggestions...',
+                        })}
+                      </Text>
+                    </View>
+                  ) : (
+                    addressSuggestions.map((item, itemIndex) => (
+                      <TouchableOpacity
+                        key={item.id}
+                        style={[
+                          styles.addressSuggestionItem,
+                          itemIndex === addressSuggestions.length - 1 &&
+                            styles.addressSuggestionItemLast,
+                        ]}
+                        activeOpacity={0.8}
+                        onPressIn={() => {
+                          isSelectingAddressSuggestionRef.current = true;
+                        }}
+                        onPress={() => handleSelectAddressSuggestion(item)}
+                      >
+                        <Ionicons
+                          name="location-outline"
+                          size={16}
+                          color={COLORS.primary}
+                          style={styles.addressSuggestionIcon}
+                        />
+                        <Text style={styles.addressSuggestionText} numberOfLines={2}>
+                          {item.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))
+                  )}
+                </View>
+              ) : null}
             </View>
 
             <View style={styles.inputGroup}>
@@ -682,11 +1019,12 @@ export default function EditProfileScreen() {
               <TouchableOpacity
                 style={[
                   styles.locationButton,
-                  (isLoading || isResolvingLocation) && styles.locationButtonDisabled,
+                  (isLoading || isResolvingLocation || isGeocodingAddress) &&
+                    styles.locationButtonDisabled,
                 ]}
                 onPress={() => void handleUseCurrentLocation()}
                 activeOpacity={0.8}
-                disabled={isLoading || isResolvingLocation}
+                disabled={isLoading || isResolvingLocation || isGeocodingAddress}
               >
                 {isResolvingLocation ? (
                   <ActivityIndicator size="small" color={COLORS.primary} />
@@ -766,12 +1104,15 @@ export default function EditProfileScreen() {
 
         <View style={styles.footer}>
           <TouchableOpacity
-            style={[styles.saveButton, isLoading && styles.saveButtonDisabled]}
+            style={[
+              styles.saveButton,
+              (isLoading || isGeocodingAddress) && styles.saveButtonDisabled,
+            ]}
             onPress={handleUpdateProfile}
-            disabled={isLoading}
+            disabled={isLoading || isGeocodingAddress}
             activeOpacity={0.85}
           >
-            {isLoading ? (
+            {isLoading || isGeocodingAddress ? (
               <Text style={styles.saveButtonText}>{t('common.updating')}</Text>
             ) : (
               <Text style={styles.saveButtonText}>{t('profile.editFormSaveButton')}</Text>
@@ -896,6 +1237,48 @@ const styles = StyleSheet.create({
   },
   addressInput: {
     minHeight: 84,
+  },
+  addressSuggestionList: {
+    marginTop: SPACING.xs,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
+    maxHeight: 220,
+    overflow: 'hidden',
+  },
+  addressSuggestionStateRow: {
+    minHeight: 44,
+    paddingHorizontal: SPACING.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  addressSuggestionStateText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  addressSuggestionItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderLight,
+    backgroundColor: COLORS.white,
+  },
+  addressSuggestionItemLast: {
+    borderBottomWidth: 0,
+  },
+  addressSuggestionIcon: {
+    marginTop: 2,
+  },
+  addressSuggestionText: {
+    flex: 1,
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textPrimary,
   },
   coordinateRow: {
     flexDirection: 'row',

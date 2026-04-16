@@ -746,6 +746,7 @@ export default function CheckoutScreen() {
             <Ionicons name="ellipsis-vertical" size={18} color={COLORS.textPrimary} />
           </TouchableOpacity>
         }
+        brandVariant="none"
       />
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>

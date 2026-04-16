@@ -691,6 +691,7 @@ export default function ShippingListScreen() {
             <View style={styles.notificationDot} />
           </View>
         }
+        brandVariant='none'
       />
 
       {activeShippingOrder ? (

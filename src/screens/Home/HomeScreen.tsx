@@ -1003,9 +1003,9 @@ export default function HomeScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.iconBtn}
-                onPress={() => requireAuth(() => navigation.navigate('ServiceTab'))}
+                onPress={() => requireAuth(() => navigation.navigate('Cart'))}
               >
-                <Ionicons name="construct-outline" size={22} color={COLORS.textPrimary} />
+                <Ionicons name="cart-outline" size={22} color={COLORS.textPrimary} />
               </TouchableOpacity>
             </View>
           </View>

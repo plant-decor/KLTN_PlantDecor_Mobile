@@ -289,6 +289,7 @@ export default function OrderDetailScreen() {
           </TouchableOpacity>
         }
         right={<View style={styles.headerPlaceholder} />}
+        brandVariant="none"
       />
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>

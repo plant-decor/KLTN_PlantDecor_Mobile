@@ -24,7 +24,13 @@ import {
   RootStackParamList,
   ShopSearchComboSummary,
 } from '../../types';
-import { useAuthStore, useCartStore, usePlantStore, useWishlistStore } from '../../stores';
+import {
+  useAuthStore,
+  useCartStore,
+  useEnumStore,
+  usePlantStore,
+  useWishlistStore,
+} from '../../stores';
 import { plantService } from '../../services';
 import { getWishlistKey, notify } from '../../utils';
 
@@ -59,6 +65,22 @@ const getImageUri = (imageValue: unknown): string | null => {
   return trimmed.length > 0 ? trimmed : null;
 };
 
+const normalizeEnumCode = (rawCode: unknown): number | null => {
+  if (typeof rawCode === 'number' && Number.isInteger(rawCode)) {
+    return rawCode;
+  }
+
+  if (typeof rawCode === 'string' && /^-?\d+$/.test(rawCode.trim())) {
+    const parsed = Number(rawCode.trim());
+    return Number.isInteger(parsed) ? parsed : null;
+  }
+
+  return null;
+};
+
+const normalizeEnumName = (rawName: string): string =>
+  rawName.replace(/[^a-z0-9]/gi, '').toLowerCase();
+
 type AttributeProps = {
   icon: keyof typeof Ionicons.glyphMap;
   iconColor: string;
@@ -91,6 +113,9 @@ export default function ComboDetailScreen() {
   const { isAuthenticated } = useAuthStore();
   const addCartItem = useCartStore((state) => state.addCartItem);
   const cartItemCount = useCartStore((state) => state.totalItems());
+  const loadEnumResource = useEnumStore((state) => state.loadResource);
+  const getEnumValues = useEnumStore((state) => state.getEnumValues);
+  const enumGroups = useEnumStore((state) => state.groups);
   const fetchNurseriesGotPlantComboByPlantComboId = usePlantStore(
     (state) => state.fetchNurseriesGotPlantComboByPlantComboId
   );
@@ -182,6 +207,11 @@ export default function ComboDetailScreen() {
       isMounted = false;
     };
   }, [comboId, t]);
+
+  useEffect(() => {
+    void loadEnumResource('LightRequirement');
+    void loadEnumResource('RoomType');
+  }, [loadEnumResource]);
 
   useEffect(() => {
     setQuantity(1);
@@ -352,6 +382,97 @@ export default function ComboDetailScreen() {
   }, [ensureStatus, isAuthenticated, wishlistTargets]);
 
   const isWishlisted = wishlistStatus[wishlistKey] ?? false;
+
+  const lightRequirementValues = useMemo(
+    () => getEnumValues(['LightRequirement']),
+    [enumGroups, getEnumValues]
+  );
+
+  const roomTypeValues = useMemo(
+    () => getEnumValues(['RoomType']),
+    [enumGroups, getEnumValues]
+  );
+
+  const resolveEnumLabel = useCallback(
+    (
+      rawValue: unknown,
+      enumValues: Array<{ value: string | number; name: string }>
+    ): string | null => {
+      const normalizedCode = normalizeEnumCode(rawValue);
+      if (normalizedCode !== null) {
+        const matchedByCode = enumValues.find(
+          (item) => normalizeEnumCode(item.value) === normalizedCode
+        );
+
+        if (matchedByCode) {
+          return matchedByCode.name.trim() || String(normalizedCode);
+        }
+      }
+
+      if (typeof rawValue === 'string') {
+        const trimmedValue = rawValue.trim();
+        if (!trimmedValue) {
+          return null;
+        }
+
+        const normalizedName = normalizeEnumName(trimmedValue);
+        const matchedByName = enumValues.find(
+          (item) => normalizeEnumName(item.name) === normalizedName
+        );
+
+        if (matchedByName) {
+          return matchedByName.name.trim() || trimmedValue;
+        }
+
+        return trimmedValue;
+      }
+
+      return null;
+    },
+    []
+  );
+
+  const suitableSpaceDisplayValue = useMemo(() => {
+    const rawSuitableSpace = combo?.suitableSpace ?? combo?.SuitableSpace;
+    const resolvedLabel = resolveEnumLabel(rawSuitableSpace, lightRequirementValues);
+
+    if (resolvedLabel) {
+      return resolvedLabel;
+    }
+
+    if (typeof rawSuitableSpace === 'number') {
+      return String(rawSuitableSpace);
+    }
+
+    return '-';
+  }, [
+    combo?.SuitableSpace,
+    combo?.suitableSpace,
+    lightRequirementValues,
+    resolveEnumLabel,
+  ]);
+
+  const suitableRoomsDisplayValue = useMemo(() => {
+    const rawSuitableRooms = Array.isArray(combo?.suitableRooms)
+      ? combo.suitableRooms
+      : Array.isArray(combo?.SuitableRooms)
+        ? combo.SuitableRooms
+        : [];
+
+    if (rawSuitableRooms.length === 0) {
+      return '-';
+    }
+
+    const resolvedLabels = rawSuitableRooms
+      .map((rawRoom) => resolveEnumLabel(rawRoom, roomTypeValues))
+      .filter((label): label is string => Boolean(label && label.trim().length > 0));
+
+    if (resolvedLabels.length === 0) {
+      return '-';
+    }
+
+    return Array.from(new Set(resolvedLabels)).join(', ');
+  }, [combo?.SuitableRooms, combo?.suitableRooms, resolveEnumLabel, roomTypeValues]);
 
   const imageUrl = useMemo(
     () => getImageUri(combo?.images?.[0]) ?? PLACEHOLDER_IMAGE,
@@ -684,7 +805,14 @@ export default function ComboDetailScreen() {
                 iconColor="#1D4ED8"
                 iconBg="#DBEAFE"
                 label={t('comboDetail.suitableSpace', { defaultValue: 'Suitable space' })}
-                value={combo.suitableSpace || '-'}
+                value={suitableSpaceDisplayValue}
+              />
+              <AttributeCard
+                icon="bed-outline"
+                iconColor="#4338CA"
+                iconBg="#E0E7FF"
+                label={t('comboDetail.suitableRooms', { defaultValue: 'Suitable rooms' })}
+                value={suitableRoomsDisplayValue}
               />
               <AttributeCard
                 icon="leaf-outline"
@@ -937,7 +1065,7 @@ export default function ComboDetailScreen() {
         onLayout={handleBottomBarLayout}
       >
         <View style={styles.quantityControl}>
-          <Text style={styles.quantityLabel}>{t('cart.quantity', { defaultValue: 'Quantity' })}</Text>
+          <Text style={styles.quantityLabel}>{t('cart.quantityLabel', { defaultValue: 'Quantity' })}</Text>
           <View style={styles.quantityStepper}>
             <TouchableOpacity
               style={[styles.quantityBtn, quantity <= 1 && styles.quantityBtnDisabled]}
@@ -1070,7 +1198,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 9999,
-    backgroundColor: 'rgba(255,255,255,0.30)',
+    backgroundColor: 'rgba(0,0,0,0.35)',
     justifyContent: 'center',
     alignItems: 'center',
   },

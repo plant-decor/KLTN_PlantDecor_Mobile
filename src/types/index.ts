@@ -229,6 +229,14 @@ export interface Plant {
   hasFlower: boolean;
   petSafe: boolean;
   childSafe: boolean;
+  roomType?: number[] | null;
+  roomStyle?: number[] | null;
+  roomTypeNames?: string[] | null;
+  roomStyleNames?: string[] | null;
+  RoomType?: number[] | null;
+  RoomStyle?: number[] | null;
+  RoomTypeNames?: string[] | null;
+  RoomStyleNames?: string[] | null;
   fengShuiElement: number | string;
   fengShuiElementName?: string | null;
   fengShuiMeaning: string;
@@ -502,8 +510,10 @@ export interface PlantComboDetail {
   comboType: number;
   comboTypeName: string;
   description: string;
-  suitableSpace?: string | null;
-  suitableRooms?: string[];
+  suitableSpace?: string | number | null;
+  suitableRooms?: Array<string | number> | null;
+  SuitableSpace?: string | number | null;
+  SuitableRooms?: Array<string | number> | null;
   fengShuiElement?: number | null;
   fengShuiPurpose?: string | null;
   petSafe?: boolean;
