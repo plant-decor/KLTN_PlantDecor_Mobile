@@ -1001,6 +1001,19 @@ export interface SystemEnumsResponse {
   data?: SystemEnumGroup[] | SystemEnumGroup | SystemEnumValue[];
 }
 
+export interface ServiceFlowEnumsPayload {
+  enums?: SystemEnumGroup[] | SystemEnumGroup | SystemEnumValue[];
+  shifts?: unknown;
+}
+
+export interface ServiceFlowEnumsResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload?: ServiceFlowEnumsPayload;
+  data?: ServiceFlowEnumsPayload;
+}
+
 // ==================== Order & Payment ====================
 export type OrderType = number;
 export type BuyNowItemType = number;
@@ -1193,6 +1206,192 @@ export interface ContinuePaymentResponse {
   payload: CreatePaymentPayload;
 }
 
+// ==================== Care Service ====================
+export interface CareServiceSpecialization {
+  id: number;
+  name: string;
+  description: string;
+}
+
+export interface CareServicePackage {
+  id: number;
+  name: string;
+  description: string;
+  features: string;
+  visitPerWeek: number | null;
+  durationDays: number;
+  totalSessions: number | null;
+  serviceType: number;
+  areaLimit: number;
+  unitPrice: number;
+  isActive: boolean;
+  createdAt: string;
+  specializations: CareServiceSpecialization[];
+}
+
+export interface GetCareServicePackagesResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: CareServicePackage[];
+}
+
+export interface GetCareServicePackageDetailResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: CareServicePackage;
+}
+
+export interface CareServicePackageSummary {
+  id: number;
+  name: string;
+  description: string;
+  visitPerWeek: number | null;
+  durationDays: number;
+  serviceType: number;
+  unitPrice: number;
+}
+
+export interface NurseryCareService {
+  id: number;
+  nurseryId: number;
+  nurseryName: string;
+  careServicePackage: CareServicePackageSummary;
+}
+
+export interface NurseryNearby {
+  id: number;
+  name: string;
+  address: string;
+  phone: string;
+  latitude: number;
+  longitude: number;
+  distanceKm: number;
+  availableServices: NurseryCareService[];
+}
+
+export interface GetNurseriesNearbyRequest {
+  lat: number;
+  lng: number;
+  radiusKm?: number;
+  packageId?: number;
+}
+
+export interface GetNurseriesNearbyResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: NurseryNearby[];
+}
+
+export interface GetMyServiceRegistrationsRequest {
+  PageNumber?: number;
+  PageSize?: number;
+  Skip?: number;
+  Take?: number;
+  status?: number;
+}
+
+export interface GetMyServiceRegistrationsPayload {
+  items: ServiceRegistration[];
+  totalCount: number;
+  pageNumber: number;
+  pageSize: number;
+  totalPages: number;
+  hasPrevious: boolean;
+  hasNext: boolean;
+}
+
+export interface GetMyServiceRegistrationsResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: GetMyServiceRegistrationsPayload;
+}
+
+export interface CreateServiceRegistrationRequest {
+  nurseryCareServiceId: number;
+  serviceDate: string;
+  scheduleDaysOfWeek: number[];
+  preferredShiftId: number;
+  address: string;
+  phone: string;
+  note?: string;
+  latitude: number;
+  longitude: number;
+}
+
+export interface ServiceRegistrationShift {
+  id: number;
+  shiftName: string;
+  startTime: string;
+  endTime: string;
+}
+
+export interface GetShiftsResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: ServiceRegistrationShift[];
+}
+
+export interface ServiceRegistrationCustomer {
+  id: number;
+  fullName: string;
+  email: string;
+  phone: string;
+  avatar: string | null;
+}
+
+export interface ServiceRegistrationCaretaker {
+  id: number;
+  fullName?: string;
+  email?: string;
+  phone?: string;
+  avatar?: string | null;
+}
+
+export interface ServiceRegistration {
+  id: number;
+  status: number;
+  statusName: string;
+  serviceDate: string;
+  totalSessions: number | null;
+  address: string;
+  phone: string;
+  note: string | null;
+  latitude: number;
+  longitude: number;
+  scheduleDaysOfWeek: string;
+  cancelReason: string | null;
+  createdAt: string;
+  approvedAt: string | null;
+  orderId: number | null;
+  nurseryCareService: NurseryCareService;
+  prefferedShift?: ServiceRegistrationShift | null;
+  preferredShift?: ServiceRegistrationShift | null;
+  customer: ServiceRegistrationCustomer;
+  mainCaretaker: ServiceRegistrationCaretaker | null;
+  currentCaretaker: ServiceRegistrationCaretaker | null;
+  progresses: Array<Record<string, unknown>>;
+  rating: unknown | null;
+}
+
+export interface CreateServiceRegistrationResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: ServiceRegistration;
+}
+
+export interface GetServiceRegistrationDetailResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: ServiceRegistration;
+}
+
 // // ==================== AI Design ====================
 // export interface AIDesignRequest {
 //   roomImage: string;
@@ -1281,6 +1480,8 @@ export type RootStackParamList = {
   VerifyCode: { email: string; password: string };
   ForgotPassword: { email?: string } | undefined;
   OrderDetail: { orderId: number };
+  ServiceRegistrationDetail: { registrationId: number };
+  CareServicePackageDetail: { packageId: number };
   Login: undefined;
   Register: undefined;
   Search: undefined;
@@ -1294,6 +1495,6 @@ export type MainTabParamList = {
   Home: undefined;
   Plants: undefined;
   AIDesignTab: undefined;
-  CartTab: undefined;
+  ServiceTab: undefined;
   Profile: undefined;
 };

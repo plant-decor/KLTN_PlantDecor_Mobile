@@ -1,5 +1,7 @@
 import { API } from '../constants';
 import {
+  ServiceFlowEnumsResponse,
+  ServiceRegistrationShift,
   SystemEnumGroup,
   SystemEnumPrimitive,
   SystemEnumsResponse,
@@ -162,6 +164,88 @@ const parseEnumResponse = (
   return toEnumGroups(responseBody, fallbackEnumName);
 };
 
+const toShift = (value: unknown): ServiceRegistrationShift | null => {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const idValue = value.id;
+  const id =
+    typeof idValue === 'number' && Number.isInteger(idValue)
+      ? idValue
+      : typeof idValue === 'string' && /^\d+$/.test(idValue.trim())
+        ? Number(idValue.trim())
+        : null;
+
+  if (id === null || id <= 0) {
+    return null;
+  }
+
+  const shiftName =
+    typeof value.shiftName === 'string' && value.shiftName.trim().length > 0
+      ? value.shiftName.trim()
+      : null;
+  const startTime =
+    typeof value.startTime === 'string' && value.startTime.trim().length > 0
+      ? value.startTime.trim()
+      : null;
+  const endTime =
+    typeof value.endTime === 'string' && value.endTime.trim().length > 0
+      ? value.endTime.trim()
+      : null;
+
+  if (!shiftName || !startTime || !endTime) {
+    return null;
+  }
+
+  return {
+    id,
+    shiftName,
+    startTime,
+    endTime,
+  };
+};
+
+const toShifts = (value: unknown): ServiceRegistrationShift[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => toShift(item))
+    .filter((item): item is ServiceRegistrationShift => Boolean(item));
+};
+
+const parseServiceFlowResponse = (
+  responseBody: ServiceFlowEnumsResponse | unknown
+): {
+  groups: SystemEnumGroup[];
+  shifts: ServiceRegistrationShift[];
+} => {
+  if (isRecord(responseBody)) {
+    const source =
+      isRecord(responseBody.payload)
+        ? responseBody.payload
+        : isRecord(responseBody.data)
+          ? responseBody.data
+          : null;
+
+    if (source) {
+      const groups = 'enums' in source ? toEnumGroups(source.enums, 'service-flow') : [];
+      const shifts = 'shifts' in source ? toShifts(source.shifts) : [];
+
+      if (groups.length > 0 || shifts.length > 0) {
+        return { groups, shifts };
+      }
+    }
+  }
+
+  return {
+    groups: parseEnumResponse(responseBody, 'service-flow'),
+    shifts: [],
+  };
+};
+
 export const enumService = {
   getByName: async (enumName: string): Promise<SystemEnumGroup[]> => {
     try {
@@ -181,6 +265,24 @@ export const enumService = {
       return parseEnumResponse(response.data, 'system');
     } catch (error: any) {
       console.error('enumService.getAll error:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  getServiceFlow: async (): Promise<{
+    groups: SystemEnumGroup[];
+    shifts: ServiceRegistrationShift[];
+  }> => {
+    try {
+      const response = await api.get<ServiceFlowEnumsResponse>(
+        API.ENDPOINTS.SYSTEM_ENUM_SERVICE_FLOW
+      );
+      return parseServiceFlowResponse(response.data);
+    } catch (error: any) {
+      console.error(
+        'enumService.getServiceFlow error:',
+        error.response?.data || error.message
+      );
       throw error;
     }
   },

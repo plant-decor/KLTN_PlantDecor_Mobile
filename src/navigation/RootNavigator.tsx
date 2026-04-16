@@ -22,6 +22,8 @@ import {
   EditProfileScreen,
   OrderHistoryScreen,
   OrderDetailScreen,
+  ServiceRegistrationDetailScreen,
+  CareServicePackageDetailScreen,
   ShipperHomeScreen,
   ShippingListScreen,
 } from '../screens';
@@ -76,6 +78,14 @@ export default function RootNavigator() {
         options={{ animationTypeForReplace: 'pop' }}
       />
       <Stack.Screen name="OrderDetail" component={OrderDetailScreen} />
+      <Stack.Screen
+        name="ServiceRegistrationDetail"
+        component={ServiceRegistrationDetailScreen}
+      />
+      <Stack.Screen
+        name="CareServicePackageDetail"
+        component={CareServicePackageDetailScreen}
+      />
       {/* Add more stack screens as needed:
         <Stack.Screen name="Checkout" component={CheckoutScreen} />
         <Stack.Screen name="Search" component={SearchScreen} />

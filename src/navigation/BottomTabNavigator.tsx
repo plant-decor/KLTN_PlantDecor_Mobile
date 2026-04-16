@@ -1,12 +1,13 @@
 import React from 'react';
 import { BottomTabBar, createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Pressable, StyleSheet, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { COLORS, ICONS } from '../constants';
 import { MainTabParamList } from '../types';
 import {
   HomeScreen,
   CatalogScreen,
-  CartScreen,
+  CareServiceRegistrationScreen,
   ProfileScreen,
   AIDesignScreen,
 } from '../screens';
@@ -81,10 +82,10 @@ export default function BottomTabNavigator() {
         }}
       />
       <Tab.Screen
-        name="CartTab"
-        component={CartScreen}
+        name="ServiceTab"
+        component={CareServiceRegistrationScreen}
         options={{
-          tabBarIcon: ({ color }) => <ICONS.cart width={25} height={28} color={color} />,
+          tabBarIcon: ({ color }) => <Ionicons name="construct-outline" size={24} color={color} />,
           tabBarStyle: { display: 'none' },
         }}
       />

@@ -156,7 +156,6 @@ export default function HomeScreen() {
   const loadEnumResource = useEnumStore((state) => state.loadResource);
   const getEnumValues = useEnumStore((state) => state.getEnumValues);
   const enumGroups = useEnumStore((state) => state.groups);
-  const cartItemCount = useCartStore((state) => state.totalItems());
   const addCartItem = useCartStore((state) => state.addCartItem);
   const fetchCart = useCartStore((state) => state.fetchCart);
   const hasLoadedCart = useCartStore((state) => state.hasLoadedCart);
@@ -1004,10 +1003,9 @@ export default function HomeScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.iconBtn}
-                onPress={() => requireAuth(() => navigation.navigate('CartTab'))}
+                onPress={() => requireAuth(() => navigation.navigate('ServiceTab'))}
               >
-                <Ionicons name="cart-outline" size={22} color={COLORS.textPrimary} />
-                {cartItemCount > 0 && <View style={styles.cartDot} />}
+                <Ionicons name="construct-outline" size={22} color={COLORS.textPrimary} />
               </TouchableOpacity>
             </View>
           </View>

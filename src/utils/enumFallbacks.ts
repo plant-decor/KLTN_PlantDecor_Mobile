@@ -100,6 +100,11 @@ const FALLBACK_GROUPS: Record<string, SystemEnumValue[]> = {
     { value: 2, name: 'PlantCombo' },
     { value: 3, name: 'Material' },
   ],
+  PreferredShift: [
+    { value: 1, name: 'Morning' },
+    { value: 2, name: 'Afternoon' },
+    { value: 3, name: 'Evening' },
+  ],
 };
 
 const GROUP_ALIASES: Record<string, string[]> = {
@@ -117,6 +122,7 @@ const GROUP_ALIASES: Record<string, string[]> = {
   OrderType: ['OrderType', 'orderType'],
   BuyNowItemType: ['BuyNowItemType', 'buyNowItemType'],
   OrderStatus: ['OrderStatus', 'orderStatus', 'status'],
+  PreferredShift: ['PreferredShift', 'preferredShift', 'shift', 'workShift'],
   WishlistItemType: [
     'WishlistItemType',
     'wishlistItemType',
@@ -138,6 +144,8 @@ const RESOURCE_GROUPS: Record<string, string[]> = {
   plantsort: ['PlantSort'],
   users: ['Gender'],
   orders: ['OrderStatus', 'OrderType', 'BuyNowItemType'],
+  serviceregistration: ['PreferredShift'],
+  serviceregistrations: ['PreferredShift'],
   payments: ['PaymentStrategy'],
   wishlist: ['WishlistItemType'],
   wishlisttypes: ['WishlistItemType'],

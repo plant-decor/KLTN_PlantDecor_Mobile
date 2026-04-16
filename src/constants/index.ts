@@ -211,6 +211,7 @@ export const API = {
     // System Enums
     SYSTEM_ENUMS: "/system/enums",
     SYSTEM_ENUM_BY_NAME: (enumName: string) => `/system/enums/${enumName}`,
+    SYSTEM_ENUM_SERVICE_FLOW: "/system/enums/service-flow",
     ADMIN_CATEGORIES: "/admin/Categories",
     ADMIN_TAGS: "/admin/Tags",
 
@@ -250,6 +251,7 @@ export const API = {
     //CareService
     CARE_SERVICE_PACKAGES: "/care-service-packages",
     CARE_SERVICE_PACKAGES_DETAIL: (id: number) => `/care-service-packages/${id}`,
+    SHIFTS: "/shifts",
     NURSERIES_NEARBY: "/nurseries/nearby",
 
     SERVICE_REGISTRATION: "/service-registrations",

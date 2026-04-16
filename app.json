@@ -42,7 +42,8 @@
         {
           "locationWhenInUsePermission": "PlantDecor needs your location to autofill latitude and longitude in your profile."
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ]
   }
 }
