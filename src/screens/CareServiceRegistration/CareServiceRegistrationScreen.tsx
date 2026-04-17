@@ -24,6 +24,15 @@ import { COLORS, FONTS, RADIUS, SHADOWS, SPACING } from '../../constants';
 import { careService, enumService } from '../../services';
 import { useAuthStore } from '../../stores';
 import {
+  formatDateToIsoKey,
+  formatVietnamDate,
+  formatVietnamDateTime,
+  getMinimumVietnamDateKeyForLeadHours,
+  isIsoDateKey,
+  isVietnamDateKeyMeetingLeadHours,
+  parseIsoDateKeyToDate,
+} from '../../utils';
+import {
   CareServicePackage,
   CreateServiceRegistrationRequest,
   NurseryCareService,
@@ -111,65 +120,24 @@ const normalizeCoordinate = (rawCoordinate: unknown): number | null => {
   return null;
 };
 
-const isValidIsoDate = (rawDate: string): boolean => {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
-    return false;
-  }
-
-  const parsed = new Date(rawDate);
-  return !Number.isNaN(parsed.getTime());
-};
+const isValidIsoDate = (rawDate: string): boolean => isIsoDateKey(rawDate);
 
 const formatLocalIsoDate = (dateValue: Date): string => {
-  const year = dateValue.getFullYear();
-  const month = String(dateValue.getMonth() + 1).padStart(2, '0');
-  const day = String(dateValue.getDate()).padStart(2, '0');
-
-  return `${year}-${month}-${day}`;
+  return formatDateToIsoKey(dateValue);
 };
 
 const parseIsoDateToLocalDate = (rawDate: string): Date => {
-  if (!isValidIsoDate(rawDate)) {
-    return new Date();
-  }
-
-  const [year, month, day] = rawDate.split('-').map((value) => Number(value));
-  return new Date(year, month - 1, day);
+  return parseIsoDateKeyToDate(rawDate);
 };
 
 const normalizeEnumName = (rawName: string): string =>
   rawName.replace(/[^a-z0-9]/gi, '').toLowerCase();
 
-const getStartOfDate = (dateValue: Date): Date =>
-  new Date(dateValue.getFullYear(), dateValue.getMonth(), dateValue.getDate());
-
-const getEndOfDate = (dateValue: Date): Date =>
-  new Date(
-    dateValue.getFullYear(),
-    dateValue.getMonth(),
-    dateValue.getDate(),
-    23,
-    59,
-    59,
-    999
-  );
-
-const getDateAfterHours = (hours: number): Date =>
-  new Date(Date.now() + hours * 60 * 60 * 1000);
-
 const getMinimumDateForLeadHours = (leadHours: number): Date =>
-  getStartOfDate(getDateAfterHours(leadHours));
+  parseIsoDateToLocalDate(getMinimumVietnamDateKeyForLeadHours(leadHours));
 
 const isIsoDateMeetingLeadTime = (rawDate: string, leadHours: number): boolean => {
-  if (!isValidIsoDate(rawDate)) {
-    return false;
-  }
-
-  const selectedDateValue = parseIsoDateToLocalDate(rawDate);
-  const selectedDateEnd = getEndOfDate(selectedDateValue);
-  const minimumDateTime = getDateAfterHours(leadHours);
-
-  return selectedDateEnd.getTime() >= minimumDateTime.getTime();
+  return isVietnamDateKeyMeetingLeadHours(rawDate, leadHours);
 };
 
 const formatCurrency = (amount: number): string => {
@@ -572,36 +540,12 @@ export default function CareServiceRegistrationScreen() {
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
 
   const formatDisplayDate = useCallback(
-    (value: string) => {
-      const parsed = new Date(value);
-      if (Number.isNaN(parsed.getTime())) {
-        return value;
-      }
-
-      return parsed.toLocaleDateString(locale, {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-      });
-    },
+    (value: string) => formatVietnamDate(value, locale, { empty: value }),
     [locale]
   );
 
   const formatDisplayDateTime = useCallback(
-    (value: string) => {
-      const parsed = new Date(value);
-      if (Number.isNaN(parsed.getTime())) {
-        return value;
-      }
-
-      return parsed.toLocaleString(locale, {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-    },
+    (value: string) => formatVietnamDateTime(value, locale, { empty: value }),
     [locale]
   );
 

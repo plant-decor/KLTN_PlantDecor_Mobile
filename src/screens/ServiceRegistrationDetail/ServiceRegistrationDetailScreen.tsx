@@ -20,6 +20,8 @@ import { careService, orderService, paymentService } from '../../services';
 import { RootStackParamList, ServiceRegistration, ServiceRegistrationShift } from '../../types';
 import {
   canContinueOrderPayment,
+  formatVietnamDate,
+  formatVietnamDateTime,
   isServiceRegistrationAwaitPaymentStatus,
   isServiceRegistrationCancellableStatus,
   notify,
@@ -86,40 +88,12 @@ export default function ServiceRegistrationDetailScreen() {
   const [cancelReason, setCancelReason] = useState('');
 
   const formatDate = useCallback(
-    (value: string) => {
-      const parsed = new Date(value);
-      if (Number.isNaN(parsed.getTime())) {
-        return value;
-      }
-
-      return parsed.toLocaleDateString(locale, {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-      });
-    },
+    (value: string) => formatVietnamDate(value, locale, { empty: value }),
     [locale]
   );
 
   const formatDateTime = useCallback(
-    (value: string | null) => {
-      if (!value) {
-        return '-';
-      }
-
-      const parsed = new Date(value);
-      if (Number.isNaN(parsed.getTime())) {
-        return value;
-      }
-
-      return parsed.toLocaleString(locale, {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-    },
+    (value: string | null) => formatVietnamDateTime(value, locale, { empty: '-' }),
     [locale]
   );
 

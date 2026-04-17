@@ -22,10 +22,12 @@ import { useAuthStore, useEnumStore } from '../../stores';
 import { OrderPayload, RootStackParamList } from '../../types';
 import {
   canContinueOrderPayment,
+  formatVietnamDateTime,
   getOrderStatusColors,
   getOrderStatusLabel,
   isOrderCancellableStatus,
   notify,
+  toVietnamTimestamp,
 } from '../../utils';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'OrderHistory'>;
@@ -128,19 +130,7 @@ export default function OrderHistoryScreen() {
   );
 
   const formatDateTime = useCallback(
-    (value: string) => {
-      const parsed = new Date(value);
-      if (Number.isNaN(parsed.getTime())) {
-        return value;
-      }
-      return parsed.toLocaleString(locale, {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-    },
+    (value: string) => formatVietnamDateTime(value, locale, { empty: value }),
     [locale]
   );
 
@@ -160,7 +150,7 @@ export default function OrderHistoryScreen() {
 
         const sortedOrders = [...fetchedOrders].sort(
           (left, right) =>
-            new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
+            toVietnamTimestamp(right.createdAt) - toVietnamTimestamp(left.createdAt)
         );
 
         setOrders(sortedOrders);

@@ -23,7 +23,14 @@ import { COLORS, FONTS, RADIUS, SPACING } from '../../constants';
 import { careService } from '../../services';
 import { useAuthStore } from '../../stores';
 import { RootStackParamList, ServiceProgress, ServiceRegistration } from '../../types';
-import { notify } from '../../utils';
+import {
+  addDaysToIsoDateKey,
+  formatVietnamDate,
+  formatVietnamDateTime,
+  getVietnamDateKey,
+  notify,
+  sanitizeIsoDateKey,
+} from '../../utils';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'CaretakerTasks'>;
 type CaretakerSegment = 'today' | 'schedule' | 'assigned';
@@ -62,21 +69,8 @@ const isCompletedStatus = (statusName: string): boolean => {
   return token.includes('completed') || token.includes('done') || token.includes('finished');
 };
 
-const toLocalDateKey = (value: Date): string => {
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, '0');
-  const day = String(value.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
-const toApiDate = (value: Date): string => toLocalDateKey(value);
-
 const sanitizeDateKey = (value?: string | null): string => {
-  if (!value || typeof value !== 'string') {
-    return '';
-  }
-
-  return value.trim().slice(0, 10);
+  return sanitizeIsoDateKey(value);
 };
 
 const buildRegistrationCode = (id: number): string => `DV-${String(id).padStart(4, '0')}`;
@@ -132,46 +126,22 @@ const formatDateLabel = (dateText: string, locale: string): string => {
     return '--';
   }
 
-  const parsed = new Date(`${dateKey}T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) {
-    return dateKey;
-  }
-
-  return parsed.toLocaleDateString(locale, {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
+  return formatVietnamDate(dateKey, locale, { empty: dateKey });
 };
 
 const formatDateTimeLabel = (value: string | null | undefined, locale: string): string => {
-  if (typeof value !== 'string' || value.trim().length === 0) {
-    return '--';
-  }
-
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-
-  return parsed.toLocaleString(locale, {
+  return formatVietnamDateTime(value, locale, {
+    empty: '--',
     hour12: false,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
   });
 };
 
 const buildScheduleRange = () => {
-  const fromDate = new Date();
-  const toDate = new Date(fromDate);
-  toDate.setDate(toDate.getDate() + (SCHEDULE_WINDOW_DAYS - 1));
+  const fromDateKey = getVietnamDateKey(new Date());
 
   return {
-    from: toApiDate(fromDate),
-    to: toApiDate(toDate),
+    from: fromDateKey,
+    to: addDaysToIsoDateKey(fromDateKey, SCHEDULE_WINDOW_DAYS - 1),
   };
 };
 
@@ -342,7 +312,7 @@ export default function CaretakerTasksScreen() {
   }, [currentPage, loadSegmentData]);
 
   const canCheckIn = useCallback((progress: ServiceProgress): boolean => {
-    const todayDate = toLocalDateKey(new Date());
+    const todayDate = getVietnamDateKey(new Date());
     const taskDate = sanitizeDateKey(progress.taskDate);
 
     return isAssignedStatus(progress.statusName) && taskDate === todayDate && !progress.actualStartTime;

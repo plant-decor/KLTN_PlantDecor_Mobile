@@ -1,3 +1,5 @@
+import { formatVietnamDate } from './dateTime';
+
 /**
  * Format price in Vietnamese Dong
  */
@@ -9,12 +11,7 @@ export function formatPrice(price: number | undefined | null): string {
  * Format date string to Vietnamese locale
  */
 export function formatDate(dateString: string): string {
-  const date = new Date(dateString);
-  return date.toLocaleDateString('vi-VN', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
+  return formatVietnamDate(dateString, 'vi-VN', { empty: dateString });
 }
 
 /**
@@ -50,6 +47,21 @@ export function isValidPhone(phone: string): boolean {
 
 export { notify } from './notify';
 export { getWishlistKey, resolveWishlistTarget } from './wishlist';
+export {
+  addDaysToIsoDateKey,
+  formatDateToIsoKey,
+  formatVietnamDate,
+  formatVietnamDateTime,
+  getMinimumVietnamDateKeyForLeadHours,
+  getVietnamDateKey,
+  getVietnamDateKeyAfterHours,
+  isIsoDateKey,
+  isVietnamDateKeyMeetingLeadHours,
+  parseIsoDateKeyToDate,
+  sanitizeIsoDateKey,
+  toVietnamTimestamp,
+  VIETNAM_TIME_ZONE,
+} from './dateTime';
 export {
   canContinueOrderPayment,
   getOrderStatusColors,
