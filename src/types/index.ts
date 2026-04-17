@@ -1362,6 +1362,73 @@ export interface ServiceRegistrationCaretaker {
   avatar?: string | null;
 }
 
+export interface ServiceProgressRegistrationSummary {
+  id: number;
+  address: string;
+  phone: string;
+  nurseryCareService: NurseryCareService;
+  customer: ServiceRegistrationCustomer | null;
+}
+
+export interface ServiceProgress {
+  id: number;
+  serviceRegistrationId: number;
+  status: number;
+  statusName: string;
+  taskDate: string;
+  actualStartTime: string | null;
+  actualEndTime: string | null;
+  description: string | null;
+  evidenceImageUrl: string | null;
+  shift: ServiceRegistrationShift | null;
+  caretaker: ServiceRegistrationCaretaker | null;
+  serviceRegistration: ServiceProgressRegistrationSummary | null;
+}
+
+export interface GetServiceProgressTodayResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: ServiceProgress[];
+}
+
+export interface GetServiceProgressMyScheduleRequest {
+  from?: string;
+  to?: string;
+}
+
+export interface GetServiceProgressMyScheduleResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: ServiceProgress[];
+}
+
+export interface CheckOutServiceProgressEvidenceImage {
+  uri: string;
+  fileName?: string;
+  mimeType?: string;
+}
+
+export interface CheckOutServiceProgressRequest {
+  Description?: string;
+  evidenceImage: CheckOutServiceProgressEvidenceImage;
+}
+
+export interface CheckInServiceProgressResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: ServiceProgress;
+}
+
+export interface CheckOutServiceProgressResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: ServiceProgress;
+}
+
 export interface ServiceRegistration {
   id: number;
   status: number;
@@ -1384,7 +1451,7 @@ export interface ServiceRegistration {
   customer: ServiceRegistrationCustomer;
   mainCaretaker: ServiceRegistrationCaretaker | null;
   currentCaretaker: ServiceRegistrationCaretaker | null;
-  progresses: Array<Record<string, unknown>>;
+  progresses: ServiceProgress[];
   rating: unknown | null;
 }
 
@@ -1457,6 +1524,8 @@ export type RootStackParamList = {
   MainTabs: NavigatorScreenParams<MainTabParamList> | undefined;
   ShipperHome: undefined;
   ShippingList: undefined;
+  CaretakerHome: undefined;
+  CaretakerTasks: undefined;
   PlantDetail: { plantId: string };
   PlantInstanceDetail: {
     plantInstanceId: number;

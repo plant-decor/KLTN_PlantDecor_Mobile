@@ -258,8 +258,12 @@ export const API = {
     MY_SERVICE_REGISTRATIONS: "/service-registrations/my",
     SERVICE_REGISTRATION_DETAIL: (id: number) => `/service-registrations/${id}`,
     CANCEL_SERVICE_REGISTRATION: (id: number) => `/service-registrations/${id}/cancel`,
-
+    CARETAKER_ASSIGNED_SERVICE_REGISTRATIONS: "/service-registrations/my-tasks",
     CARETAKER_ASSGINED_SERVICE_REGISTRATIONS: "/service-registrations/my-tasks",
+    SERVICE_PROGRESS_TODAY: "/service-progress/today",
+    SERVICE_PROGRESS_MY_SCHEDULE: "/service-progress/my-schedule",
+    SERVICE_PROGRESS_CHECK_IN: (id: number) => `/service-progress/${id}/check-in`,
+    SERVICE_PROGRESS_CHECK_OUT: (id: number) => `/service-progress/${id}/check-out`,
 
   },
 } as const;

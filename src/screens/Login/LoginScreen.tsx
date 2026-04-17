@@ -104,8 +104,14 @@ export default function LoginScreen() {
 
     try {
       const loggedInUser = await login(email.trim(), password, deviceId || 'unknown-device');
-      const isShipper = loggedInUser?.role?.toLowerCase() === 'shipper';
-      navigation.replace(isShipper ? 'ShipperHome' : 'MainTabs');
+      const normalizedRole = (loggedInUser?.role ?? '').trim().toLowerCase();
+      const nextRoute: keyof RootStackParamList =
+        normalizedRole === 'shipper'
+          ? 'ShipperHome'
+          : normalizedRole === 'caretaker'
+          ? 'CaretakerHome'
+          : 'MainTabs';
+      navigation.replace(nextRoute);
     } catch (err) {
       Alert.alert(t('common.error', { defaultValue: 'Error' }), getLoginErrorMessage(err));
     }

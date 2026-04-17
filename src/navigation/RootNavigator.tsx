@@ -26,6 +26,8 @@ import {
   CareServicePackageDetailScreen,
   ShipperHomeScreen,
   ShippingListScreen,
+  CaretakerHomeScreen,
+  CaretakerTasksScreen,
 } from '../screens';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -37,8 +39,17 @@ export default function RootNavigator() {
 
   const normalizedRole = (userRole ?? '').trim().toLowerCase();
   const isShipper = isAuthenticated && normalizedRole === 'shipper';
-  const navigatorKey = isShipper ? 'shipper-root' : 'default-root';
-  const initialRouteName: keyof RootStackParamList = isShipper ? 'ShipperHome' : 'MainTabs';
+  const isCaretaker = isAuthenticated && normalizedRole === 'caretaker';
+  const navigatorKey = isShipper
+    ? 'shipper-root'
+    : isCaretaker
+    ? 'caretaker-root'
+    : 'default-root';
+  const initialRouteName: keyof RootStackParamList = isShipper
+    ? 'ShipperHome'
+    : isCaretaker
+    ? 'CaretakerHome'
+    : 'MainTabs';
 
   useEffect(() => {
     void preloadResources(['plants', 'plant-sort', 'users', 'orders', 'payments']);
@@ -56,6 +67,8 @@ export default function RootNavigator() {
       <Stack.Screen name="MainTabs" component={BottomTabNavigator} />
       <Stack.Screen name="ShipperHome" component={ShipperHomeScreen} />
       <Stack.Screen name="ShippingList" component={ShippingListScreen} />
+      <Stack.Screen name="CaretakerHome" component={CaretakerHomeScreen} />
+      <Stack.Screen name="CaretakerTasks" component={CaretakerTasksScreen} />
       <Stack.Screen name="PlantDetail" component={PlantDetailScreen} />
       <Stack.Screen name="PlantInstanceDetail" component={PlantInstanceDetailScreen} />
       <Stack.Screen name="MaterialDetail" component={MaterialDetailScreen} />

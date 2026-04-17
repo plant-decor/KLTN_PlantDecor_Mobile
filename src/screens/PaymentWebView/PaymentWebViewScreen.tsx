@@ -133,6 +133,7 @@ export default function PaymentWebViewScreen() {
           </TouchableOpacity>
         }
         right={<View style={styles.backButtonPlaceholder} />}
+        brandVariant='none'
       />
 
       <WebView

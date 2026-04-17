@@ -1,6 +1,9 @@
 import { API } from '../constants';
 import {
   CareServicePackage,
+  CheckInServiceProgressResponse,
+  CheckOutServiceProgressRequest,
+  CheckOutServiceProgressResponse,
   CreateServiceRegistrationRequest,
   CreateServiceRegistrationResponse,
   GetCareServicePackageDetailResponse,
@@ -10,9 +13,13 @@ import {
   GetMyServiceRegistrationsResponse,
   GetNurseriesNearbyRequest,
   GetNurseriesNearbyResponse,
+  GetServiceProgressMyScheduleRequest,
+  GetServiceProgressMyScheduleResponse,
+  GetServiceProgressTodayResponse,
   GetServiceRegistrationDetailResponse,
   GetShiftsResponse,
   NurseryNearby,
+  ServiceProgress,
   ServiceRegistration,
   ServiceRegistrationShift,
 } from '../types';
@@ -62,6 +69,26 @@ const buildMyServiceRegistrationsParams = (
 
   if (typeof request.status === 'number') {
     params.status = request.status;
+  }
+
+  return Object.keys(params).length > 0 ? params : undefined;
+};
+
+const buildMyScheduleParams = (request?: GetServiceProgressMyScheduleRequest) => {
+  if (!request) {
+    return undefined;
+  }
+
+  const params: Record<string, string> = {};
+  const from = typeof request.from === 'string' ? request.from.trim() : '';
+  const to = typeof request.to === 'string' ? request.to.trim() : '';
+
+  if (from.length > 0) {
+    params.from = from;
+  }
+
+  if (to.length > 0) {
+    params.to = to;
   }
 
   return Object.keys(params).length > 0 ? params : undefined;
@@ -156,6 +183,127 @@ export const careService = {
     }
   },
 
+  getCaretakerAssignedServiceRegistrations: async (
+    request?: GetMyServiceRegistrationsRequest
+  ): Promise<GetMyServiceRegistrationsPayload> => {
+    try {
+      const response = await api.get<GetMyServiceRegistrationsResponse>(
+        API.ENDPOINTS.CARETAKER_ASSIGNED_SERVICE_REGISTRATIONS,
+        {
+          params: buildMyServiceRegistrationsParams(request),
+        }
+      );
+
+      return (
+        response.data.payload ?? {
+          items: [],
+          totalCount: 0,
+          pageNumber: request?.PageNumber ?? 1,
+          pageSize: request?.PageSize ?? 10,
+          totalPages: 1,
+          hasPrevious: false,
+          hasNext: false,
+        }
+      );
+    } catch (error: any) {
+      console.error(
+        'getCaretakerAssignedServiceRegistrations error:',
+        error.response?.data || error.message
+      );
+      throw error;
+    }
+  },
+
+  getServiceProgressToday: async (): Promise<ServiceProgress[]> => {
+    try {
+      const response = await api.get<GetServiceProgressTodayResponse>(
+        API.ENDPOINTS.SERVICE_PROGRESS_TODAY
+      );
+      return response.data.payload ?? [];
+    } catch (error: any) {
+      console.error('getServiceProgressToday error:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  getServiceProgressMySchedule: async (
+    request?: GetServiceProgressMyScheduleRequest
+  ): Promise<ServiceProgress[]> => {
+    try {
+      const response = await api.get<GetServiceProgressMyScheduleResponse>(
+        API.ENDPOINTS.SERVICE_PROGRESS_MY_SCHEDULE,
+        {
+          params: buildMyScheduleParams(request),
+        }
+      );
+      return response.data.payload ?? [];
+    } catch (error: any) {
+      console.error(
+        'getServiceProgressMySchedule error:',
+        error.response?.data || error.message
+      );
+      throw error;
+    }
+  },
+
+  checkInServiceProgress: async (id: number): Promise<ServiceProgress> => {
+    try {
+      const response = await api.post<CheckInServiceProgressResponse>(
+        API.ENDPOINTS.SERVICE_PROGRESS_CHECK_IN(id)
+      );
+      return response.data.payload;
+    } catch (error: any) {
+      console.error('checkInServiceProgress error:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  checkOutServiceProgress: async (
+    id: number,
+    request: CheckOutServiceProgressRequest
+  ): Promise<ServiceProgress> => {
+    const normalizedUri = request.evidenceImage?.uri?.trim();
+    if (!normalizedUri) {
+      throw new Error('Invalid evidence image uri');
+    }
+
+    const inferredFileName = normalizedUri.split('/').pop() || `evidence-${Date.now()}.jpg`;
+    const fileName = request.evidenceImage.fileName?.trim() || inferredFileName;
+    const mimeType = request.evidenceImage.mimeType?.trim() || 'image/jpeg';
+
+    const formData = new FormData();
+    const description = typeof request.Description === 'string' ? request.Description.trim() : '';
+
+    if (description.length > 0) {
+      formData.append('Description', description);
+    }
+
+    formData.append(
+      'evidenceImage',
+      {
+        uri: normalizedUri,
+        name: fileName,
+        type: mimeType,
+      } as any
+    );
+
+    try {
+      const response = await api.post<CheckOutServiceProgressResponse>(
+        API.ENDPOINTS.SERVICE_PROGRESS_CHECK_OUT(id),
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      );
+      return response.data.payload;
+    } catch (error: any) {
+      console.error('checkOutServiceProgress error:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
   getServiceRegistrationDetail: async (id: number): Promise<ServiceRegistration> => {
     try {
       const response = await api.get<GetServiceRegistrationDetailResponse>(
@@ -183,6 +331,34 @@ export const careService = {
     } catch (error: any) {
       console.error(
         'createServiceRegistration error:',
+        error.response?.data || error.message
+      );
+      throw error;
+    }
+  },
+
+  cancelServiceRegistration: async (
+    id: number,
+    cancelReason?: string
+  ): Promise<ServiceRegistration> => {
+    try {
+      const trimmedReason = typeof cancelReason === 'string' ? cancelReason.trim() : '';
+      const response = await api.post<GetServiceRegistrationDetailResponse>(
+        API.ENDPOINTS.CANCEL_SERVICE_REGISTRATION(id),
+        undefined,
+        {
+          params:
+            trimmedReason.length > 0
+              ? {
+                  cancelReason: trimmedReason,
+                }
+              : undefined,
+        }
+      );
+      return response.data.payload;
+    } catch (error: any) {
+      console.error(
+        'cancelServiceRegistration error:',
         error.response?.data || error.message
       );
       throw error;

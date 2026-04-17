@@ -56,3 +56,8 @@ export {
   getOrderStatusLabel,
   isOrderCancellableStatus,
 } from './orderStatus';
+export {
+  isServiceRegistrationAwaitPaymentStatus,
+  isServiceRegistrationCancellableStatus,
+  isServiceRegistrationPendingApprovalStatus,
+} from './serviceRegistrationStatus';

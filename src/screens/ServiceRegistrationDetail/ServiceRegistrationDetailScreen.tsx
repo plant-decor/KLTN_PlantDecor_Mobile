@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -14,8 +16,14 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { BrandedHeader } from '../../components/branding';
 import { COLORS, FONTS, RADIUS, SHADOWS, SPACING } from '../../constants';
-import { careService } from '../../services';
+import { careService, orderService, paymentService } from '../../services';
 import { RootStackParamList, ServiceRegistration, ServiceRegistrationShift } from '../../types';
+import {
+  canContinueOrderPayment,
+  isServiceRegistrationAwaitPaymentStatus,
+  isServiceRegistrationCancellableStatus,
+  notify,
+} from '../../utils';
 
 type RouteProps = RouteProp<RootStackParamList, 'ServiceRegistrationDetail'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'ServiceRegistrationDetail'>;
@@ -73,6 +81,9 @@ export default function ServiceRegistrationDetailScreen() {
   const [registration, setRegistration] = useState<ServiceRegistration | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isCancellingRegistration, setIsCancellingRegistration] = useState(false);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
 
   const formatDate = useCallback(
     (value: string) => {
@@ -141,6 +152,10 @@ export default function ServiceRegistrationDetailScreen() {
     void loadDetail();
   }, [loadDetail]);
 
+  useEffect(() => {
+    setCancelReason(registration?.cancelReason ?? '');
+  }, [registration?.cancelReason, registration?.id]);
+
   const preferredShift = useMemo<ServiceRegistrationShift | null>(() => {
     if (!registration) {
       return null;
@@ -188,6 +203,156 @@ export default function ServiceRegistrationDetailScreen() {
 
   const packageId = registration?.nurseryCareService?.careServicePackage?.id ?? null;
   const statusColors = getRegistrationStatusColors(registration?.statusName ?? '');
+  const isAwaitPaymentRegistration = useMemo(
+    () =>
+      Boolean(
+        registration &&
+          isServiceRegistrationAwaitPaymentStatus(registration.statusName ?? '')
+      ),
+    [registration]
+  );
+
+  const canCancelRegistration = useMemo(
+    () =>
+      Boolean(
+        registration &&
+          isServiceRegistrationCancellableStatus(registration.statusName ?? '')
+      ),
+    [registration]
+  );
+
+  const hasRunningAction = isCancellingRegistration || isProcessingPayment;
+
+  const handleConfirmCancelRegistration = useCallback(async () => {
+    if (!registration || hasRunningAction) {
+      return;
+    }
+
+    setIsCancellingRegistration(true);
+
+    try {
+      const payload = await careService.cancelServiceRegistration(
+        registration.id,
+        cancelReason
+      );
+      setRegistration(payload);
+
+      notify({
+        title: t('common.success', { defaultValue: 'Success' }),
+        message: t('careService.cancelRegistrationSuccess', {
+          defaultValue: 'Service registration cancelled successfully.',
+        }),
+      });
+    } catch (error: any) {
+      const apiMessage = error?.response?.data?.message;
+
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        typeof apiMessage === 'string' && apiMessage.trim().length > 0
+          ? apiMessage
+          : t('careService.cancelRegistrationFailed', {
+              defaultValue: 'Unable to cancel service registration. Please try again.',
+            })
+      );
+    } finally {
+      setIsCancellingRegistration(false);
+    }
+  }, [cancelReason, hasRunningAction, registration, t]);
+
+  const handleCancelRegistration = useCallback(() => {
+    if (!registration || !canCancelRegistration || hasRunningAction) {
+      return;
+    }
+
+    Alert.alert(
+      t('careService.cancelRegistrationTitle', {
+        defaultValue: 'Cancel service registration?',
+      }),
+      t('careService.cancelRegistrationMessage', {
+        defaultValue:
+          'Are you sure you want to cancel this service registration?',
+      }),
+      [
+        {
+          text: t('common.cancel', { defaultValue: 'Cancel' }),
+          style: 'cancel',
+        },
+        {
+          text: t('careService.cancelRegistrationAction', {
+            defaultValue: 'Cancel registration',
+          }),
+          style: 'destructive',
+          onPress: () => {
+            void handleConfirmCancelRegistration();
+          },
+        },
+      ]
+    );
+  }, [canCancelRegistration, handleConfirmCancelRegistration, hasRunningAction, registration, t]);
+
+  const handleContinuePayment = useCallback(async () => {
+    if (!registration || !isAwaitPaymentRegistration || hasRunningAction) {
+      return;
+    }
+
+    const orderId =
+      typeof registration.orderId === 'number' && registration.orderId > 0
+        ? registration.orderId
+        : null;
+
+    if (orderId === null) {
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        t('careService.paymentUnavailable', {
+          defaultValue: 'Unable to continue payment because the order is not ready.',
+        })
+      );
+      return;
+    }
+
+    setIsProcessingPayment(true);
+
+    try {
+      const orderPayload = await orderService.getOrderDetail(orderId);
+      const continuableInvoice = orderPayload.invoices.find((invoice) =>
+        canContinueOrderPayment(orderPayload.statusName, invoice.statusName)
+      );
+
+      if (!continuableInvoice) {
+        Alert.alert(
+          t('common.error', { defaultValue: 'Error' }),
+          t('careService.paymentInvoiceUnavailable', {
+            defaultValue: 'No payable invoice was found for this registration.',
+          })
+        );
+        return;
+      }
+
+      const payment = await paymentService.continuePayment(continuableInvoice.id);
+
+      if (!payment?.paymentUrl) {
+        throw new Error('Missing payment URL');
+      }
+
+      navigation.navigate('PaymentWebView', {
+        paymentUrl: payment.paymentUrl,
+        orderId: orderPayload.id,
+      });
+    } catch (error: any) {
+      const apiMessage = error?.response?.data?.message;
+
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        typeof apiMessage === 'string' && apiMessage.trim().length > 0
+          ? apiMessage
+          : t('careService.continuePaymentFailed', {
+              defaultValue: 'Unable to continue payment. Please try again.',
+            })
+      );
+    } finally {
+      setIsProcessingPayment(false);
+    }
+  }, [hasRunningAction, isAwaitPaymentRegistration, navigation, registration, t]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -374,6 +539,80 @@ export default function ServiceRegistrationDetailScreen() {
               </Text>
               <Text style={styles.infoValueRight}>{registration.note || '-'}</Text>
             </View>
+
+            {canCancelRegistration ? (
+              <View style={styles.cancelReasonBlock}>
+                <Text style={styles.cancelReasonLabel}>
+                  {t('careService.cancelReasonLabel', {
+                    defaultValue: 'Cancel reason (optional)',
+                  })}
+                </Text>
+                <TextInput
+                  value={cancelReason}
+                  onChangeText={setCancelReason}
+                  style={[
+                    styles.cancelReasonInput,
+                    hasRunningAction && styles.actionInputDisabled,
+                  ]}
+                  editable={!hasRunningAction}
+                  placeholder={t('careService.cancelReasonPlaceholder', {
+                    defaultValue: 'Enter cancellation reason',
+                  })}
+                  placeholderTextColor={COLORS.textLight}
+                  multiline
+                  numberOfLines={3}
+                  textAlignVertical="top"
+                />
+              </View>
+            ) : null}
+
+            {canCancelRegistration || isAwaitPaymentRegistration ? (
+              <View style={styles.actionRow}>
+                {canCancelRegistration ? (
+                  <TouchableOpacity
+                    style={[
+                      styles.cancelActionButton,
+                      hasRunningAction && styles.actionButtonDisabled,
+                    ]}
+                    onPress={handleCancelRegistration}
+                    disabled={hasRunningAction}
+                  >
+                    {isCancellingRegistration ? (
+                      <ActivityIndicator size="small" color={COLORS.error} />
+                    ) : (
+                      <Text style={styles.cancelActionButtonText}>
+                        {t('careService.cancelRegistrationAction', {
+                          defaultValue: 'Cancel registration',
+                        })}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                ) : null}
+
+                {isAwaitPaymentRegistration ? (
+                  <TouchableOpacity
+                    style={[
+                      styles.payActionButton,
+                      hasRunningAction && styles.actionButtonDisabled,
+                    ]}
+                    onPress={() => {
+                      void handleContinuePayment();
+                    }}
+                    disabled={hasRunningAction}
+                  >
+                    {isProcessingPayment ? (
+                      <ActivityIndicator size="small" color={COLORS.white} />
+                    ) : (
+                      <Text style={styles.payActionButtonText}>
+                        {t('careService.continuePaymentAction', {
+                          defaultValue: 'Continue payment',
+                        })}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            ) : null}
           </View>
         </ScrollView>
       )}
@@ -515,5 +754,67 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.sm,
     fontWeight: '700',
     textAlign: 'center',
+  },
+  cancelReasonBlock: {
+    marginTop: SPACING.sm,
+    gap: SPACING.xs,
+  },
+  cancelReasonLabel: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  cancelReasonInput: {
+    minHeight: 84,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textPrimary,
+  },
+  actionInputDisabled: {
+    opacity: 0.65,
+  },
+  actionRow: {
+    marginTop: SPACING.md,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: SPACING.sm,
+  },
+  cancelActionButton: {
+    minHeight: 42,
+    minWidth: 132,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: COLORS.error,
+    backgroundColor: COLORS.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.md,
+  },
+  cancelActionButtonText: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '700',
+    color: COLORS.error,
+  },
+  payActionButton: {
+    minHeight: 42,
+    minWidth: 148,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.md,
+  },
+  payActionButtonText: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '700',
+    color: COLORS.white,
+  },
+  actionButtonDisabled: {
+    opacity: 0.65,
   },
 });

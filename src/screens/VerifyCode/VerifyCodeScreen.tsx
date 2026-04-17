@@ -134,8 +134,14 @@ export default function VerifyCodeScreen() {
       const loggedInUser = await login(email, password, deviceId || 'unknown-device');
 
       // Navigate to main app
-      const isShipper = loggedInUser?.role?.toLowerCase() === 'shipper';
-      navigation.replace(isShipper ? 'ShipperHome' : 'MainTabs');
+      const normalizedRole = (loggedInUser?.role ?? '').trim().toLowerCase();
+      const nextRoute: keyof RootStackParamList =
+        normalizedRole === 'shipper'
+          ? 'ShipperHome'
+          : normalizedRole === 'caretaker'
+          ? 'CaretakerHome'
+          : 'MainTabs';
+      navigation.replace(nextRoute);
     } catch (error: any) {
       const errorMessage = error?.response?.data?.message || 'Verification or login failed';
       Alert.alert(t('common.error'), errorMessage);

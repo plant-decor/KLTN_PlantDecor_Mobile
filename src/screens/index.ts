@@ -23,3 +23,5 @@ export { default as OrderHistoryScreen } from './OrderHistory/OrderHistoryScreen
 export { default as OrderDetailScreen } from './OrderDetail/OrderDetailScreen';
 export { default as ShipperHomeScreen } from './ShipperHome/ShipperHomeScreen';
 export { default as ShippingListScreen } from './ShippingList/ShippingListScreen';
+export { default as CaretakerHomeScreen } from './CaretakerHome/CaretakerHomeScreen';
+export { default as CaretakerTasksScreen } from './CaretakerTasks/CaretakerTasksScreen';
