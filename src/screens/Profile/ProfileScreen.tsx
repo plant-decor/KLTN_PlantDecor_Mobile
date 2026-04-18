@@ -23,7 +23,11 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 export default function ProfileScreen() {
   const navigation = useNavigation<NavigationProp>();
   const { t } = useTranslation();
-  const { user, isAuthenticated, logout, logoutAll } = useAuthStore();
+  const user = useAuthStore((state) => state.user);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const logout = useAuthStore((state) => state.logout);
+  const logoutAll = useAuthStore((state) => state.logoutAll);
+  const isSigningOut = useAuthStore((state) => state.isSigningOut);
   const { totalItems } = useCartStore();
 
   const selectedLanguage = i18n.language === 'vi' ? 'vi' : 'en';
@@ -40,7 +44,9 @@ export default function ProfileScreen() {
       {
         text: t('common.logout'),
         style: 'destructive',
-        onPress: () => logout(),
+        onPress: () => {
+          void logout();
+        },
       },
     ]);
   };
@@ -60,7 +66,9 @@ export default function ProfileScreen() {
             defaultValue: 'Log out all devices',
           }),
           style: 'destructive',
-          onPress: () => logoutAll(),
+          onPress: () => {
+            void logoutAll();
+          },
         },
       ]
     );
@@ -203,12 +211,20 @@ export default function ProfileScreen() {
         </View>
 
         {/* Logout */}
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+        <TouchableOpacity
+          style={styles.logoutButton}
+          onPress={handleLogout}
+          disabled={isSigningOut}
+        >
           <Ionicons name="log-out-outline" size={22} color={COLORS.error} />
           <Text style={styles.logoutText}>{t('common.logout')}</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.logoutAllButton} onPress={handleLogoutAll}>
+        <TouchableOpacity
+          style={styles.logoutAllButton}
+          onPress={handleLogoutAll}
+          disabled={isSigningOut}
+        >
           <Ionicons name="exit-outline" size={20} color={COLORS.error} />
           <Text style={styles.logoutAllText}>
             {t('profile.logoutAll', { defaultValue: 'Log out all devices' })}

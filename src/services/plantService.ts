@@ -6,6 +6,9 @@ import {
   NurseriesGotCommonPlantResponse,
   NurseriesGotMaterialResponse,
   NurseriesGotPlantComboResponse,
+  PreferencesRecommendationPayload,
+  PreferencesRecommendationPlant,
+  PreferencesRecommendationResponse,
   PlantInstanceDetailResponse,
   PlantComboDetailResponse,
   PlantDetailResponse,
@@ -45,6 +48,40 @@ const buildAdminListParams = (params?: SearchAdminListParams) => {
   return Object.keys(query).length > 0 ? query : undefined;
 };
 
+const extractRecommendationItems = (
+  source: PreferencesRecommendationPayload | PreferencesRecommendationPlant[] | null | undefined
+): PreferencesRecommendationPlant[] => {
+  if (Array.isArray(source)) {
+    return source;
+  }
+
+  if (!source || typeof source !== 'object') {
+    return [];
+  }
+
+  if (Array.isArray(source.items)) {
+    return source.items;
+  }
+
+  if (
+    source.items &&
+    typeof source.items === 'object' &&
+    Array.isArray(source.items.items)
+  ) {
+    return source.items.items;
+  }
+
+  if (Array.isArray(source.recommendations)) {
+    return source.recommendations;
+  }
+
+  if (Array.isArray(source.data)) {
+    return source.data;
+  }
+
+  return [];
+};
+
 export const plantService = {
   searchShop: async (request: ShopSearchRequest) => {
     try {
@@ -55,6 +92,27 @@ export const plantService = {
       return response.data.payload;
     } catch (error: any) {
       console.error('searchShop error:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  getPreferencesRecommendations: async (): Promise<PreferencesRecommendationPlant[] | null> => {
+    try {
+      const response = await api.get<PreferencesRecommendationResponse>(
+        API.ENDPOINTS.PREFERENCES_RECOMMENDATION
+      );
+
+      const payload = response.data.payload ?? response.data.data;
+      if (payload == null) {
+        return null;
+      }
+
+      return extractRecommendationItems(payload);
+    } catch (error: any) {
+      console.error(
+        'getPreferencesRecommendations error:',
+        error.response?.data || error.message
+      );
       throw error;
     }
   },

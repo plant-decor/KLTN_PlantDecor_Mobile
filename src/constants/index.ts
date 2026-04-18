@@ -7,6 +7,8 @@ import GoogleIcon from "../../assets/icons/Google_Icon.svg";
 import CartBagIcon from "../../assets/icons/cart_bag.svg";
 import Logo from "../../assets/icons/logo.svg";
 import LogoWithText from "../../assets/icons/logo_with_text.svg";
+import LoginBG from "../../assets/images/login_bg.jpg";
+import RegisterBG from "../../assets/images/register_bg.jpg";
 import ENV from "../config/env";
 
 // ==================== Icons ====================
@@ -20,6 +22,12 @@ export const ICONS = {
   cartBag: CartBagIcon,
   logo: Logo,
   logoWithText: LogoWithText,
+} as const;
+
+// ==================== Images ====================
+export const IMAGES = {
+  loginBG: LoginBG,
+  registerBG: RegisterBG,
 } as const;
 
 // ==================== Colors ====================
@@ -152,6 +160,7 @@ export const API = {
   ENDPOINTS: {
     // Auth
     LOGIN: "/Authentication/login",
+    LOGIN_GOOGLE: "/Authentication/login-google",
     REGISTER: "/Authentication/register",
     REFRESH_TOKEN: "/Authentication/refreshToken",
     LOGOUT: "/Authentication/logout",
@@ -238,6 +247,8 @@ export const API = {
     //User Preferences
     PREFERENCES_RECOMMENDATION: "/UserPreferences/recommendations",
     PREFERENCES_CONTEXTUAL: "/UserPreferences/recommendations/contextual",
+    GET_SURVEY: "/UserPreferences/survey",
+    UPDATE_SURVEY: "/UserPreferences/survey",
 
     //Shipping
     NURSERY_ORDERS: "/shipper/nursery-orders/my",

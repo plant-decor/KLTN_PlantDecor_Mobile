@@ -14,5 +14,6 @@
       "@hooks/*": ["./src/hooks/*"],
       "@utils/*": ["./src/utils/*"]
     }
-  }
+  },
+  "exclude": ["node_modules"]
 }

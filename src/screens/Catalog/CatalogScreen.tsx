@@ -7,6 +7,7 @@ import {
   FlatList,
   Image,
   Modal,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,7 +18,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useNavigation } from '@react-navigation/native';
+import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, RADIUS, SHADOWS, SPACING } from '../../constants';
@@ -211,6 +212,11 @@ const resolveWishlistTarget = (item: ShopSearchItem): WishlistTarget | null => {
 export default function CatalogScreen() {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
+  const route = useRoute<RouteProp<RootStackParamList, 'Catalog'>>();
+  const routeKeyword = useMemo(() => {
+    const value = route.params?.keyword;
+    return typeof value === 'string' ? value.trim() : '';
+  }, [route.params?.keyword]);
   const insets = useSafeAreaInsets();
   const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
   const { isAuthenticated } = useAuthStore();
@@ -247,6 +253,7 @@ export default function CatalogScreen() {
 
   const [shopItems, setShopItems] = useState<ShopSearchItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [pageNumber, setPageNumber] = useState(1);
@@ -257,7 +264,7 @@ export default function CatalogScreen() {
   const [materialTotalCount, setMaterialTotalCount] = useState(0);
   const [comboTotalCount, setComboTotalCount] = useState(0);
 
-  const [keyword, setKeyword] = useState('');
+  const [keyword, setKeyword] = useState(routeKeyword);
   const [priceRange, setPriceRange] = useState({ min: 0, max: 0 });
   const [minPriceInput, setMinPriceInput] = useState('');
   const [maxPriceInput, setMaxPriceInput] = useState('');
@@ -329,6 +336,7 @@ export default function CatalogScreen() {
   const filterHeight = useRef(new Animated.Value(0)).current;
   const filterOpacity = useRef(new Animated.Value(0)).current;
   const hasLoadedInitialRef = useRef(false);
+  const previousRouteKeywordRef = useRef(routeKeyword);
 
   const toggleArrayValue = (
     value: number,
@@ -470,12 +478,16 @@ export default function CatalogScreen() {
   }, [loadFilterSources]);
 
   const buildSearchRequest = useCallback(
-    (targetPage: number, targetPageSize: number): ShopSearchRequest => ({
+    (
+      targetPage: number,
+      targetPageSize: number,
+      keywordOverride?: string
+    ): ShopSearchRequest => ({
       pagination: {
         pageNumber: targetPage,
         pageSize: targetPageSize,
       },
-      keyword: keyword.trim() || undefined,
+      keyword: (keywordOverride ?? keyword).trim() || undefined,
       minPrice: priceRange.min > 0 ? priceRange.min : undefined,
       maxPrice: priceRange.max > 0 ? priceRange.max : undefined,
       categoryIds: selectedCategoryIds.length > 0 ? selectedCategoryIds : undefined,
@@ -565,8 +577,8 @@ export default function CatalogScreen() {
   );
 
   const executeSearch = useCallback(
-    async (targetPage: number, targetPageSize: number) => {
-      const request = buildSearchRequest(targetPage, targetPageSize);
+    async (targetPage: number, targetPageSize: number, keywordOverride?: string) => {
+      const request = buildSearchRequest(targetPage, targetPageSize, keywordOverride);
       await performSearch(request, targetPage, targetPageSize);
     },
     [buildSearchRequest, performSearch]
@@ -578,8 +590,23 @@ export default function CatalogScreen() {
     }
 
     hasLoadedInitialRef.current = true;
-    void executeSearch(1, DEFAULT_PAGE_SIZE);
-  }, [executeSearch]);
+    void executeSearch(1, DEFAULT_PAGE_SIZE, routeKeyword);
+  }, [executeSearch, routeKeyword]);
+
+  useEffect(() => {
+    if (previousRouteKeywordRef.current === routeKeyword) {
+      return;
+    }
+
+    previousRouteKeywordRef.current = routeKeyword;
+    setKeyword(routeKeyword);
+
+    if (!hasLoadedInitialRef.current) {
+      return;
+    }
+
+    void executeSearch(1, pageSize, routeKeyword);
+  }, [executeSearch, pageSize, routeKeyword]);
 
   useEffect(() => {
     if (!isAuthenticated || hasLoadedCart) {
@@ -962,6 +989,17 @@ export default function CatalogScreen() {
   const handleSearch = useCallback(() => {
     void executeSearch(1, pageSize);
   }, [executeSearch, pageSize]);
+
+  const handleRefresh = useCallback(() => {
+    if (showFilters || isRefreshing || isLoading) {
+      return;
+    }
+
+    setIsRefreshing(true);
+    void executeSearch(1, pageSize).finally(() => {
+      setIsRefreshing(false);
+    });
+  }, [executeSearch, isLoading, isRefreshing, pageSize, showFilters]);
 
   const applyFilters = useCallback(() => {
     setShowFilters(false);
@@ -1858,6 +1896,14 @@ export default function CatalogScreen() {
               },
             ]}
             showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefreshing}
+                onRefresh={handleRefresh}
+                tintColor={COLORS.primary}
+                enabled={!showFilters}
+              />
+            }
             ListEmptyComponent={
               !isLoading ? (
                 <View style={styles.emptyWrap}>

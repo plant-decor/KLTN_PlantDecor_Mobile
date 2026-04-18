@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -10,91 +9,58 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Dimensions,
   Alert,
+  useWindowDimensions,
 } from 'react-native';
-import * as Device from 'expo-device';
 import * as Application from 'expo-application';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
-import { COLORS, FONTS, ICONS, RADIUS, SPACING } from '../../constants';
+import { COLORS, ICONS, IMAGES, RADIUS, SPACING } from '../../constants';
 import { BrandMark } from '../../components/branding';
+import { googleSignInService } from '../../services/googleSignInService';
 import { RootStackParamList } from '../../types';
 import { useAuthStore } from '../../stores/useAuthStore';
+import { resolveDeviceId } from '../../utils/authFlow';
+import { resolveGoogleAuthErrorMessage, resolveLoginErrorMessage } from '../../utils/authErrors';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
 
-const { width } = Dimensions.get('window');
-const HERO_HEIGHT = 344;
+const HERO_HEIGHT = 352;
+const CARD_TOP_SPACER = HERO_HEIGHT - 48;
 
-const TOP_IMAGE =
-  'https://images.unsplash.com/photo-1614594975525-e45190c55d0b?auto=format&fit=crop&w=1400&q=80';
+const TOP_IMAGE = IMAGES.loginBG;
 
 export default function LoginScreen() {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
-  const { login, isLoading } = useAuthStore();
+  const login = useAuthStore((state) => state.login);
+  const loginWithGoogle = useAuthStore((state) => state.loginWithGoogle);
+  const isLoading = useAuthStore((state) => state.isLoading);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [deviceId, setDeviceId] = useState('');
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const { height: windowHeight } = useWindowDimensions();
+  const cardMinHeight = Math.max(0, windowHeight - CARD_TOP_SPACER);
+  const isExpoGoRuntime =
+    (Application.applicationId ?? '').toLowerCase() === 'host.exp.exponent';
 
   const registerLabel = i18n.language?.startsWith('vi')
     ? 'Đăng\u00A0ký'
     : t('common.register', { defaultValue: 'Register' });
 
   useEffect(() => {
-    const resolveDeviceId = async () => {
-      try {
-        if (Platform.OS === 'android') {
-          // Android OS-provided ID
-          const androidId = await Application.getAndroidId();
-          return androidId ?? `${Application.applicationId}-android`;
-        }
-
-        if (Platform.OS === 'ios') {
-          // iOS vendor ID
-          const iosId = await Application.getIosIdForVendorAsync();
-          return iosId ?? `${Application.applicationId}-ios`;
-        }
-
-        return Device.deviceName ?? `${Platform.OS}-unknown`;
-      } catch {
-        return Device.deviceName ?? `${Platform.OS}-${Date.now()}`;
-      }
-    };
-
     resolveDeviceId().then(setDeviceId);
   }, []);
 
-  const getLoginErrorMessage = (err: unknown) => {
-    if (axios.isAxiosError(err)) {
-      const apiMessage = err.response?.data?.message;
-      if (typeof apiMessage === 'string' && apiMessage.trim().length > 0) {
-        return apiMessage;
-      }
-
-      if (!err.response || err.code === 'ECONNABORTED' || err.message === 'Network Error') {
-        return t('login.networkError', {
-          defaultValue: 'Cannot connect to server. Please check API URL and network.',
-        });
-      }
-
-      if (err.response?.status === 401) {
-        return t('login.invalidCredentials', {
-          defaultValue: 'Invalid email or password.',
-        });
-      }
-    }
-
-    return t('login.loginFailed', {
-      defaultValue: 'Login failed. Please try again.',
-    });
-  };
-
   const handleLogin = async () => {
-    if (!email || !password) {
+    const normalizedEmail = email.trim();
+    const hasPassword = password.trim().length > 0;
+
+    if (!normalizedEmail || !hasPassword) {
       Alert.alert(
         t('common.error', { defaultValue: 'Error' }),
         t('login.fillAllFields', { defaultValue: 'Please fill in all fields.' })
@@ -103,17 +69,43 @@ export default function LoginScreen() {
     }
 
     try {
-      const loggedInUser = await login(email.trim(), password, deviceId || 'unknown-device');
-      const normalizedRole = (loggedInUser?.role ?? '').trim().toLowerCase();
-      const nextRoute: keyof RootStackParamList =
-        normalizedRole === 'shipper'
-          ? 'ShipperHome'
-          : normalizedRole === 'caretaker'
-          ? 'CaretakerHome'
-          : 'MainTabs';
-      navigation.replace(nextRoute);
+      await login(normalizedEmail, password, deviceId || 'unknown-device');
     } catch (err) {
-      Alert.alert(t('common.error', { defaultValue: 'Error' }), getLoginErrorMessage(err));
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        resolveLoginErrorMessage(err, t)
+      );
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    if (isExpoGoRuntime) {
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        'Google Sign-In is not supported in Expo Go. Please run a development build (npx expo run:android) and try again.'
+      );
+      return;
+    }
+
+    setIsGoogleLoading(true);
+    try {
+      const googleAccessToken = await googleSignInService.getGoogleAccessToken();
+      if (!googleAccessToken) {
+        return;
+      }
+
+      await loginWithGoogle(googleAccessToken, deviceId || 'unknown-device');
+    } catch (err) {
+      if (googleSignInService.isGoogleSignInCancelledError(err)) {
+        return;
+      }
+
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        resolveGoogleAuthErrorMessage(err, t)
+      );
+    } finally {
+      setIsGoogleLoading(false);
     }
   };
 
@@ -122,11 +114,10 @@ export default function LoginScreen() {
     <View style={styles.container}>
       {/* Hero background */}
       <View style={styles.heroWrap}>
-        <Image source={{ uri: TOP_IMAGE }} style={styles.topImage} resizeMode="cover" />
-        <View style={styles.heroOverlay} />
+        <Image source={TOP_IMAGE} style={styles.topImage} resizeMode="cover" />
 
-        <View style={styles.logoWrap}>
-          <BrandMark variant="logoWithText" size="hero" />
+        <View style={styles.brandWrap}>
+            <BrandMark variant="logoWithText" size="hero" />
         </View>
       </View>
 
@@ -145,13 +136,15 @@ export default function LoginScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
       >
-        <ScrollView showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           {/* Spacer so card starts below the hero */}
-          <View style={{ height: HERO_HEIGHT - 14 }} />
+          <View style={{ height: CARD_TOP_SPACER }} />
 
-          <View style={styles.card}>
-            <Text style={styles.title}>{t('login.title')}</Text>
-            <Text style={styles.subtitle}>{t('login.subtitle')}</Text>
+          <View style={[styles.card, { minHeight: cardMinHeight }]}>
+            <View style={styles.headerTexts}>
+              <Text style={styles.title}>{t('login.title')}</Text>
+              <Text style={styles.subtitle}>{t('login.subtitle')}</Text>
+            </View>
 
             <View style={styles.switchRow}>
               <TouchableOpacity style={[styles.switchBtn, styles.switchBtnActive]}>
@@ -169,35 +162,44 @@ export default function LoginScreen() {
               </TouchableOpacity>
             </View>
 
-            <View style={styles.inputWrap}>
-              <Ionicons name="person-outline" size={20} color={COLORS.gray500} />
-              <TextInput
-                value={email}
-                onChangeText={setEmail}
-                placeholder={t('login.emailOrPhone')}
-                placeholderTextColor={COLORS.gray500}
-                style={styles.input}
-              />
+            <View style={styles.inputGroup}>
+              <View style={styles.inputWrap}>
+                <Ionicons name="person-outline" size={20} color="#9CA3AF" />
+                <TextInput
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder={t('login.emailOrPhone')}
+                  placeholderTextColor="#9CA3AF"
+                  style={styles.input}
+                />
+              </View>
+
+              <View style={styles.inputWrap}>
+                <Ionicons name="lock-closed-outline" size={20} color="#9CA3AF" />
+                <TextInput
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder={t('login.password')}
+                  placeholderTextColor="#9CA3AF"
+                  secureTextEntry
+                  style={styles.input}
+                />
+              </View>
             </View>
 
-            <View style={styles.inputWrap}>
-              <Ionicons name="lock-closed-outline" size={20} color={COLORS.gray500} />
-              <TextInput
-                value={password}
-                onChangeText={setPassword}
-                placeholder={t('login.password')}
-                placeholderTextColor={COLORS.gray500}
-                secureTextEntry
-                style={styles.input}
-              />
-            </View>
-
-            <TouchableOpacity style={styles.forgotWrap}>
+            <TouchableOpacity
+              style={styles.forgotWrap}
+              onPress={() =>
+                navigation.navigate('ForgotPassword', {
+                  email: email.trim() || undefined,
+                })
+              }
+            >
               <Text style={styles.forgotText}>{t('login.forgotPassword')}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity 
-              style={styles.primaryBtn}
+              style={[styles.primaryBtn, isLoading && styles.primaryBtnDisabled]}
               onPress={handleLogin}
               disabled={isLoading}
               activeOpacity={0.7}
@@ -215,9 +217,17 @@ export default function LoginScreen() {
               <View style={styles.divider} />
             </View>
 
-            <TouchableOpacity style={styles.googleBtn}>
+            <TouchableOpacity
+              style={[styles.googleBtn, (isLoading || isGoogleLoading) && styles.googleBtnDisabled]}
+              onPress={handleGoogleLogin}
+              disabled={isLoading || isGoogleLoading}
+            >
               <ICONS.google width={24} height={24} />
-              <Text style={styles.googleText}>{t('common.continueWithGoogle')}</Text>
+              <Text style={styles.googleText}>
+                {isGoogleLoading
+                  ? t('common.loading', { defaultValue: 'Loading...' })
+                  : t('common.continueWithGoogle')}
+              </Text>
             </TouchableOpacity>
 
             <View style={styles.termsWrap}>
@@ -237,7 +247,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F6F8F6',
+    backgroundColor: '#FAFAFA',
   },
   heroWrap: {
     position: 'absolute',
@@ -246,45 +256,21 @@ const styles = StyleSheet.create({
     right: 0,
     height: HERO_HEIGHT,
     overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   topImage: {
-    width,
-    height: HERO_HEIGHT + 52,
+    width: '100%',
+    height: HERO_HEIGHT,
     position: 'absolute',
-    top: -52,
+    top: 0,
     left: 0,
   },
   heroOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.08)',
   },
-  logoWrap: {
-    position: 'absolute',
-    top: 64,
-    left: 0,
-    right: 0,
+  brandWrap: {
     alignItems: 'center',
-    gap: 4,
-  },
-  logoGrid: {
-    width: 46,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    rowGap: 4,
-  },
-  logoDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 999,
-    backgroundColor: '#13EC5B',
-  },
-  logoText: {
-    color: COLORS.white,
-    fontSize: 45,
-    lineHeight: 54,
-    fontWeight: '700',
-    letterSpacing: 0.75,
   },
   backBtn: {
     position: 'absolute',
@@ -304,20 +290,23 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
+  scrollContent: {
+    flexGrow: 1,
+  },
   card: {
-    backgroundColor: '#F6F8F6',
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.5)',
-    paddingHorizontal: SPACING.xl,
-    paddingTop: 26,
-    paddingBottom: 36,
-    shadowColor: COLORS.black,
-    shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 8,
+    marginHorizontal: 0,
+    backgroundColor: COLORS.white,
+    borderTopLeftRadius: 40,
+    borderTopRightRadius: 40,
+    paddingTop: 40,
+    paddingBottom: 48,
+    paddingHorizontal: 32,
+    gap: 32,
+  },
+  headerTexts: {
+    width: '100%',
+    gap: 8,
+    alignItems: 'center',
   },
   title: {
     fontSize: 30,
@@ -327,42 +316,50 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   subtitle: {
-    marginTop: 8,
     fontSize: 14,
     lineHeight: 20,
+    fontWeight: '400',
     color: '#6B7280',
     textAlign: 'center',
   },
   switchRow: {
-    marginTop: 24,
+    width: '100%',
     backgroundColor: '#E5E7EB',
-    borderRadius: 24,
+    borderRadius: RADIUS.full,
     padding: 4,
     flexDirection: 'row',
-    alignItems: 'center',
-    height: 48,
   },
   switchBtn: {
     flex: 1,
-    height: '100%',
-    borderRadius: 16,
-    justifyContent: 'center',
+    paddingVertical: 8,
+    borderRadius: RADIUS.full,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   switchBtnActive: {
     backgroundColor: COLORS.white,
+    shadowColor: COLORS.black,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
   },
   switchText: {
-    color: '#6B7280',
     fontSize: 14,
     lineHeight: 20,
     fontWeight: '600',
+    color: '#6B7280',
+    textAlign: 'center',
   },
   switchTextActive: {
     color: '#0F172A',
   },
+  inputGroup: {
+    width: '100%',
+    gap: 16,
+  },
   inputWrap: {
-    marginTop: 16,
+    width: '100%',
     height: 56,
     borderRadius: 24,
     borderWidth: 1,
@@ -379,7 +376,7 @@ const styles = StyleSheet.create({
     color: '#0F172A',
   },
   forgotWrap: {
-    marginTop: 16,
+    width: '100%',
     alignItems: 'flex-end',
   },
   forgotText: {
@@ -389,12 +386,12 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   primaryBtn: {
-    marginTop: 16,
+    width: '100%',
     height: 56,
     borderRadius: 24,
     backgroundColor: '#13EC5B',
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
     shadowColor: '#13EC5B',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
@@ -407,11 +404,15 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     fontWeight: '700',
   },
+  primaryBtnDisabled: {
+    backgroundColor: '#9CA3AF',
+    shadowColor: '#9CA3AF',
+    opacity: 0.6,
+  },
   dividerRow: {
-    marginTop: 24,
+    width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
   },
   divider: {
     flex: 1,
@@ -419,13 +420,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#E5E7EB',
   },
   orText: {
-    color: '#6B7280',
+    paddingHorizontal: 16,
     fontSize: 14,
     lineHeight: 20,
-    fontWeight: '400',
+    fontWeight: '500',
+    color: '#9CA3AF',
   },
   googleBtn: {
-    marginTop: 24,
+    width: '100%',
     height: 56,
     borderRadius: 24,
     borderWidth: 1,
@@ -436,6 +438,9 @@ const styles = StyleSheet.create({
     gap: 13,
     backgroundColor: COLORS.white,
   },
+  googleBtnDisabled: {
+    opacity: 0.6,
+  },
   googleText: {
     color: '#102216',
     fontSize: 14,
@@ -443,7 +448,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   termsWrap: {
-    marginTop: 28,
     alignSelf: 'center',
     flexDirection: 'row',
     flexWrap: 'wrap',

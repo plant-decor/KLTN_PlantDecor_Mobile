@@ -33,6 +33,7 @@ interface CartState {
   incrementQuantity: (plantId: string) => void;
   decrementQuantity: (plantId: string) => void;
   clearCart: () => Promise<void>;
+  resetState: () => void;
   getItemQuantity: (plantId: string) => number;
 }
 
@@ -221,6 +222,16 @@ export const useCartStore = create<CartState>((set, get) => ({
   clearCart: async () => {
     await cartService.clearCart();
     set({ items: [], cartItems: [], cartMeta: null, hasLoadedCart: true });
+  },
+
+  resetState: () => {
+    set({
+      items: [],
+      cartItems: [],
+      cartMeta: null,
+      hasLoadedCart: false,
+      isLoading: false,
+    });
   },
 
   getItemQuantity: (plantId) => {

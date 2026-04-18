@@ -12,6 +12,11 @@ import './src/i18n';
 export default function App() {
   const checkAuth = useAuthStore((state) => state.checkAuth);
   const hasCheckedAuth = useAuthStore((state) => state.hasCheckedAuth);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const userRole = useAuthStore((state) => state.user?.role);
+  const navigationRootKey = isAuthenticated
+    ? `auth-${(userRole ?? 'user').toLowerCase()}`
+    : 'guest';
 
   useEffect(() => {
     void checkAuth();
@@ -33,7 +38,7 @@ export default function App() {
   return (
     <GestureHandlerRootView style={styles.container}>
       <SafeAreaProvider>
-        <NavigationContainer>
+        <NavigationContainer key={navigationRootKey}>
           <RootNavigator />
           <StatusBar style="auto" />
         </NavigationContainer>

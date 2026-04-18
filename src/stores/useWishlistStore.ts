@@ -12,6 +12,7 @@ interface WishlistState {
   statusByKey: Record<string, boolean>;
   pendingByKey: Record<string, boolean>;
   clearStatus: () => void;
+  resetState: () => void;
   setStatuses: (targets: WishlistTarget[], value: boolean) => void;
   ensureStatus: (targets: WishlistTarget[]) => Promise<void>;
   toggleWishlist: (
@@ -24,6 +25,7 @@ export const useWishlistStore = create<WishlistState>((set, get) => ({
   statusByKey: {},
   pendingByKey: {},
   clearStatus: () => set({ statusByKey: {}, pendingByKey: {} }),
+  resetState: () => set({ statusByKey: {}, pendingByKey: {} }),
   setStatuses: (targets, value) => {
     if (targets.length === 0) {
       return;

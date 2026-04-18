@@ -1551,6 +1551,13 @@ export default function CareServiceRegistrationScreen() {
               {t('common.login', { defaultValue: 'Login' })}
             </Text>
           </TouchableOpacity>
+          <TouchableOpacity 
+            onPress={() => navigation.goBack()}
+          >
+            <Text style={styles.secondaryActionText}>
+              {t('common.goBack', { defaultValue: 'Go Back' })}
+            </Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -2849,6 +2856,7 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: FONTS.sizes.md,
     fontWeight: '700',
+    paddingHorizontal: SPACING.md,
   },
   disabledActionButton: {
     opacity: 0.6,

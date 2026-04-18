@@ -11,13 +11,19 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'ShipperHome
 
 export default function ShipperHomeScreen() {
   const navigation = useNavigation<NavigationProp>();
-  const { logout } = useAuthStore();
+  const logout = useAuthStore((state) => state.logout);
+  const isSigningOut = useAuthStore((state) => state.isSigningOut);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
 
   const handleLogout = async () => {
+    if (!isAuthenticated || isSigningOut) {
+      return;
+    }
+
     try {
       await logout();
-    } finally {
-      navigation.replace('Login');
+    } catch (error) {
+      throw error;
     }
   };
 
@@ -44,6 +50,7 @@ export default function ShipperHomeScreen() {
         style={styles.secondaryButton}
         activeOpacity={0.8}
         onPress={handleLogout}
+        disabled={isSigningOut || !isAuthenticated}
       >
         <Text style={styles.secondaryButtonText}>Sign out</Text>
       </TouchableOpacity>

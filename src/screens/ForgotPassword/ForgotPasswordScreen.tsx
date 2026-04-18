@@ -188,6 +188,7 @@ export default function ForgotPasswordScreen() {
             </TouchableOpacity>
           }
           right={<View style={styles.headerPlaceholder} />}
+          brandVariant='none'
         />
 
         <Text style={styles.subtitle}>

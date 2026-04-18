@@ -13,7 +13,10 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'CaretakerHo
 export default function CaretakerHomeScreen() {
   const { t } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
-  const { user, logout } = useAuthStore();
+  const user = useAuthStore((state) => state.user);
+  const logout = useAuthStore((state) => state.logout);
+  const isSigningOut = useAuthStore((state) => state.isSigningOut);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
 
   const displayName =
     typeof user?.fullName === 'string' && user.fullName.trim().length > 0
@@ -21,10 +24,14 @@ export default function CaretakerHomeScreen() {
       : t('caretaker.defaultName', { defaultValue: 'Caretaker' });
 
   const handleLogout = async () => {
+    if (!isAuthenticated || isSigningOut) {
+      return;
+    }
+
     try {
       await logout();
-    } finally {
-      navigation.replace('Login');
+    } catch (error) {
+      throw error;
     }
   };
 
@@ -61,6 +68,7 @@ export default function CaretakerHomeScreen() {
         style={styles.secondaryButton}
         activeOpacity={0.8}
         onPress={handleLogout}
+        disabled={isSigningOut || !isAuthenticated}
       >
         <Text style={styles.secondaryButtonText}>{t('caretaker.signOut', { defaultValue: 'Sign out' })}</Text>
       </TouchableOpacity>

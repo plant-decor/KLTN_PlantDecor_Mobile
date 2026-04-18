@@ -9,10 +9,11 @@ import {
   ActivityIndicator,
   Alert,
   LayoutChangeEvent,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../constants';
@@ -23,6 +24,26 @@ import { useAuthStore, useCartStore } from '../../stores';
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 const PAGE_SIZE = 10;
 type PageToken = number | 'left-ellipsis' | 'right-ellipsis';
+
+type CartImageObject = {
+  imageUrl?: unknown;
+  url?: unknown;
+  uri?: unknown;
+  isPrimary?: unknown;
+};
+
+type CartImageFields = {
+  itemImageUrl?: unknown;
+  itemImage?: unknown;
+  productImageUrl?: unknown;
+  productImage?: unknown;
+  imageUrl?: unknown;
+  primaryImageUrl?: unknown;
+  thumbnailUrl?: unknown;
+  thumbnail?: unknown;
+  image?: unknown;
+  images?: unknown;
+};
 
 type CartDisplayItem = {
   id: string;
@@ -40,6 +61,69 @@ type CartDisplayItem = {
   nurseryPlantComboId: number | null;
   nurseryMaterialId: number | null;
   isAvailable: boolean;
+};
+
+const resolveCartImageCandidate = (value: unknown): string | undefined => {
+  if (typeof value === 'string' && value.trim().length > 0) {
+    return value;
+  }
+
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  const imageRecord = value as CartImageObject;
+  const candidate = imageRecord.imageUrl ?? imageRecord.url ?? imageRecord.uri;
+
+  return typeof candidate === 'string' && candidate.trim().length > 0
+    ? candidate
+    : undefined;
+};
+
+const resolveCartItemImage = (item: CartApiItem): string | undefined => {
+  const itemWithImageFields = item as CartApiItem & CartImageFields;
+
+  if (Array.isArray(itemWithImageFields.images)) {
+    const primaryFromCollection = itemWithImageFields.images
+      .filter((entry) => {
+        if (!entry || typeof entry !== 'object') {
+          return false;
+        }
+
+        const imageRecord = entry as CartImageObject;
+        return imageRecord.isPrimary === true;
+      })
+      .map(resolveCartImageCandidate)
+      .find((entry): entry is string => Boolean(entry));
+
+    if (primaryFromCollection) {
+      return primaryFromCollection;
+    }
+
+    const fallbackFromCollection = itemWithImageFields.images
+      .map(resolveCartImageCandidate)
+      .find((entry): entry is string => Boolean(entry));
+
+    if (fallbackFromCollection) {
+      return fallbackFromCollection;
+    }
+  }
+
+  const directCandidates = [
+    itemWithImageFields.itemImageUrl,
+    itemWithImageFields.itemImage,
+    itemWithImageFields.productImageUrl,
+    itemWithImageFields.productImage,
+    itemWithImageFields.primaryImageUrl,
+    itemWithImageFields.thumbnailUrl,
+    itemWithImageFields.thumbnail,
+    itemWithImageFields.imageUrl,
+    itemWithImageFields.image,
+  ];
+
+  return directCandidates
+    .map(resolveCartImageCandidate)
+    .find((entry): entry is string => Boolean(entry));
 };
 
 const mapCartItems = (
@@ -60,6 +144,7 @@ const mapCartItems = (
       name: item.productName,
       nurseryName: item.nurseryName,
       size: fallbackSize,
+      image: resolveCartItemImage(item),
       price: item.price,
       subTotal: item.subTotal ?? item.price * item.quantity,
       quantity: item.quantity,
@@ -76,6 +161,7 @@ export default function CartScreen() {
   const insets = useSafeAreaInsets();
   const [items, setItems] = useState<CartDisplayItem[]>([]);
   const [footerHeight, setFooterHeight] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
   const { isAuthenticated } = useAuthStore();
   const {
@@ -124,15 +210,17 @@ export default function CartScreen() {
     [fetchCart],
   );
 
-  useEffect(() => {
-    if (!isAuthenticated) {
-      return;
-    }
+  useFocusEffect(
+    useCallback(() => {
+      if (!isAuthenticated) {
+        return;
+      }
 
-    loadCartPage(1).catch(() => {
-      // Error state handled by UI; keep silent here.
-    });
-  }, [isAuthenticated, loadCartPage]);
+      void loadCartPage(1).catch(() => {
+        // Error state handled by UI; keep silent here.
+      });
+    }, [isAuthenticated, loadCartPage]),
+  );
 
   useEffect(() => {
     const fallbackSize = t('common.updating', { defaultValue: 'Updating' });
@@ -286,6 +374,21 @@ export default function CartScreen() {
       // preserve current list if paging fails
     });
   };
+
+  const handleRefresh = useCallback(() => {
+    if (!isAuthenticated || isRefreshing || isLoading) {
+      return;
+    }
+
+    setIsRefreshing(true);
+    void loadCartPage(1)
+      .catch(() => {
+        // Error state handled by UI; keep silent here.
+      })
+      .finally(() => {
+        setIsRefreshing(false);
+      });
+  }, [isAuthenticated, isLoading, isRefreshing, loadCartPage]);
 
   const renderCartItem = ({ item }: { item: CartDisplayItem }) => {
     const isUnavailable = !item.isAvailable;
@@ -451,6 +554,13 @@ export default function CartScreen() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={[styles.list, { paddingBottom: listBottomPadding }]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={COLORS.primary}
+          />
+        }
       />
 
       <View

@@ -60,6 +60,11 @@ export interface LoginRequest {
   deviceId: string;
 }
 
+export interface GoogleLoginRequest {
+  accessToken: string;
+  deviceId: string;
+}
+
 export interface RefreshTokenRequest {
   refreshToken: string;
 }
@@ -78,6 +83,13 @@ export interface LogoutAllResponse {
 
 // Matches the exact API envelope: { success, statusCode, message, payload: { accessToken, refreshToken } }
 export interface LoginResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: AuthTokens;
+}
+
+export interface GoogleLoginResponse {
   success: boolean;
   statusCode: number;
   message: string;
@@ -196,11 +208,23 @@ export interface ResetPasswordResponse {
 // Matches the decoded JWT payload from /api/Authentication/login
 export interface AuthJwtClaims {
   sub?: string;           // user id
+  nameid?: string;
   name?: string;          // full name
   email?: string;
   Role?: string;          // "Admin" | "Manager" | "Staff" | "Shipper" | "Caretaker" | "Customer"
+  role?: string | string[];
+  roles?: string[];
+  preferred_username?: string;
+  upn?: string;
   avatarURL?: string;
+  avatarUrl?: string;
   SecurityStamp?: string;
+  'http://schemas.microsoft.com/ws/2008/06/identity/claims/role'?: string | string[];
+  'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/role'?: string | string[];
+  'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier'?: string;
+  'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress'?: string;
+  'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name'?: string;
+  'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn'?: string;
   aud?: string;
   iss?: string;
   exp?: number;
@@ -448,6 +472,41 @@ export interface ShopSearchResponse {
   statusCode: number;
   message: string;
   payload: ShopSearchPayload;
+}
+
+export interface PreferencesRecommendationPlant {
+  id?: number | string | null;
+  plantId?: number | string | null;
+  commonPlantId?: number | string | null;
+  name?: string | null;
+  plantName?: string | null;
+  basePrice?: number | null;
+  price?: number | null;
+  isUniqueInstance?: boolean | null;
+  primaryImageUrl?: string | null;
+  imageUrl?: string | null;
+  images?: string[] | null;
+  createdAt?: string | null;
+}
+
+export interface PreferencesRecommendationPayload {
+  items?:
+    | PreferencesRecommendationPlant[]
+    | {
+        items?: PreferencesRecommendationPlant[] | null;
+      }
+    | null;
+  recommendations?: PreferencesRecommendationPlant[] | null;
+  data?: PreferencesRecommendationPlant[] | null;
+  totalCount?: number;
+}
+
+export interface PreferencesRecommendationResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload?: PreferencesRecommendationPayload | PreferencesRecommendationPlant[] | null;
+  data?: PreferencesRecommendationPayload | PreferencesRecommendationPlant[] | null;
 }
 
 export interface ShopSearchConfigGroup {
@@ -1522,6 +1581,7 @@ export interface PaginatedResponse<T> {
 // ==================== Navigation ====================
 export type RootStackParamList = {
   MainTabs: NavigatorScreenParams<MainTabParamList> | undefined;
+  Home: undefined;
   ShipperHome: undefined;
   ShippingList: undefined;
   CaretakerHome: undefined;
@@ -1564,7 +1624,7 @@ export type RootStackParamList = {
   Login: undefined;
   Register: undefined;
   Search: undefined;
-  Catalog: undefined;
+  Catalog: { keyword?: string } | undefined;
   CategoryPlants: { categoryId: string; categoryName: string };
   EditProfile: undefined;
   OrderHistory: undefined;

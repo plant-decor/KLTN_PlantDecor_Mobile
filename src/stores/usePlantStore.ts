@@ -75,6 +75,7 @@ interface PlantState {
   ) => Promise<NurseryPlantComboAndMaterialAvailability[]>;
   setSelectedCategory: (categoryId: string | null) => void;
   clearPlants: () => void;
+  resetState: () => void;
   clearError: () => void;
 }
 
@@ -396,6 +397,39 @@ export const usePlantStore = create<PlantState>((set) => ({
       nurseriesGotCommonPlants: [],
       nurseriesGotPlantCombos: [],
       nurseriesGotMaterials: [],
+      pageNumber: 1,
+      totalPages: 1,
+      nurseriesPageNumber: 1,
+      nurseriesTotalPages: 1,
+      commonPlantsPageNumber: 1,
+      commonPlantsTotalPages: 1,
+      commonPlantsByNurseryPageNumber: 1,
+      commonPlantsByNurseryTotalPages: 1,
+      shopInstancePlantsPageNumber: 1,
+      shopInstancePlantsTotalPages: 1,
+      shopInstancePlantsTotalCount: 0,
+      searchQuery: '',
+      selectedCategory: null,
+    });
+  },
+
+  resetState: () => {
+    set({
+      plants: [],
+      featuredPlants: [],
+      categories: [],
+      selectedPlant: null,
+      nurseries: [],
+      commonPlants: [],
+      commonPlantsByNursery: [],
+      shopInstancePlants: [],
+      nurseriesGotPlantInstances: [],
+      nurseriesGotCommonPlants: [],
+      nurseriesGotPlantCombos: [],
+      nurseriesGotMaterials: [],
+      isLoading: false,
+      isLoadingMore: false,
+      error: null,
       pageNumber: 1,
       totalPages: 1,
       nurseriesPageNumber: 1,

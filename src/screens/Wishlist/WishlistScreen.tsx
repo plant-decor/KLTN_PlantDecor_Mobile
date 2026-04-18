@@ -838,7 +838,7 @@ export default function WishlistScreen() {
         }
       />
 
-      {isLoading && items.length === 0 ? (
+      {(isLoading || isRefreshing) && items.length === 0 ? (
         <View style={styles.loaderContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>

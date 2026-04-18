@@ -148,7 +148,7 @@ const buildScheduleRange = () => {
 export default function CaretakerTasksScreen() {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
-  const { isAuthenticated } = useAuthStore();
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
 
   const [activeSegment, setActiveSegment] = useState<CaretakerSegment>('today');
@@ -821,9 +821,11 @@ export default function CaretakerTasksScreen() {
               defaultValue: 'Please login to continue.',
             })}
           </Text>
-          <TouchableOpacity style={styles.retryButton} onPress={() => navigation.replace('Login')}>
-            <Text style={styles.retryButtonText}>{t('common.login', { defaultValue: 'Login' })}</Text>
-          </TouchableOpacity>
+          <Text style={styles.emptySubtitle}>
+            {t('common.redirectingToLogin', {
+              defaultValue: 'Redirecting to login...',
+            })}
+          </Text>
         </View>
       </SafeAreaView>
     );

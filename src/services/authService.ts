@@ -14,7 +14,9 @@ import {
   UserGender,
   UpdateProfileRequest,
   LoginRequest,
+  GoogleLoginRequest,
   LoginResponse,
+  GoogleLoginResponse,
   RegisterRequest,
   RegisterResponse,
   ChangeAvatarPayload,
@@ -117,6 +119,140 @@ const normalizeUpdateGender = (rawGender: unknown): UserGender => {
   return 'Unknown';
 };
 
+const pickFirstNonEmptyString = (value: unknown): string | undefined => {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  }
+
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const resolved = pickFirstNonEmptyString(entry);
+      if (resolved) {
+        return resolved;
+      }
+    }
+  }
+
+  return undefined;
+};
+
+const readClaimAsString = (claims: AuthJwtClaims, keys: string[]): string | undefined => {
+  const claimRecord = claims as Record<string, unknown>;
+
+  for (const key of keys) {
+    const resolved = pickFirstNonEmptyString(claimRecord[key]);
+    if (resolved) {
+      return resolved;
+    }
+  }
+
+  return undefined;
+};
+
+const ROLE_PRIORITY = ['shipper', 'caretaker', 'admin', 'manager', 'staff', 'customer'] as const;
+
+const isRoleFieldName = (fieldName: string): boolean => {
+  const compact = fieldName.trim().toLowerCase().replace(/[^a-z]/g, '');
+
+  return (
+    compact === 'role' ||
+    compact === 'roles' ||
+    compact === 'rolename' ||
+    compact === 'userrole'
+  );
+};
+
+const flattenStringValues = (
+  value: unknown,
+  visitedObjects: WeakSet<object> = new WeakSet<object>(),
+  options?: { restrictObjectFields?: boolean }
+): string[] => {
+  if (typeof value === 'string') {
+    return value
+      .split(/[,;|]/g)
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+  }
+
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    if (visitedObjects.has(value as object)) {
+      return [];
+    }
+
+    visitedObjects.add(value as object);
+
+    const objectEntries = Object.entries(value as Record<string, unknown>);
+    const candidateEntries = options?.restrictObjectFields
+      ? objectEntries.filter(([key]) => isRoleFieldName(key))
+      : objectEntries;
+
+    return candidateEntries.flatMap(([, entry]) =>
+      flattenStringValues(entry, visitedObjects, options)
+    );
+  }
+
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((entry) => flattenStringValues(entry, visitedObjects, options));
+};
+
+const normalizeRoleCandidate = (rawRole: string): string | undefined => {
+  const normalized = rawRole.trim().toLowerCase();
+  if (normalized.length === 0) {
+    return undefined;
+  }
+
+  const cleaned = normalized.replace(/[\[\]"']/g, ' ').trim();
+  if (cleaned.length === 0) {
+    return undefined;
+  }
+
+  const roleTokens = cleaned
+    .split(/[\s,;|/_-]+/g)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+
+  const compactRoleTokens = roleTokens.map((entry) => entry.replace(/[^a-z]/g, ''));
+  const compactCleaned = cleaned.replace(/[^a-z]/g, '');
+
+  const matchedRole = ROLE_PRIORITY.find(
+    (role) =>
+      cleaned === role ||
+      compactCleaned === role ||
+      roleTokens.includes(role) ||
+      compactRoleTokens.includes(role)
+  );
+
+  return matchedRole;
+};
+
+const resolveNormalizedRole = (...candidates: unknown[]): string | undefined => {
+  for (const candidate of candidates) {
+    const roleValues =
+      candidate && typeof candidate === 'object'
+        ? flattenStringValues(candidate, new WeakSet<object>(), {
+            restrictObjectFields: true,
+          })
+        : flattenStringValues(candidate);
+
+    if (roleValues.length === 0) {
+      continue;
+    }
+
+    for (const roleValue of roleValues) {
+      const normalizedRole = normalizeRoleCandidate(roleValue);
+      if (normalizedRole) {
+        return normalizedRole;
+      }
+    }
+  }
+
+  return undefined;
+};
+
 const normalizeUser = (rawUser: any): User => {
   const normalizedGender = normalizeGender(rawUser?.gender);
   const normalizedPhoneNumber =
@@ -141,6 +277,15 @@ const normalizeUser = (rawUser: any): User => {
       : typeof rawUser?.receiveNotification === 'boolean'
         ? rawUser.receiveNotification
         : undefined;
+  const normalizedRole = resolveNormalizedRole(
+    rawUser?.role,
+    rawUser?.Role,
+    rawUser?.roles,
+    rawUser?.roleName,
+    rawUser?.RoleName,
+    rawUser?.userRole,
+    rawUser?.UserRole
+  );
 
   return {
     id: String(rawUser?.id ?? rawUser?.sub ?? ''),
@@ -170,13 +315,14 @@ const normalizeUser = (rawUser: any): User => {
     updatedAt: rawUser?.updatedAt,
     status: rawUser?.status,
     isVerified: rawUser?.isVerified,
-    role: rawUser?.role ?? rawUser?.Role,
+    role: normalizedRole,
   };
 };
 
 const buildUserFromToken = (accessToken: string): User | null => {
   try {
     const claims = jwtDecode<AuthJwtClaims>(accessToken);
+    const claimRecord = claims as Record<string, unknown>;
 
     // Force refresh flow when the access token has expired.
     if (typeof claims?.exp === 'number') {
@@ -186,16 +332,46 @@ const buildUserFromToken = (accessToken: string): User | null => {
       }
     }
 
-    if (!claims?.sub && !claims?.email) {
+    const tokenSubject = readClaimAsString(claims, [
+      'sub',
+      'nameid',
+      'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier',
+    ]);
+    const tokenEmail = readClaimAsString(claims, [
+      'email',
+      'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress',
+      'preferred_username',
+      'upn',
+      'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn',
+    ]);
+
+    if (!tokenSubject && !tokenEmail) {
       return null;
     }
 
+    const tokenName = readClaimAsString(claims, [
+      'name',
+      'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name',
+    ]);
+    const tokenRole = resolveNormalizedRole(
+      claimRecord.Role,
+      claimRecord.role,
+      claimRecord.roles,
+      claimRecord.roleName,
+      claimRecord.RoleName,
+      claimRecord.userRole,
+      claimRecord.UserRole,
+      claimRecord['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'],
+      claimRecord['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/role']
+    );
+    const tokenAvatar = readClaimAsString(claims, ['avatarURL', 'avatarUrl']);
+
     return normalizeUser({
-      id: claims.sub,
-      email: claims.email,
-      name: claims.name,
-      Role: claims.Role,
-      avatarURL: claims.avatarURL,
+      id: tokenSubject,
+      email: tokenEmail,
+      name: tokenName,
+      role: tokenRole,
+      avatarURL: tokenAvatar,
     });
   } catch {
     return null;
@@ -220,9 +396,45 @@ const resolveDeviceId = async (): Promise<string> => {
   }
 };
 
+type SignOutTokenSnapshot = {
+  accessToken: string | null;
+  refreshToken: string | null;
+};
+
+const readStoredTokenSnapshot = async (): Promise<SignOutTokenSnapshot> => {
+  const [accessToken, refreshToken] = await Promise.all([
+    SecureStore.getItemAsync(APP_CONFIG.SECURE_STORE_KEYS.ACCESS_TOKEN),
+    SecureStore.getItemAsync(APP_CONFIG.SECURE_STORE_KEYS.REFRESH_TOKEN),
+  ]);
+
+  return {
+    accessToken,
+    refreshToken,
+  };
+};
+
+let signOutRequestInFlight: Promise<void> | null = null;
+const runSignOutRequest = async (requestFactory: () => Promise<void>): Promise<void> => {
+  if (signOutRequestInFlight) {
+    return signOutRequestInFlight;
+  }
+
+  signOutRequestInFlight = requestFactory().finally(() => {
+    signOutRequestInFlight = null;
+  });
+
+  return signOutRequestInFlight;
+};
+
 export const authService = {
   setAuthFailureHandler,
   notifyAuthFailure,
+  getStoredTokenSnapshot: async (): Promise<SignOutTokenSnapshot> => {
+    return readStoredTokenSnapshot();
+  },
+  clearSessionTokens: async () => {
+    await clearStoredTokens();
+  },
   login: async (email: string, password: string, deviceId: string) => {
     const loginRequest: LoginRequest = { email, password, deviceId };
     const response = await api.post<LoginResponse>(
@@ -242,6 +454,31 @@ export const authService = {
 
     const user = buildUserFromToken(accessToken);
     return { user, tokens: { accessToken, refreshToken } };
+  },
+
+  loginWithGoogle: async (accessToken: string, deviceId: string) => {
+    const request: GoogleLoginRequest = { accessToken, deviceId };
+    const response = await api.post<GoogleLoginResponse>(
+      API.ENDPOINTS.LOGIN_GOOGLE,
+      request
+    );
+
+    const {
+      accessToken: appAccessToken,
+      refreshToken,
+    } = response.data.payload;
+
+    await SecureStore.setItemAsync(
+      APP_CONFIG.SECURE_STORE_KEYS.ACCESS_TOKEN,
+      appAccessToken
+    );
+    await SecureStore.setItemAsync(
+      APP_CONFIG.SECURE_STORE_KEYS.REFRESH_TOKEN,
+      refreshToken
+    );
+
+    const user = buildUserFromToken(appAccessToken);
+    return { user, tokens: { accessToken: appAccessToken, refreshToken } };
   },
 
   refreshToken: async (refreshToken?: string) => {
@@ -266,38 +503,50 @@ export const authService = {
     };
   },
 
-  logout: async () => {
-    try {
-      await api.post(API.ENDPOINTS.LOGOUT);
-    } catch {
-      // Ignore logout API errors
-    } finally {
-      await clearStoredTokens();
-    }
+  logout: async (tokenSnapshot?: SignOutTokenSnapshot) => {
+    await runSignOutRequest(async () => {
+      try {
+        const { accessToken, refreshToken } =
+          tokenSnapshot ?? (await readStoredTokenSnapshot());
+        const deviceId = await resolveDeviceId();
+        if (accessToken || refreshToken) {
+          await api.post(API.ENDPOINTS.LOGOUT, {
+            accessToken,
+            refreshToken,
+            deviceId,
+          });
+        }
+      } catch {
+        // Ignore logout API errors
+      } finally {
+        if (!tokenSnapshot) {
+          await clearStoredTokens();
+        }
+      }
+    });
   },
 
-  logoutAll: async () => {
-    try {
-      const [accessToken, refreshToken] = await Promise.all([
-        SecureStore.getItemAsync(APP_CONFIG.SECURE_STORE_KEYS.ACCESS_TOKEN),
-        SecureStore.getItemAsync(APP_CONFIG.SECURE_STORE_KEYS.REFRESH_TOKEN),
-      ]);
-
-      if (accessToken && refreshToken) {
-        const request: LogoutAllRequest = {
-          accessToken,
-          refreshToken,
-          deviceId: await resolveDeviceId(),
-        };
-        await api.post<LogoutAllResponse>(API.ENDPOINTS.LOGOUT_ALL, request);
-      } else {
-        await api.post(API.ENDPOINTS.LOGOUT);
+  logoutAll: async (tokenSnapshot?: SignOutTokenSnapshot) => {
+    await runSignOutRequest(async () => {
+      try {
+        const { accessToken, refreshToken } =
+          tokenSnapshot ?? (await readStoredTokenSnapshot());
+        if (accessToken && refreshToken) {
+          const request: LogoutAllRequest = {
+            accessToken,
+            refreshToken,
+            deviceId: await resolveDeviceId(),
+          };
+          await api.post<LogoutAllResponse>(API.ENDPOINTS.LOGOUT_ALL, request);
+        }
+      } catch {
+        // Ignore logout API errors
+      } finally {
+        if (!tokenSnapshot) {
+          await clearStoredTokens();
+        }
       }
-    } catch {
-      // Ignore logout API errors
-    } finally {
-      await clearStoredTokens();
-    }
+    });
   },
 
   getProfile: async () => {

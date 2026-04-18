@@ -5,6 +5,7 @@ import {
   Text,
   StyleSheet,
   ScrollView,
+  RefreshControl,
   TouchableOpacity,
   Image,
   FlatList,
@@ -22,11 +23,12 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, SPACING, RADIUS, SHADOWS } from '../../constants';
 import { BrandMark } from '../../components/branding';
-import { usePlantStore, useCartStore, useAuthStore, useWishlistStore, useEnumStore } from '../../stores';
+import { usePlantStore, useCartStore, useAuthStore, useWishlistStore } from '../../stores';
 import {
   AddCartItemRequest,
   CheckoutItem,
   MainTabParamList,
+  PreferencesRecommendationPlant,
   Plant,
   RootStackParamList,
   ShopSearchComboSummary,
@@ -34,7 +36,7 @@ import {
   WishlistItemType,
 } from '../../types';
 import { plantService } from '../../services';
-import { getWishlistKey, notify, resolveWishlistTarget } from '../../utils';
+import { getWishlistKey, notify } from '../../utils';
 
 type NavigationProp = CompositeNavigationProp<
   BottomTabNavigationProp<MainTabParamList, 'Home'>,
@@ -43,14 +45,14 @@ type NavigationProp = CompositeNavigationProp<
 
 type HomePlant = {
   id: string;
+  numericId: number;
+  commonPlantId: number | null;
   name: string;
   subtitle: string;
   price: number;
   isUniqueInstance: boolean;
   image?: string;
 };
-
-type HomeSortKey = 'newest' | 'priceAsc' | 'priceDesc';
 
 type WishlistTarget = {
   itemType: WishlistItemType;
@@ -76,37 +78,6 @@ type PendingNurserySelection = {
   image?: string;
   unitPrice: number;
   buyNowItemTypeName: 'CommonPlant' | 'NurseryMaterial' | 'NurseryPlantCombo';
-};
-
-const parseSortDescriptor = (
-  value: unknown
-): { sortBy: string; sortDirection: 'asc' | 'desc' } | null => {
-  if (typeof value !== 'string') {
-    return null;
-  }
-
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  const directMatch = trimmed.match(/^([a-zA-Z][\w]*)[\s._:-](asc|desc)$/i);
-  if (directMatch) {
-    return {
-      sortBy: directMatch[1],
-      sortDirection: directMatch[2].toLowerCase() as 'asc' | 'desc',
-    };
-  }
-
-  const camelCaseMatch = trimmed.match(/^([a-zA-Z][\w]*?)(Asc|Desc)$/);
-  if (camelCaseMatch) {
-    return {
-      sortBy: camelCaseMatch[1],
-      sortDirection: camelCaseMatch[2].toLowerCase() as 'asc' | 'desc',
-    };
-  }
-
-  return null;
 };
 
 const { width } = Dimensions.get('window');
@@ -143,6 +114,116 @@ const resolveComboWishlistTarget = (combo: ShopSearchComboSummary): WishlistTarg
   return { itemType: 'PlantCombo', itemId: comboId };
 };
 
+const resolveImageCandidate = (entry: unknown): string | undefined => {
+  if (typeof entry === 'string' && entry.trim().length > 0) {
+    return entry;
+  }
+
+  if (!entry || typeof entry !== 'object') {
+    return undefined;
+  }
+
+  const imageRecord = entry as {
+    imageUrl?: unknown;
+    url?: unknown;
+    uri?: unknown;
+  };
+  const candidate = imageRecord.imageUrl ?? imageRecord.url ?? imageRecord.uri;
+  return typeof candidate === 'string' && candidate.trim().length > 0
+    ? candidate
+    : undefined;
+};
+
+const resolveEntityImage = (entity: {
+  images?: unknown;
+  primaryImageUrl?: unknown;
+  imageUrl?: unknown;
+}): string | undefined => {
+  if (Array.isArray(entity.images)) {
+    const fromCollection = entity.images
+      .map(resolveImageCandidate)
+      .find((entry): entry is string => Boolean(entry));
+
+    if (fromCollection) {
+      return fromCollection;
+    }
+  }
+
+  const primary = resolveImageCandidate(entity.primaryImageUrl);
+  if (primary) {
+    return primary;
+  }
+
+  return resolveImageCandidate(entity.imageUrl);
+};
+
+const resolveHomePlantWishlistTarget = (plant: HomePlant): WishlistTarget | null => {
+  const entityId = plant.numericId;
+  if (!entityId) {
+    return null;
+  }
+
+  const shouldUsePlantInstanceTarget =
+    plant.isUniqueInstance ||
+    (plant.commonPlantId !== null && plant.commonPlantId !== entityId);
+
+  if (shouldUsePlantInstanceTarget) {
+    return { itemType: 'PlantInstance', itemId: entityId };
+  }
+
+  return {
+    itemType: 'Plant',
+    itemId: plant.commonPlantId ?? entityId,
+  };
+};
+
+const resolveRecommendationImage = (
+  item: PreferencesRecommendationPlant
+): string | undefined => {
+  return resolveEntityImage(item);
+};
+
+const mapRecommendationItemToHomePlant = (
+  item: PreferencesRecommendationPlant,
+  subtitle: string
+): HomePlant | null => {
+  const numericId =
+    toPositiveInt(item.plantId) ??
+    toPositiveInt(item.id) ??
+    toPositiveInt(item.commonPlantId);
+
+  if (!numericId) {
+    return null;
+  }
+
+  const rawPrice = Number(item.basePrice ?? item.price);
+  const price = Number.isFinite(rawPrice) ? Math.max(0, rawPrice) : 0;
+  const displayName =
+    (typeof item.name === 'string' ? item.name.trim() : '') ||
+    (typeof item.plantName === 'string' ? item.plantName.trim() : '') ||
+    `Plant #${numericId}`;
+
+  return {
+    id: String(numericId),
+    numericId,
+    commonPlantId: toPositiveInt(item.commonPlantId),
+    name: displayName,
+    subtitle,
+    price,
+    isUniqueInstance: Boolean(item.isUniqueInstance),
+    image: resolveRecommendationImage(item),
+  };
+};
+
+const resolveSliderIndex = (scrollX: number, itemCount: number) => {
+  if (itemCount <= 1) {
+    return 0;
+  }
+
+  const estimatedIndex = Math.round(scrollX / (CARD_WIDTH + SPACING.md));
+  return Math.max(0, Math.min(itemCount - 1, estimatedIndex));
+};
+
 export default function HomeScreen() {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
@@ -153,19 +234,21 @@ export default function HomeScreen() {
     fetchNurseriesGotMaterialByMaterialId,
     fetchNurseriesGotPlantComboByPlantComboId,
   } = usePlantStore();
-  const loadEnumResource = useEnumStore((state) => state.loadResource);
-  const getEnumValues = useEnumStore((state) => state.getEnumValues);
-  const enumGroups = useEnumStore((state) => state.groups);
   const addCartItem = useCartStore((state) => state.addCartItem);
   const fetchCart = useCartStore((state) => state.fetchCart);
   const hasLoadedCart = useCartStore((state) => state.hasLoadedCart);
   const { isAuthenticated } = useAuthStore();
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
-  const [selectedSort, setSelectedSort] = useState<HomeSortKey>('newest');
   const [keyword, setKeyword] = useState('');
   const [aiListWidth, setAiListWidth] = useState(0);
   const [aiContentWidth, setAiContentWidth] = useState(0);
   const [aiScrollX, setAiScrollX] = useState(0);
+  const [materialScrollX, setMaterialScrollX] = useState(0);
+  const [comboScrollX, setComboScrollX] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [recommendedPlants, setRecommendedPlants] = useState<HomePlant[]>([]);
+  const [hasRecommendationPayload, setHasRecommendationPayload] = useState(false);
+  const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(false);
   const wishlistStatus = useWishlistStore((state) => state.statusByKey);
   const ensureWishlistStatus = useWishlistStore((state) => state.ensureStatus);
   const toggleWishlist = useWishlistStore((state) => state.toggleWishlist);
@@ -183,10 +266,6 @@ export default function HomeScreen() {
   const [isLoadingFeaturedProducts, setIsLoadingFeaturedProducts] = useState(false);
 
   useEffect(() => {
-    void loadEnumResource('plant-sort');
-  }, [loadEnumResource]);
-
-  useEffect(() => {
     if (!isAuthenticated || hasLoadedCart) {
       return;
     }
@@ -196,59 +275,65 @@ export default function HomeScreen() {
     });
   }, [fetchCart, hasLoadedCart, isAuthenticated]);
 
-  const sortConfig = useMemo(
-    () => {
-      const fallbackConfig: Record<
-        HomeSortKey,
-        { sortBy: string; sortDirection: 'asc' | 'desc' }
-      > = {
-        newest: { sortBy: 'createdAt', sortDirection: 'desc' },
-        priceAsc: { sortBy: 'basePrice', sortDirection: 'asc' },
-        priceDesc: { sortBy: 'basePrice', sortDirection: 'desc' },
-      };
-
-      const enumValues = getEnumValues(['PlantSort', 'plantSort', 'sortBy']);
-
-      enumValues.forEach((item) => {
-        const parsed = parseSortDescriptor(item.value) ?? parseSortDescriptor(item.name);
-        if (!parsed) {
-          return;
-        }
-
-        const normalized = `${item.name} ${String(item.value)}`.toLowerCase();
-        if (normalized.includes('new') || normalized.includes('create') || normalized.includes('latest')) {
-          fallbackConfig.newest = parsed;
-          return;
-        }
-
-        if (
-          (normalized.includes('price') && normalized.includes('asc')) ||
-          normalized.includes('low')
-        ) {
-          fallbackConfig.priceAsc = parsed;
-          return;
-        }
-
-        if (
-          (normalized.includes('price') && normalized.includes('desc')) ||
-          normalized.includes('high')
-        ) {
-          fallbackConfig.priceDesc = parsed;
-        }
-      });
-
-      return fallbackConfig;
-    },
-    [enumGroups, getEnumValues]
-  );
+  useEffect(() => {
+    fetchPlants({
+      sortBy: 'createdAt',
+      sortDirection: 'desc',
+    });
+  }, [fetchPlants]);
 
   useEffect(() => {
-    const selectedSortConfig = sortConfig[selectedSort] ?? sortConfig.newest;
-    fetchPlants({
-      sortBy: selectedSortConfig.sortBy,
-      sortDirection: selectedSortConfig.sortDirection,
-    });
-  }, [fetchPlants, selectedSort, sortConfig]);
+    if (!isAuthenticated) {
+      setHasRecommendationPayload(false);
+      setRecommendedPlants([]);
+      setIsLoadingRecommendations(false);
+      return;
+    }
+
+    let isMounted = true;
+
+    const loadRecommendations = async () => {
+      setIsLoadingRecommendations(true);
+
+      try {
+        const payload = await plantService.getPreferencesRecommendations();
+
+        if (!isMounted) {
+          return;
+        }
+
+        if (payload === null) {
+          setHasRecommendationPayload(false);
+          setRecommendedPlants([]);
+          return;
+        }
+
+        const subtitle = t('home.defaultSubtitle');
+        const normalizedRecommendations = payload
+          .map((entry) => mapRecommendationItemToHomePlant(entry, subtitle))
+          .filter((entry): entry is HomePlant => Boolean(entry))
+          .slice(0, 8);
+
+        setHasRecommendationPayload(true);
+        setRecommendedPlants(normalizedRecommendations);
+      } catch {
+        if (isMounted) {
+          setHasRecommendationPayload(false);
+          setRecommendedPlants([]);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingRecommendations(false);
+        }
+      }
+    };
+
+    void loadRecommendations();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isAuthenticated, t]);
 
   useEffect(() => {
     let isMounted = true;
@@ -306,26 +391,36 @@ export default function HomeScreen() {
     };
   }, []);
 
-  const homePlants = useMemo<HomePlant[]>(() => {
+  const newestPlants = useMemo<HomePlant[]>(() => {
     if (plants.length === 0) {
       return [];
     }
 
-    return plants.slice(0, 4).map((item: Plant) => ({
-      id: String(item.id),
-      name: item.name,
-      subtitle: t('home.defaultSubtitle'),
-      price: item.basePrice ?? 0,
-      isUniqueInstance: item.isUniqueInstance,
-      image: item.images?.find((image) => typeof image === 'string' && image.trim().length > 0),
-    }));
+    const subtitle = t('home.defaultSubtitle');
+    return plants
+      .slice(0, 8)
+      .map((item: Plant) => ({
+        id: String(item.id),
+        numericId: toPositiveInt(item.id) ?? 0,
+        commonPlantId: toPositiveInt(item.commonPlantId),
+        name: item.name,
+        subtitle,
+        price: item.basePrice ?? 0,
+        isUniqueInstance: item.isUniqueInstance,
+        image: resolveEntityImage(
+          item as {
+            images?: unknown;
+            primaryImageUrl?: unknown;
+            imageUrl?: unknown;
+          }
+        ),
+      }))
+      .filter((item) => item.numericId > 0);
   }, [plants, t]);
 
-  const homePlantEntities = useMemo(() => plants.slice(0, 4), [plants]);
-
   const wishlistTargets = useMemo(() => {
-    const plantTargets = homePlantEntities
-      .map(resolveWishlistTarget)
+    const plantTargets = [...newestPlants, ...recommendedPlants]
+      .map(resolveHomePlantWishlistTarget)
       .filter((target): target is WishlistTarget => target !== null);
 
     const materialTargets = featuredMaterials
@@ -342,7 +437,7 @@ export default function HomeScreen() {
     });
 
     return Array.from(dedupedTargets.values());
-  }, [featuredCombos, featuredMaterials, homePlantEntities]);
+  }, [featuredCombos, featuredMaterials, newestPlants, recommendedPlants]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -379,6 +474,102 @@ export default function HomeScreen() {
     },
     [isAuthenticated, navigation, t]
   );
+
+  const handleSearchSubmit = useCallback(() => {
+    const trimmedKeyword = keyword.trim();
+
+    if (trimmedKeyword.length > 0) {
+      navigation.navigate('Catalog', { keyword: trimmedKeyword });
+      return;
+    }
+
+    navigation.navigate('Catalog');
+  }, [keyword, navigation]);
+
+  const handleRefresh = useCallback(() => {
+    if (isRefreshing) {
+      return;
+    }
+
+    setIsRefreshing(true);
+
+    const refreshFeaturedProducts = async () => {
+      try {
+        const payload = await plantService.searchShop({
+          pagination: {
+            pageNumber: 1,
+            pageSize: 24,
+          },
+          includePlants: false,
+          includeMaterials: true,
+          includeCombos: true,
+          sortBy: 'CreatedAt',
+          sortDirection: 'Desc',
+        });
+
+        const featuredItems = payload.items?.items ?? [];
+        const materialItems = featuredItems
+          .filter((entry) => entry.type === 'Material')
+          .map((entry) => entry.material)
+          .filter((entry): entry is ShopSearchMaterialSummary => Boolean(entry))
+          .slice(0, 6);
+        const comboItems = featuredItems
+          .filter((entry) => entry.type === 'Combo')
+          .map((entry) => entry.combo)
+          .filter((entry): entry is ShopSearchComboSummary => Boolean(entry))
+          .slice(0, 6);
+
+        setFeaturedMaterials(materialItems);
+        setFeaturedCombos(comboItems);
+      } catch {
+        setFeaturedMaterials([]);
+        setFeaturedCombos([]);
+      }
+    };
+
+    const refreshRecommendations = async () => {
+      try {
+        const payload = await plantService.getPreferencesRecommendations();
+
+        if (payload === null) {
+          setHasRecommendationPayload(false);
+          setRecommendedPlants([]);
+          return;
+        }
+
+        const subtitle = t('home.defaultSubtitle');
+        const normalizedRecommendations = payload
+          .map((entry) => mapRecommendationItemToHomePlant(entry, subtitle))
+          .filter((entry): entry is HomePlant => Boolean(entry))
+          .slice(0, 8);
+
+        setHasRecommendationPayload(true);
+        setRecommendedPlants(normalizedRecommendations);
+      } catch {
+        setHasRecommendationPayload(false);
+        setRecommendedPlants([]);
+      }
+    };
+
+    const refreshTasks: Promise<unknown>[] = [
+      fetchPlants({
+        sortBy: 'createdAt',
+        sortDirection: 'desc',
+      }),
+      refreshFeaturedProducts(),
+    ];
+
+    if (isAuthenticated) {
+      refreshTasks.push(refreshRecommendations());
+      refreshTasks.push(
+        fetchCart({ pageNumber: 1, pageSize: 20 }).catch(() => undefined)
+      );
+    }
+
+    void Promise.all(refreshTasks).finally(() => {
+      setIsRefreshing(false);
+    });
+  }, [fetchCart, fetchPlants, isAuthenticated, isRefreshing, t]);
 
   const submitAddToCart = useCallback(
     async (request: AddCartItemRequest) => {
@@ -553,7 +744,7 @@ export default function HomeScreen() {
   );
 
   const handleSelectPlantNursery = useCallback(
-    async (plant: Plant) => {
+    async (plant: HomePlant) => {
       if (plant.isUniqueInstance) {
         notify({
           message: t('catalog.uniquePlantCannotCart', {
@@ -567,12 +758,12 @@ export default function HomeScreen() {
         {
           mode: 'plant',
           displayName: plant.name,
-          image: plant.images?.find((image) => typeof image === 'string' && image.trim().length > 0),
-          unitPrice: plant.basePrice ?? 0,
+          image: plant.image,
+          unitPrice: plant.price,
           buyNowItemTypeName: 'CommonPlant',
         },
         async () => {
-          const options = await fetchNurseriesGotCommonPlantByPlantId(Number(plant.id));
+          const options = await fetchNurseriesGotCommonPlantByPlantId(plant.numericId);
           return (options ?? []).map((option) => ({
             nurseryId: option.nurseryId,
             nurseryName: option.nurseryName,
@@ -645,15 +836,10 @@ export default function HomeScreen() {
   );
 
   const handleAddToCart = useCallback(
-    async (plantId: string) => {
-      const targetPlant = plants.find((plant) => String(plant.id) === plantId);
-      if (!targetPlant) {
-        return;
-      }
-
-      await handleSelectPlantNursery(targetPlant);
+    async (plant: HomePlant) => {
+      await handleSelectPlantNursery(plant);
     },
-    [handleSelectPlantNursery, plants]
+    [handleSelectPlantNursery]
   );
 
   const isWishlistTargetActive = useCallback(
@@ -713,15 +899,10 @@ export default function HomeScreen() {
   );
 
   const handleToggleWishlist = useCallback(
-    async (plantId: string) => {
-      const targetPlant = plants.find((plant) => String(plant.id) === plantId);
-      if (!targetPlant) {
-        return;
-      }
-
-      await handleToggleWishlistTarget(resolveWishlistTarget(targetPlant));
+    async (plant: HomePlant) => {
+      await handleToggleWishlistTarget(resolveHomePlantWishlistTarget(plant));
     },
-    [handleToggleWishlistTarget, plants]
+    [handleToggleWishlistTarget]
   );
 
   const handleToggleMaterialWishlist = useCallback(
@@ -739,15 +920,8 @@ export default function HomeScreen() {
   );
 
   const isWishlisted = useCallback(
-    (plantId: string) => {
-      const targetPlant = plants.find((plant) => String(plant.id) === plantId);
-      if (!targetPlant) {
-        return false;
-      }
-
-      return isWishlistTargetActive(resolveWishlistTarget(targetPlant));
-    },
-    [isWishlistTargetActive, plants]
+    (plant: HomePlant) => isWishlistTargetActive(resolveHomePlantWishlistTarget(plant)),
+    [isWishlistTargetActive]
   );
 
   const renderPlantCard = ({ item }: { item: HomePlant }) => {
@@ -768,30 +942,21 @@ export default function HomeScreen() {
             </View>
           )}
 
-          <View style={styles.hotBadge}>
-            <Text style={styles.hotBadgeText}>{t('home.hot')}</Text>
-          </View>
-
           {!item.isUniqueInstance && (
             <TouchableOpacity
               style={styles.favoriteBtn}
               onPress={(event) => {
                 event.stopPropagation();
-                void handleToggleWishlist(item.id);
+                void handleToggleWishlist(item);
               }}
             >
               <Ionicons
-                name={isWishlisted(item.id) ? 'heart' : 'heart-outline'}
+                name={isWishlisted(item) ? 'heart' : 'heart-outline'}
                 size={16}
-                color={isWishlisted(item.id) ? COLORS.error : COLORS.white}
+                color={isWishlisted(item) ? COLORS.error : COLORS.white}
               />
             </TouchableOpacity>
           )}
-
-          <View style={styles.ratingBadge}>
-            <Ionicons name="star" size={10} color={COLORS.warning} />
-            <Text style={styles.ratingBadgeText}>4.8</Text>
-          </View>
         </View>
 
         <View style={styles.plantInfo}>
@@ -804,7 +969,7 @@ export default function HomeScreen() {
                 style={styles.plusBtn}
                 onPress={(event) => {
                   event.stopPropagation();
-                  void handleAddToCart(item.id);
+                  void handleAddToCart(item);
                 }}
               >
                 <Ionicons name="add" size={15} color={COLORS.black} />
@@ -965,15 +1130,43 @@ export default function HomeScreen() {
     );
   };
 
-  const hasMoreAiItems = homePlants.length > 1;
+  const hasMoreAiItems = newestPlants.length > 1;
   const showAiArrowLeft = aiScrollX > 4;
   const showAiArrowRight = hasMoreAiItems
     ? aiContentWidth === 0 || aiContentWidth - aiListWidth - aiScrollX > 4
     : false;
+  const showRecommendations =
+    isAuthenticated && hasRecommendationPayload && recommendedPlants.length > 0;
+  const materialSliderIndex = resolveSliderIndex(materialScrollX, featuredMaterials.length);
+  const comboSliderIndex = resolveSliderIndex(comboScrollX, featuredCombos.length);
   const isNurseryActionDisabled =
     isNurseryPickerLoading ||
     availableNurseryOptions.length === 0 ||
     selectedCartNurseryId === null;
+
+  const renderSliderIndicators = (
+    totalItems: number,
+    activeIndex: number,
+    keyPrefix: string
+  ) => {
+    if (totalItems <= 1) {
+      return null;
+    }
+
+    return (
+      <View style={styles.sliderIndicatorRow}>
+        {Array.from({ length: totalItems - 1 }).map((_, index) => (
+          <View
+            key={`${keyPrefix}-${index}`}
+            style={[
+              styles.sliderIndicatorDot,
+              index === activeIndex && styles.sliderIndicatorDotActive,
+            ]}
+          />
+        ))}
+      </View>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -981,6 +1174,13 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.contentWrap}
         stickyHeaderIndices={[0]}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={COLORS.primary}
+          />
+        }
       >
         <View style={styles.stickyHeader}>
           <View style={styles.header}>
@@ -1018,14 +1218,16 @@ export default function HomeScreen() {
                 placeholderTextColor="#0DA84D"
                 value={keyword}
                 onChangeText={setKeyword}
+                onSubmitEditing={handleSearchSubmit}
+                returnKeyType="search"
               />
             </View>
           </View>
         </View>
 
         <View style={styles.sectionHeader}>
-          <Ionicons name="sparkles" size={16} color={COLORS.primaryLight} />
-          <Text style={styles.sectionTitle}>{t('home.aiSuggestions')}</Text>
+          <Ionicons name="time-outline" size={16} color={COLORS.primaryLight} />
+          <Text style={styles.sectionTitle}>{t('home.newestPlants')}</Text>
         </View>
 
         <View
@@ -1033,9 +1235,9 @@ export default function HomeScreen() {
           onLayout={(event) => setAiListWidth(event.nativeEvent.layout.width)}
         >
           <FlatList
-            data={homePlants}
+            data={newestPlants}
             renderItem={renderPlantCard}
-            keyExtractor={(item) => `ai-${item.id}`}
+            keyExtractor={(item) => `newest-${item.id}`}
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.aiList}
@@ -1062,36 +1264,53 @@ export default function HomeScreen() {
         </View>
 
         <LinearGradient
-          colors={[COLORS.primaryDark, COLORS.primary]}
+          colors={['#1B4332', '#2D6A4F']}
           start={{ x: 0, y: 0.5 }}
           end={{ x: 1, y: 0.5 }}
           style={styles.banner}
         >
           <View style={styles.bannerContent}>
             <View style={styles.bannerLeft}>
-              <Text style={styles.bannerTag}>{t('home.summerTag')}</Text>
-              <Text style={styles.bannerTitle}>{t('home.summerTitle', { newline: '\n' })}</Text>
-              <TouchableOpacity style={styles.bannerBtn}>
-                <Text style={styles.bannerBtnText}>{t('home.discoverNow')}</Text>
+              <Text style={styles.bannerTag}>{t('home.careServiceTag')}</Text>
+              <Text style={styles.bannerTitle}>{t('home.careServiceTitle', { newline: '\n' })}</Text>
+              <TouchableOpacity
+                style={styles.bannerBtn}
+                onPress={() => navigation.navigate('ServiceTab')}
+              >
+                <Text style={styles.bannerBtnText}>{t('home.bookCareNow')}</Text>
               </TouchableOpacity>
             </View>
             <View style={styles.bannerRight}>
-              <Ionicons name="leaf" size={72} color={COLORS.secondaryLight} />
+              <Ionicons name="construct-outline" size={66} color={COLORS.secondaryLight} />
             </View>
           </View>
         </LinearGradient>
 
-        <Text style={styles.bestSellerTitle}>{t('home.bestSeller')}</Text>
+        {isAuthenticated && isLoadingRecommendations ? (
+          <View style={styles.featuredLoadingWrap}>
+            <ActivityIndicator size="small" color={COLORS.primary} />
+          </View>
+        ) : showRecommendations ? (
+          <>
+            <View style={styles.sectionHeader}>
+              <Ionicons name="thumbs-up-outline" size={16} color={COLORS.primaryLight} />
+              <Text style={styles.sectionTitle}>{t('home.recommendations')}</Text>
+            </View>
 
-        <FlatList
-          data={homePlants}
-          renderItem={renderPlantCard}
-          keyExtractor={(item) => `best-${item.id}`}
-          numColumns={2}
-          columnWrapperStyle={styles.plantRow}
-          scrollEnabled={false}
-          contentContainerStyle={styles.bestList}
-        />
+            <FlatList
+              data={recommendedPlants}
+              renderItem={renderPlantCard}
+              keyExtractor={(item, index) => `recommend-${item.id}-${index}`}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.aiList}
+              ItemSeparatorComponent={() => <View style={styles.aiSeparator} />}
+              snapToInterval={CARD_WIDTH + SPACING.md}
+              snapToAlignment="start"
+              decelerationRate="fast"
+            />
+          </>
+        ) : null}
 
         <View style={styles.featuredSectionHeader}>
           <Text style={styles.featuredSectionTitle}>
@@ -1104,15 +1323,27 @@ export default function HomeScreen() {
             <ActivityIndicator size="small" color={COLORS.primary} />
           </View>
         ) : (
-          <FlatList
-            data={featuredMaterials}
-            renderItem={renderMaterialCard}
-            keyExtractor={(item) => `home-material-${item.id}`}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.featuredList}
-            ItemSeparatorComponent={() => <View style={styles.featuredSeparator} />}
-          />
+          <>
+            <FlatList
+              data={featuredMaterials}
+              renderItem={renderMaterialCard}
+              keyExtractor={(item) => `home-material-${item.id}`}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.featuredList}
+              ItemSeparatorComponent={() => <View style={styles.featuredSeparator} />}
+              snapToInterval={CARD_WIDTH + SPACING.md}
+              snapToAlignment="start"
+              decelerationRate="fast"
+              onScroll={(event) => setMaterialScrollX(event.nativeEvent.contentOffset.x)}
+              scrollEventThrottle={16}
+            />
+            {renderSliderIndicators(
+              featuredMaterials.length,
+              materialSliderIndex,
+              'material-slider'
+            )}
+          </>
         )}
 
         <View style={styles.featuredSectionHeader}>
@@ -1126,15 +1357,27 @@ export default function HomeScreen() {
             <ActivityIndicator size="small" color={COLORS.primary} />
           </View>
         ) : (
-          <FlatList
-            data={featuredCombos}
-            renderItem={renderComboCard}
-            keyExtractor={(item) => `home-combo-${item.id}`}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.featuredList}
-            ItemSeparatorComponent={() => <View style={styles.featuredSeparator} />}
-          />
+          <>
+            <FlatList
+              data={featuredCombos}
+              renderItem={renderComboCard}
+              keyExtractor={(item) => `home-combo-${item.id}`}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.featuredList}
+              ItemSeparatorComponent={() => <View style={styles.featuredSeparator} />}
+              snapToInterval={CARD_WIDTH + SPACING.md}
+              snapToAlignment="start"
+              decelerationRate="fast"
+              onScroll={(event) => setComboScrollX(event.nativeEvent.contentOffset.x)}
+              scrollEventThrottle={16}
+            />
+            {renderSliderIndicators(
+              featuredCombos.length,
+              comboSliderIndex,
+              'combo-slider'
+            )}
+          </>
         )}
 
         <View style={styles.bottomSpace} />
@@ -1452,10 +1695,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.textPrimary,
   },
-  plantRow: {
-    justifyContent: 'space-between',
-    marginBottom: SPACING.md,
-  },
   plantCard: {
     width: CARD_WIDTH,
     backgroundColor: COLORS.gray50,
@@ -1484,20 +1723,6 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  hotBadge: {
-    position: 'absolute',
-    left: SPACING.sm,
-    top: SPACING.sm,
-    backgroundColor: COLORS.error,
-    borderRadius: RADIUS.md,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 3,
-  },
-  hotBadgeText: {
-    color: COLORS.white,
-    fontSize: FONTS.sizes.sm,
-    fontWeight: '700',
-  },
   favoriteBtn: {
     position: 'absolute',
     top: SPACING.sm,
@@ -1508,23 +1733,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.gray500,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  ratingBadge: {
-    position: 'absolute',
-    left: SPACING.sm,
-    bottom: SPACING.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: COLORS.gray800,
-    borderRadius: RADIUS.md,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 4,
-  },
-  ratingBadgeText: {
-    color: COLORS.white,
-    fontSize: FONTS.sizes.md,
-    fontWeight: '600',
   },
   productTypeBadge: {
     position: 'absolute',
@@ -1631,13 +1839,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: COLORS.primary,
   },
-  bestSellerTitle: {
-    marginTop: SPACING.xl,
-    marginBottom: SPACING.md,
-    fontSize: FONTS.sizes['3xl'],
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-  },
   featuredSectionHeader: {
     marginTop: SPACING.lg,
     marginBottom: SPACING.sm,
@@ -1653,13 +1854,28 @@ const styles = StyleSheet.create({
   featuredSeparator: {
     width: SPACING.md,
   },
+  sliderIndicatorRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: SPACING.xs,
+    marginBottom: SPACING.sm,
+  },
+  sliderIndicatorDot: {
+    width: 6,
+    height: 6,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.gray300,
+  },
+  sliderIndicatorDotActive: {
+    width: 16,
+    backgroundColor: COLORS.primary,
+  },
   featuredLoadingWrap: {
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 96,
-  },
-  bestList: {
-    paddingBottom: SPACING.lg,
   },
   bottomSpace: {
     height: 80,

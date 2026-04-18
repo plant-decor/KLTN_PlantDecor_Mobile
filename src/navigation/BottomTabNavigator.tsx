@@ -36,14 +36,14 @@ export default function BottomTabNavigator() {
         name="Home"
         component={HomeScreen}
         options={{
-          tabBarIcon: ({ color }) => <ICONS.home width={25} height={28} color={color} />,
+          tabBarIcon: ({ color }) => <ICONS.home width={32} height={32} color={color} />,
         }}
       />
       <Tab.Screen
         name="Plants"
         component={CatalogScreen}
         options={{
-          tabBarIcon: ({ color }) => <ICONS.plants width={25} height={28} color={color} />,
+          tabBarIcon: ({ color }) => <ICONS.plants width={32} height={32} color={color} />,
           tabBarStyle: { display: 'none' },
         }}
       />
@@ -54,7 +54,7 @@ export default function BottomTabNavigator() {
           tabBarIcon: () => (
             <View style={styles.centerOuterRing}>
               <View style={styles.centerIconWrap}>
-                <ICONS.aiDesign width={28} height={32} color={COLORS.black} />
+                <ICONS.aiDesign width={32} height={32} color={COLORS.black} />
               </View>
             </View>
           ),
@@ -93,7 +93,7 @@ export default function BottomTabNavigator() {
         name="Profile"
         component={ProfileScreen}
         options={{
-          tabBarIcon: ({ color }) => <ICONS.profile width={16} height={18} color={color} />,
+          tabBarIcon: ({ color }) => <ICONS.profile width={20} height={22} color={color} />,
         }}
       />
     </Tab.Navigator>
@@ -105,7 +105,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: 12,
+    bottom: 20,
     alignItems: 'center',
   },
   tabBar: {

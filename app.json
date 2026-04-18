@@ -2,6 +2,7 @@
   "expo": {
     "name": "PlantDecor",
     "slug": "plantdecor",
+    "scheme": "plantdecor",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -43,7 +44,8 @@
           "locationWhenInUsePermission": "PlantDecor needs your location to autofill latitude and longitude in your profile."
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "@react-native-google-signin/google-signin"
     ]
   }
 }

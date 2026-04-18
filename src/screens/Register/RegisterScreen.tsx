@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -9,32 +9,45 @@ import {
   Platform,
   ScrollView,
   Image,
-  Dimensions,
   Alert,
+  useWindowDimensions,
 } from "react-native";
+import * as Application from "expo-application";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useNavigation } from "@react-navigation/native";
 import { useTranslation } from "react-i18next";
-import { COLORS, ICONS, RADIUS, SPACING } from "../../constants";
+import { COLORS, ICONS, IMAGES, RADIUS, SPACING } from "../../constants";
 import { BrandMark } from "../../components/branding";
+import { googleSignInService } from "../../services/googleSignInService";
 import { RootStackParamList } from "../../types";
 import { useAuthStore } from "../../stores/useAuthStore";
+import { resolveDeviceId } from "../../utils/authFlow";
+import {
+  resolveGoogleAuthErrorMessage,
+  resolveRegisterErrorMessage,
+} from "../../utils/authErrors";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, "Register">;
 
-const { width } = Dimensions.get("window");
 const HERO_HEIGHT = 352;
+const CARD_TOP_SPACER = HERO_HEIGHT - 48;
 
-const TOP_IMAGE =
-  "https://images.unsplash.com/photo-1485955900006-10f4d324d411?auto=format&fit=crop&w=1400&q=80";
+const TOP_IMAGE = IMAGES.registerBG;
 
 export default function RegisterScreen() {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
   const register = useAuthStore((state) => state.register);
+  const loginWithGoogle = useAuthStore((state) => state.loginWithGoogle);
   const isLoading = useAuthStore((state) => state.isLoading);
+  const { height: windowHeight } = useWindowDimensions();
+  const cardMinHeight = Math.max(0, windowHeight - CARD_TOP_SPACER);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [deviceId, setDeviceId] = useState("");
+  const isExpoGoRuntime =
+    (Application.applicationId ?? "").toLowerCase() === "host.exp.exponent";
 
   const registerLabel = i18n.language?.startsWith("vi")
     ? "Đăng\u00A0ký"
@@ -47,61 +60,110 @@ export default function RegisterScreen() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
+  useEffect(() => {
+    resolveDeviceId().then(setDeviceId);
+  }, []);
+
   const handleRegister = async () => {
+    const normalizedEmail = email.trim();
+    const normalizedFullName = fullName.trim();
+    const normalizedUsername = username.trim();
+    const normalizedPhoneNumber = phoneNumber.trim();
+    const hasPassword = password.trim().length > 0;
+    const hasConfirmPassword = confirmPassword.trim().length > 0;
+
     // Basic validation
     if (
-      !email ||
-      !password ||
-      !confirmPassword ||
-      !fullName ||
-      !username ||
-      !phoneNumber
+      !normalizedEmail ||
+      !hasPassword ||
+      !hasConfirmPassword ||
+      !normalizedFullName ||
+      !normalizedUsername ||
+      !normalizedPhoneNumber
     ) {
       Alert.alert(
-        t("common.error"),
-        t("register.fillAllFields") || "Please fill in all fields",
+        t("common.error", { defaultValue: "Error" }),
+        t("register.fillAllFields", { defaultValue: "Please fill in all fields." })
       );
       return;
     }
 
     if (password !== confirmPassword) {
       Alert.alert(
-        t("common.error"),
-        t("register.passwordMismatch") || "Passwords do not match",
+        t("common.error", { defaultValue: "Error" }),
+        t("register.passwordMismatch", { defaultValue: "Passwords do not match." })
       );
       return;
     }
 
     try {
       const { message } = await register({
-        email,
+        email: normalizedEmail,
         password,
         confirmPassword,
-        username,
-        fullName,
-        phoneNumber,
+        username: normalizedUsername,
+        fullName: normalizedFullName,
+        phoneNumber: normalizedPhoneNumber,
       });
+
+      const successMessage =
+        typeof message === "string" && message.trim().length > 0
+          ? message
+          : t("register.success", {
+              defaultValue: "Registration successful! Please verify your email.",
+            });
 
       // Show success message
       Alert.alert(
-        t("common.success"),
-        message ||
-          t("register.success") ||
-          "Registration successful! Please verify your email.",
+        t("common.success", { defaultValue: "Success" }),
+        successMessage,
         [
           {
             text: "OK",
             onPress: () =>
-              navigation.navigate("VerifyCode", { email, password }),
+              navigation.navigate("VerifyCode", {
+                email: normalizedEmail,
+                password,
+              }),
           },
         ],
       );
-    } catch (error: any) {
-      const errorMessage =
-        error?.response?.data?.message ||
-        t("common.error") ||
-        "Registration failed";
-      Alert.alert(t("common.error"), errorMessage);
+    } catch (error) {
+      Alert.alert(
+        t("common.error", { defaultValue: "Error" }),
+        resolveRegisterErrorMessage(error, t)
+      );
+    }
+  };
+
+  const handleGoogleRegister = async () => {
+    if (isExpoGoRuntime) {
+      Alert.alert(
+        t("common.error", { defaultValue: "Error" }),
+        "Google Sign-In is not supported in Expo Go. Please run a development build (npx expo run:android) and try again."
+      );
+      return;
+    }
+
+    setIsGoogleLoading(true);
+    try {
+      const googleAccessToken = await googleSignInService.getGoogleAccessToken();
+      if (!googleAccessToken) {
+        return;
+      }
+
+      await loginWithGoogle(googleAccessToken, deviceId || "unknown-device");
+    } catch (error) {
+      if (googleSignInService.isGoogleSignInCancelledError(error)) {
+        return;
+      }
+
+      Alert.alert(
+        t("common.error", { defaultValue: "Error" }),
+        resolveGoogleAuthErrorMessage(error, t)
+      );
+    } finally {
+      setIsGoogleLoading(false);
     }
   };
 
@@ -110,17 +172,11 @@ export default function RegisterScreen() {
       {/* Hero background */}
       <View style={styles.heroWrap}>
         <Image
-          source={{ uri: TOP_IMAGE }}
+          source={TOP_IMAGE}
           style={styles.topImage}
           resizeMode="cover"
         />
-        <LinearGradient
-          colors={["rgba(0,0,0,0.10)", "rgba(0,0,0,0.20)"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0, y: 1 }}
-          style={styles.heroOverlay}
-        />
-
+        
         <View style={styles.brandWrap}>
           <BrandMark variant="logoWithText" size="hero" />
         </View>
@@ -141,11 +197,11 @@ export default function RegisterScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={{ flex: 1 }}
       >
-        <ScrollView showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           {/* Spacer so card starts below the hero */}
-          <View style={{ height: HERO_HEIGHT - 48 }} />
+          <View style={{ height: CARD_TOP_SPACER }} />
 
-          <View style={styles.card}>
+          <View style={[styles.card, { minHeight: cardMinHeight }]}>
             <View style={styles.headerTexts}>
               <Text style={styles.title}>{t("register.title")}</Text>
               <Text style={styles.subtitle}>{t("register.subtitle")}</Text>
@@ -260,7 +316,9 @@ export default function RegisterScreen() {
               disabled={isLoading}
             >
               <Text style={styles.primaryBtnText}>
-                {isLoading ? t("common.loading") : registerLabel}
+                {isLoading
+                  ? t("common.loading", { defaultValue: "Loading..." })
+                  : registerLabel}
               </Text>
             </TouchableOpacity>
 
@@ -270,10 +328,19 @@ export default function RegisterScreen() {
               <View style={styles.divider} />
             </View>
 
-            <TouchableOpacity style={styles.googleBtn}>
+            <TouchableOpacity
+              style={[
+                styles.googleBtn,
+                (isLoading || isGoogleLoading) && styles.googleBtnDisabled,
+              ]}
+              onPress={handleGoogleRegister}
+              disabled={isLoading || isGoogleLoading}
+            >
               <ICONS.google width={24} height={24} />
               <Text style={styles.googleText}>
-                {t("common.continueWithGoogle")}
+                {isGoogleLoading
+                  ? t("common.loading", { defaultValue: "Loading..." })
+                  : t("common.continueWithGoogle")}
               </Text>
             </TouchableOpacity>
 
@@ -320,7 +387,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   topImage: {
-    width,
+    width: "100%",
     height: HERO_HEIGHT,
     position: "absolute",
     top: 0,
@@ -372,6 +439,9 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: 13,
     fontWeight: "600",
+  },
+  scrollContent: {
+    flexGrow: 1,
   },
   card: {
     marginHorizontal: 0,
@@ -507,6 +577,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     flexDirection: "row",
     gap: 13,
+  },
+  googleBtnDisabled: {
+    opacity: 0.6,
   },
   googleText: {
     color: "#102216",
