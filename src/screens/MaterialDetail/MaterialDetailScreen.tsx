@@ -1,11 +1,13 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   Dimensions,
   FlatList,
   Image,
   LayoutChangeEvent,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -26,7 +28,8 @@ import {
 } from '../../types';
 import { useAuthStore, useCartStore, usePlantStore, useWishlistStore } from '../../stores';
 import { plantService } from '../../services';
-import { getWishlistKey, notify } from '../../utils';
+import { getWishlistKey, notify, resolveImageUris } from '../../utils';
+import DetailImageGallery from '../../components/media/DetailImageGallery';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type ScreenRouteProp = RouteProp<RootStackParamList, 'MaterialDetail'>;
@@ -111,17 +114,50 @@ export default function MaterialDetailScreen() {
   const [relatedListWidth, setRelatedListWidth] = useState(0);
   const [relatedContentWidth, setRelatedContentWidth] = useState(0);
   const [relatedScrollX, setRelatedScrollX] = useState(0);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [bottomBarHeight, setBottomBarHeight] = useState(0);
+  const contentLayerScrollY = useRef(new Animated.Value(0)).current;
   const [isNurseryLoading, setIsNurseryLoading] = useState(false);
   const [availableNurseryOptions, setAvailableNurseryOptions] = useState<
     NurseryPlantComboAndMaterialAvailability[]
   >([]);
+  const [showAllNurseries, setShowAllNurseries] = useState(false);
   const [selectedNurseryMaterialId, setSelectedNurseryMaterialId] = useState<number | null>(
     nurseryMaterialId ?? null
   );
 
   const wishlistItemId = materialId;
   const wishlistKey = getWishlistKey('Material', wishlistItemId);
+
+  const contentLayerTranslateY = useMemo(
+    () =>
+      contentLayerScrollY.interpolate({
+        inputRange: [0, IMAGE_HEIGHT - 24],
+        outputRange: [IMAGE_HEIGHT - 24, 0],
+        extrapolate: 'clamp',
+      }),
+    [contentLayerScrollY]
+  );
+
+  const contentInnerTranslateY = useMemo(
+    () =>
+      contentLayerScrollY.interpolate({
+        inputRange: [0, IMAGE_HEIGHT - 24],
+        outputRange: [0, IMAGE_HEIGHT - 24],
+        extrapolate: 'clamp',
+      }),
+    [contentLayerScrollY]
+  );
+
+  const handleContentLayerScroll = useMemo(
+    () =>
+      Animated.event(
+        [{ nativeEvent: { contentOffset: { y: contentLayerScrollY } } }],
+        { useNativeDriver: true }
+      ),
+    [contentLayerScrollY]
+  );
 
   const resolveMaterialEntityId = useCallback((item: ShopSearchMaterialSummary) => {
     return Number.isInteger(item.materialId) && item.materialId > 0 ? item.materialId : item.id;
@@ -185,11 +221,12 @@ export default function MaterialDetailScreen() {
     return () => {
       isMounted = false;
     };
-  }, [materialId, t]);
+  }, [materialId, refreshKey, t]);
 
   useEffect(() => {
     setQuantity(1);
     setSelectedNurseryMaterialId(nurseryMaterialId ?? null);
+    setShowAllNurseries(false);
   }, [materialId, nurseryMaterialId]);
 
   useEffect(() => {
@@ -241,7 +278,7 @@ export default function MaterialDetailScreen() {
     return () => {
       isMounted = false;
     };
-  }, [fetchNurseriesGotMaterialByMaterialId, materialId, nurseryMaterialId]);
+  }, [fetchNurseriesGotMaterialByMaterialId, materialId, nurseryMaterialId, refreshKey]);
 
   useEffect(() => {
     if (!material) {
@@ -343,7 +380,7 @@ export default function MaterialDetailScreen() {
     return () => {
       isMounted = false;
     };
-  }, [material, materialId, resolveMaterialEntityId]);
+  }, [material, materialId, refreshKey, resolveMaterialEntityId]);
 
   const wishlistTargets = useMemo(() => {
     const uniqueIds = Array.from(
@@ -369,10 +406,10 @@ export default function MaterialDetailScreen() {
   }, [ensureStatus, isAuthenticated, wishlistTargets]);
 
   const isWishlisted = wishlistStatus[wishlistKey] ?? false;
-  const imageUrl = useMemo(
-    () => getImageUri(material?.images?.[0]) ?? PLACEHOLDER_IMAGE,
-    [material?.images]
-  );
+  const heroImages = useMemo(() => {
+    const resolved = resolveImageUris(material?.images);
+    return resolved.length > 0 ? resolved : [PLACEHOLDER_IMAGE];
+  }, [material?.images]);
   const hasMoreRelatedItems = relatedMaterials.length > 1;
   const showRelatedArrowLeft = relatedScrollX > 4;
   const showRelatedArrowRight = hasMoreRelatedItems
@@ -400,6 +437,14 @@ export default function MaterialDetailScreen() {
         (option) => option.nurseryMaterialId === selectedNurseryMaterialId
       ) ?? null,
     [availableNurseryOptions, selectedNurseryMaterialId]
+  );
+  const hasExtraNurseries = availableNurseryOptions.length > 3;
+  const visibleNurseryOptions = useMemo(
+    () =>
+      showAllNurseries
+        ? availableNurseryOptions
+        : availableNurseryOptions.slice(0, 3),
+    [availableNurseryOptions, showAllNurseries]
   );
   const handleBottomBarLayout = useCallback((event: LayoutChangeEvent) => {
     const nextHeight = event.nativeEvent.layout.height;
@@ -549,6 +594,25 @@ export default function MaterialDetailScreen() {
     void handleConfirmNurseryAction(true);
   }, [handleConfirmNurseryAction]);
 
+  const handleRefresh = useCallback(() => {
+    if (isRefreshing) {
+      return;
+    }
+
+    setIsRefreshing(true);
+    setRefreshKey((current) => current + 1);
+  }, [isRefreshing]);
+
+  useEffect(() => {
+    if (!isRefreshing) {
+      return;
+    }
+
+    if (!isLoading && !isNurseryLoading && !isLoadingRelated) {
+      setIsRefreshing(false);
+    }
+  }, [isLoading, isLoadingRelated, isNurseryLoading, isRefreshing]);
+
   const isNurseryActionDisabled =
     isSubmitting ||
     isNurseryLoading ||
@@ -589,7 +653,11 @@ export default function MaterialDetailScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.heroWrap}>
-        <Image source={{ uri: imageUrl }} style={styles.heroImage} resizeMode="cover" />
+        <DetailImageGallery
+          images={heroImages}
+          height={IMAGE_HEIGHT}
+          placeholderIcon="cube-outline"
+        />
       </View>
 
       <View style={styles.heroOverlay} pointerEvents="box-none">
@@ -616,11 +684,33 @@ export default function MaterialDetailScreen() {
         </View>
       </View>
 
-      <ScrollView
-        style={styles.scrollView}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+      <Animated.View
+        style={[
+          styles.scrollLayer,
+          {
+            transform: [{ translateY: contentLayerTranslateY }],
+          },
+        ]}
       >
+        <Animated.ScrollView
+          style={styles.scrollView}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+          onScroll={handleContentLayerScroll}
+          scrollEventThrottle={16}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={handleRefresh}
+              tintColor={COLORS.primary}
+            />
+          }
+        >
+        <Animated.View
+          style={{
+            transform: [{ translateY: contentInnerTranslateY }],
+          }}
+        >
         <View style={styles.contentCard}>
           <View style={styles.dragHandleWrap}>
             <View style={styles.dragHandle} />
@@ -639,7 +729,7 @@ export default function MaterialDetailScreen() {
             </View>
           </View>
 
-          <Text style={styles.price}>{`${formatMoney(material.basePrice)} / ${material.unit}`}</Text>
+          <Text style={styles.price}>{`${formatMoney(material.basePrice)}`}</Text>
 
           <View style={styles.metaRow}>
             {material.brand ? (
@@ -697,13 +787,6 @@ export default function MaterialDetailScreen() {
                     : t('materialDetail.noExpiry', { defaultValue: 'Not specified' })
                 }
               />
-              <AttributeCard
-                icon="grid-outline"
-                iconColor="#0E7490"
-                iconBg="#CFFAFE"
-                label={t('materialDetail.categories', { defaultValue: 'Categories' })}
-                value={String(material.categories.length)}
-              />
             </View>
           </View>
 
@@ -760,7 +843,7 @@ export default function MaterialDetailScreen() {
               </View>
             ) : availableNurseryOptions.length > 0 ? (
               <View style={styles.nurseryList}>
-                {availableNurseryOptions.map((nursery) => {
+                {visibleNurseryOptions.map((nursery) => {
                   const isSelected = nursery.nurseryMaterialId === selectedNurseryMaterialId;
 
                   return (
@@ -795,6 +878,18 @@ export default function MaterialDetailScreen() {
                     </TouchableOpacity>
                   );
                 })}
+                {hasExtraNurseries ? (
+                  <TouchableOpacity
+                    style={styles.loadMoreBtn}
+                    onPress={() => setShowAllNurseries((previous) => !previous)}
+                  >
+                    <Text style={styles.loadMoreText}>
+                      {showAllNurseries
+                        ? t('plantDetail.collapseNurseries', { defaultValue: 'Show less' })
+                        : t('plantDetail.loadMoreNurseries', { defaultValue: 'Load more' })}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
             ) : (
               <Text style={styles.emptyText}>
@@ -873,15 +968,12 @@ export default function MaterialDetailScreen() {
                           {item.materialName}
                         </Text>
                         <Text style={styles.relatedSub} numberOfLines={1}>
-                          {`${item.nurseryName} • ${item.availableQuantity}`}
+                          {`${item.unit}`}
                         </Text>
                         <View style={styles.relatedPriceRow}>
                           <Text style={styles.relatedPrice} numberOfLines={1}>
-                            {item.unit}
+                            {formatMoney(item.basePrice)}
                           </Text>
-                          <View style={styles.relatedOpenBtn}>
-                            <Ionicons name="arrow-forward" size={12} color={COLORS.white} />
-                          </View>
                         </View>
                       </TouchableOpacity>
                     );
@@ -914,7 +1006,9 @@ export default function MaterialDetailScreen() {
 
           <View style={[styles.bottomSpacer, { height: bottomSpacerHeight }]} />
         </View>
-      </ScrollView>
+        </Animated.View>
+        </Animated.ScrollView>
+      </Animated.View>
 
       <View
         style={[styles.bottomBar, { paddingBottom: bottomBarPaddingBottom }]}
@@ -1017,6 +1111,8 @@ const styles = StyleSheet.create({
     right: 0,
     height: IMAGE_HEIGHT,
     backgroundColor: COLORS.gray200,
+    zIndex: 1,
+    elevation: 1,
   },
   heroImage: {
     width: '100%',
@@ -1032,8 +1128,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    zIndex: 2,
-    elevation: 2,
+    zIndex: 6,
+    elevation: 6,
   },
   backBtn: {
     width: 36,
@@ -1073,12 +1169,20 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: COLORS.error,
   },
+  scrollLayer: {
+    ...StyleSheet.absoluteFillObject,
+    top: 0,
+    overflow: 'visible',
+    zIndex: 3,
+    elevation: 3,
+  },
   scrollView: {
     flex: 1,
+    overflow: 'visible',
   },
   scrollContent: {
-    paddingTop: IMAGE_HEIGHT - 24,
-    paddingBottom: 0,
+    paddingTop: 0,
+    paddingBottom: IMAGE_HEIGHT - 24,
   },
   contentCard: {
     backgroundColor: '#F6F8F6',
@@ -1305,7 +1409,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.30)',
+    backgroundColor: "rgba(0,0,0,0.35)",
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1334,14 +1438,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#13EC5B',
     flex: 1,
-  },
-  relatedOpenBtn: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: '#13EC5B',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   relatedArrowOverlay: {
     position: 'absolute',
@@ -1522,5 +1618,20 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.sm,
     color: '#4C9A66',
     fontWeight: '600',
+  },
+  loadMoreBtn: {
+    marginTop: 4,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: '#E7FDF0',
+    borderWidth: 1,
+    borderColor: '#13EC5B',
+  },
+  loadMoreText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#13EC5B',
   },
 });

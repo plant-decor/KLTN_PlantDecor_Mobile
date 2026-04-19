@@ -246,6 +246,7 @@ export default function HomeScreen() {
   const [materialScrollX, setMaterialScrollX] = useState(0);
   const [comboScrollX, setComboScrollX] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isLoadingNewestPlants, setIsLoadingNewestPlants] = useState(false);
   const [recommendedPlants, setRecommendedPlants] = useState<HomePlant[]>([]);
   const [hasRecommendationPayload, setHasRecommendationPayload] = useState(false);
   const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(false);
@@ -275,12 +276,21 @@ export default function HomeScreen() {
     });
   }, [fetchCart, hasLoadedCart, isAuthenticated]);
 
-  useEffect(() => {
-    fetchPlants({
-      sortBy: 'createdAt',
-      sortDirection: 'desc',
-    });
+  const loadNewestPlants = useCallback(async () => {
+    setIsLoadingNewestPlants(true);
+    try {
+      await fetchPlants({
+        sortBy: 'createdAt',
+        sortDirection: 'desc',
+      });
+    } finally {
+      setIsLoadingNewestPlants(false);
+    }
   }, [fetchPlants]);
+
+  useEffect(() => {
+    void loadNewestPlants();
+  }, [loadNewestPlants]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -552,10 +562,7 @@ export default function HomeScreen() {
     };
 
     const refreshTasks: Promise<unknown>[] = [
-      fetchPlants({
-        sortBy: 'createdAt',
-        sortDirection: 'desc',
-      }),
+      loadNewestPlants(),
       refreshFeaturedProducts(),
     ];
 
@@ -569,7 +576,7 @@ export default function HomeScreen() {
     void Promise.all(refreshTasks).finally(() => {
       setIsRefreshing(false);
     });
-  }, [fetchCart, fetchPlants, isAuthenticated, isRefreshing, t]);
+  }, [fetchCart, isAuthenticated, isRefreshing, loadNewestPlants, t]);
 
   const submitAddToCart = useCallback(
     async (request: AddCartItemRequest) => {
@@ -1034,7 +1041,7 @@ export default function HomeScreen() {
             {item.materialName}
           </Text>
           <Text style={styles.plantSub} numberOfLines={1}>
-            {`${item.nurseryName} • ${t('catalog.stock', { defaultValue: 'Stock' })}: ${item.availableQuantity}`}
+            {`${item.unit}`}
           </Text>
           <View style={styles.priceRow}>
             <Text style={styles.plantPrice} numberOfLines={1}>
@@ -1226,42 +1233,48 @@ export default function HomeScreen() {
         </View>
 
         <View style={styles.sectionHeader}>
-          <Ionicons name="time-outline" size={16} color={COLORS.primaryLight} />
+          <Ionicons name="leaf" size={16} color={COLORS.primaryLight} />
           <Text style={styles.sectionTitle}>{t('home.newestPlants')}</Text>
         </View>
 
-        <View
-          style={styles.aiSliderWrap}
-          onLayout={(event) => setAiListWidth(event.nativeEvent.layout.width)}
-        >
-          <FlatList
-            data={newestPlants}
-            renderItem={renderPlantCard}
-            keyExtractor={(item) => `newest-${item.id}`}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.aiList}
-            ItemSeparatorComponent={() => <View style={styles.aiSeparator} />}
-            snapToInterval={CARD_WIDTH + SPACING.md}
-            snapToAlignment="start"
-            decelerationRate="fast"
-            onContentSizeChange={(width) => setAiContentWidth(width)}
-            onScroll={(event) => setAiScrollX(event.nativeEvent.contentOffset.x)}
-            scrollEventThrottle={16}
-          />
-          <View style={styles.aiArrowOverlay} pointerEvents="none">
-            {showAiArrowLeft && (
-              <View style={[styles.aiArrow, styles.aiArrowLeft]}>
-                <Ionicons name="chevron-back" size={18} color={COLORS.primary} />
-              </View>
-            )}
-            {showAiArrowRight && (
-              <View style={[styles.aiArrow, styles.aiArrowRight]}>
-                <Ionicons name="chevron-forward" size={18} color={COLORS.primary} />
-              </View>
-            )}
+        {isLoadingNewestPlants && newestPlants.length === 0 ? (
+          <View style={styles.newestLoadingWrap}>
+            <ActivityIndicator size="small" color={COLORS.primary} />
           </View>
-        </View>
+        ) : (
+          <View
+            style={styles.aiSliderWrap}
+            onLayout={(event) => setAiListWidth(event.nativeEvent.layout.width)}
+          >
+            <FlatList
+              data={newestPlants}
+              renderItem={renderPlantCard}
+              keyExtractor={(item) => `newest-${item.id}`}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.aiList}
+              ItemSeparatorComponent={() => <View style={styles.aiSeparator} />}
+              snapToInterval={CARD_WIDTH + SPACING.md}
+              snapToAlignment="start"
+              decelerationRate="fast"
+              onContentSizeChange={(width) => setAiContentWidth(width)}
+              onScroll={(event) => setAiScrollX(event.nativeEvent.contentOffset.x)}
+              scrollEventThrottle={16}
+            />
+            <View style={styles.aiArrowOverlay} pointerEvents="none">
+              {showAiArrowLeft && (
+                <View style={[styles.aiArrow, styles.aiArrowLeft]}>
+                  <Ionicons name="chevron-back" size={18} color={COLORS.primary} />
+                </View>
+              )}
+              {showAiArrowRight && (
+                <View style={[styles.aiArrow, styles.aiArrowRight]}>
+                  <Ionicons name="chevron-forward" size={18} color={COLORS.primary} />
+                </View>
+              )}
+            </View>
+          </View>
+        )}
 
         <LinearGradient
           colors={['#1B4332', '#2D6A4F']}
@@ -1650,6 +1663,11 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     marginTop: SPACING.md,
     marginBottom: SPACING.md,
+  },
+  newestLoadingWrap: {
+    minHeight: CARD_WIDTH,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   aiSliderWrap: {
     position: 'relative',

@@ -1,47 +1,68 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Image,
+  Animated,
+  Dimensions,
+  LayoutChangeEvent,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
-import { COLORS, FONTS, RADIUS, SPACING } from '../../constants';
-import { BrandedHeader } from '../../components/branding';
+import { COLORS, SHADOWS, SPACING } from '../../constants';
 import { RootStackParamList, CheckoutItem } from '../../types';
-import { useAuthStore, useWishlistStore } from '../../stores';
+import { useAuthStore, useCartStore, useWishlistStore } from '../../stores';
 import { plantService } from '../../services';
-import { getWishlistKey, notify } from '../../utils';
+import { getWishlistKey, notify, resolveImageUris } from '../../utils';
+import DetailImageGallery from '../../components/media/DetailImageGallery';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type ScreenRouteProp = RouteProp<RootStackParamList, 'PlantInstanceDetail'>;
 
+const { width } = Dimensions.get('window');
+const IMAGE_HEIGHT = 396;
+const ATTR_CARD_WIDTH = (width - SPACING.xl * 2 - 12) / 2;
 const PLACEHOLDER_IMAGE = 'https://via.placeholder.com/600x400?text=Plant+Instance';
 
-const resolvePrimaryImage = (images: string[] | undefined) => {
-  if (!Array.isArray(images) || images.length === 0) {
-    return PLACEHOLDER_IMAGE;
-  }
-
-  const firstImage = images.find((image) => typeof image === 'string' && image.trim().length > 0);
-  return firstImage ?? PLACEHOLDER_IMAGE;
+type AttributeCardProps = {
+  icon: keyof typeof Ionicons.glyphMap;
+  iconColor: string;
+  iconBg: string;
+  label: string;
+  value: string;
 };
+
+function AttributeCard({ icon, iconColor, iconBg, label, value }: AttributeCardProps) {
+  return (
+    <View style={styles.attrCard}>
+      <View style={[styles.attrIconWrap, { backgroundColor: iconBg }]}>
+        <Ionicons name={icon} size={20} color={iconColor} />
+      </View>
+      <View style={styles.attrTextWrap}>
+        <Text style={styles.attrLabel}>{label}</Text>
+        <Text style={styles.attrValue}>{value}</Text>
+      </View>
+    </View>
+  );
+}
 
 export default function PlantInstanceDetailScreen() {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<ScreenRouteProp>();
+  const insets = useSafeAreaInsets();
   const { plantInstanceId } = route.params;
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
   const { isAuthenticated } = useAuthStore();
+  const cartItemCount = useCartStore((state) => state.totalItems());
 
   const wishlistStatus = useWishlistStore((state) => state.statusByKey);
   const ensureWishlistStatus = useWishlistStore((state) => state.ensureStatus);
@@ -53,10 +74,43 @@ export default function PlantInstanceDetailScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [bottomBarHeight, setBottomBarHeight] = useState(0);
+  const contentLayerScrollY = useRef(new Animated.Value(0)).current;
 
   const wishlistItemId = instanceDetail?.id ?? plantInstanceId;
   const wishlistKey = getWishlistKey('PlantInstance', wishlistItemId);
   const isWishlisted = wishlistStatus[wishlistKey] ?? false;
+
+  const contentLayerTranslateY = useMemo(
+    () =>
+      contentLayerScrollY.interpolate({
+        inputRange: [0, IMAGE_HEIGHT - 24],
+        outputRange: [0, -(IMAGE_HEIGHT - 24)],
+        extrapolate: 'clamp',
+      }),
+    [contentLayerScrollY]
+  );
+
+  const contentInnerTranslateY = useMemo(
+    () =>
+      contentLayerScrollY.interpolate({
+        inputRange: [0, IMAGE_HEIGHT - 24],
+        outputRange: [0, IMAGE_HEIGHT - 24],
+        extrapolate: 'clamp',
+      }),
+    [contentLayerScrollY]
+  );
+
+  const handleContentLayerScroll = useMemo(
+    () =>
+      Animated.event(
+        [{ nativeEvent: { contentOffset: { y: contentLayerScrollY } } }],
+        { useNativeDriver: true }
+      ),
+    [contentLayerScrollY]
+  );
 
   const requireAuth = useCallback(
     (onSuccess?: () => void): boolean => {
@@ -118,7 +172,7 @@ export default function PlantInstanceDetailScreen() {
     return () => {
       isMounted = false;
     };
-  }, [plantInstanceId, t]);
+  }, [plantInstanceId, refreshKey, t]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -133,13 +187,55 @@ export default function PlantInstanceDetailScreen() {
     ]);
   }, [ensureWishlistStatus, isAuthenticated, wishlistItemId]);
 
-  const imageUrl = useMemo(
-    () => resolvePrimaryImage(instanceDetail?.images),
-    [instanceDetail?.images]
+  const heroImages = useMemo(() => {
+    const resolved = resolveImageUris(instanceDetail?.images);
+    return resolved.length > 0 ? resolved : [PLACEHOLDER_IMAGE];
+  }, [instanceDetail?.images]);
+
+  const primaryImageForCheckout = heroImages[0] ?? PLACEHOLDER_IMAGE;
+
+  const isAvailable =
+    (instanceDetail?.statusName || '').trim().toLowerCase() === 'available' ||
+    instanceDetail?.status === 1;
+
+  const nurseryAddress = useMemo(() => {
+    if (typeof instanceDetail?.nurseryAddress !== 'string') {
+      return null;
+    }
+
+    const trimmed = instanceDetail.nurseryAddress.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }, [instanceDetail?.nurseryAddress]);
+
+  const nurseryPhone = useMemo(() => {
+    if (typeof instanceDetail?.nurseryPhone !== 'string') {
+      return null;
+    }
+
+    const trimmed = instanceDetail.nurseryPhone.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }, [instanceDetail?.nurseryPhone]);
+
+  const bottomBarPaddingBottom = useMemo(
+    () => Math.max(SPACING.lg, insets.bottom + SPACING.sm),
+    [insets.bottom]
   );
 
-  const isAvailable = (instanceDetail?.statusName || '').trim().toLowerCase() === 'available'
-    || instanceDetail?.status === 1;
+  const bottomSpacerHeight = useMemo(
+    () =>
+      Math.max(
+        (bottomBarHeight > 0 ? bottomBarHeight : 96) + SPACING.sm,
+        120 + insets.bottom
+      ),
+    [bottomBarHeight, insets.bottom]
+  );
+
+  const handleBottomBarLayout = useCallback((event: LayoutChangeEvent) => {
+    const nextHeight = event.nativeEvent.layout.height;
+    setBottomBarHeight((previousHeight) =>
+      Math.abs(previousHeight - nextHeight) > 1 ? nextHeight : previousHeight
+    );
+  }, []);
 
   const handleToggleWishlist = useCallback(async () => {
     if (!requireAuth()) {
@@ -191,7 +287,7 @@ export default function PlantInstanceDetailScreen() {
         instanceDetail.height != null
           ? `${instanceDetail.height} cm`
           : t('common.updating', { defaultValue: 'Updating' }),
-      image: imageUrl !== PLACEHOLDER_IMAGE ? imageUrl : undefined,
+      image: primaryImageForCheckout !== PLACEHOLDER_IMAGE ? primaryImageForCheckout : undefined,
       price: instanceDetail.specificPrice,
       quantity: 1,
       plantInstanceId: instanceDetail.id,
@@ -204,12 +300,38 @@ export default function PlantInstanceDetailScreen() {
       items: [checkoutItem],
     });
     setIsSubmitting(false);
-  }, [imageUrl, instanceDetail, isAvailable, navigation, requireAuth, t]);
+  }, [
+    instanceDetail,
+    isAvailable,
+    navigation,
+    primaryImageForCheckout,
+    requireAuth,
+    t,
+  ]);
 
-  if (isLoading) {
+  const handleRefresh = useCallback(() => {
+    if (isRefreshing) {
+      return;
+    }
+
+    setIsRefreshing(true);
+    setRefreshKey((current) => current + 1);
+  }, [isRefreshing]);
+
+  useEffect(() => {
+    if (!isRefreshing) {
+      return;
+    }
+
+    if (!isLoading) {
+      setIsRefreshing(false);
+    }
+  }, [isLoading, isRefreshing]);
+
+  if (isLoading && !isRefreshing) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <View style={styles.loaderWrap}>
+        <View style={styles.loaderContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
       </SafeAreaView>
@@ -219,28 +341,18 @@ export default function PlantInstanceDetailScreen() {
   if (!instanceDetail || error) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <BrandedHeader
-          containerStyle={styles.header}
-          sideWidth={44}
-          brandVariant="none"
-          title={t('plantInstanceDetail.title', { defaultValue: 'Plant instance detail' })}
-          left={
-            <TouchableOpacity style={styles.headerBtn} onPress={() => navigation.goBack()}>
-              <Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} />
-            </TouchableOpacity>
-          }
-          right={<View style={styles.headerBtn} />}
-        />
-
-        <View style={styles.loaderWrap}>
+        <View style={styles.errorContainer}>
           <Ionicons name="alert-circle" size={54} color={COLORS.error} />
+          <Text style={styles.errorTitle}>
+            {t('plantInstanceDetail.title', { defaultValue: 'Plant instance detail' })}
+          </Text>
           <Text style={styles.errorText}>
             {error ||
               t('plantInstanceDetail.notFound', {
                 defaultValue: 'Plant instance not found.',
               })}
           </Text>
-          <TouchableOpacity style={styles.retryButton} onPress={() => navigation.goBack()}>
+          <TouchableOpacity style={styles.errorButton} onPress={() => navigation.goBack()}>
             <Text style={styles.retryText}>{t('common.goBack', { defaultValue: 'Go back' })}</Text>
           </TouchableOpacity>
         </View>
@@ -250,112 +362,229 @@ export default function PlantInstanceDetailScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <BrandedHeader
-        containerStyle={styles.header}
-        sideWidth={44}
-        brandVariant="none"
-        title={t('plantInstanceDetail.title', { defaultValue: 'Plant instance detail' })}
-        left={
-          <TouchableOpacity style={styles.headerBtn} onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} />
-          </TouchableOpacity>
-        }
-        right={
-          <TouchableOpacity style={styles.headerBtn} onPress={() => void handleToggleWishlist()}>
+      <View style={styles.heroWrap}>
+        <DetailImageGallery
+          images={heroImages}
+          height={IMAGE_HEIGHT}
+          placeholderIcon="leaf-outline"
+        />
+      </View>
+
+      <View style={styles.heroOverlay} pointerEvents="box-none">
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+          <Ionicons name="chevron-back" size={22} color="#0D1B12" />
+        </TouchableOpacity>
+
+        <View style={styles.heroActions}>
+          <TouchableOpacity style={styles.heartBtn} onPress={() => void handleToggleWishlist()}>
             <Ionicons
               name={isWishlisted ? 'heart' : 'heart-outline'}
-              size={22}
-              color={isWishlisted ? COLORS.error : COLORS.textPrimary}
+              size={20}
+              color={isWishlisted ? COLORS.error : COLORS.white}
             />
           </TouchableOpacity>
-        }
-      />
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-        <Image source={{ uri: imageUrl }} style={styles.heroImage} resizeMode="cover" />
-
-        <Text style={styles.name}>{instanceDetail.plantName}</Text>
-        <Text style={styles.code}>{instanceDetail.sku}</Text>
-        <Text style={styles.price}>{`${instanceDetail.specificPrice.toLocaleString(locale)}₫`}</Text>
-
-        <View style={styles.metaCard}>
-          <Text style={styles.metaLabel}>
-            {t('plantInstanceDetail.nursery', { defaultValue: 'Nursery' })}
-          </Text>
-          <Text style={styles.metaValue}>{instanceDetail.nurseryName}</Text>
+          <TouchableOpacity
+            style={styles.cartBtn}
+            onPress={() => requireAuth(() => navigation.navigate('Cart'))}
+          >
+            <Ionicons name="cart-outline" size={20} color={COLORS.white} />
+            {cartItemCount > 0 ? <View style={styles.cartDot} /> : null}
+          </TouchableOpacity>
         </View>
+      </View>
 
-        <View style={styles.metaCard}>
-          <Text style={styles.metaLabel}>
-            {t('plantInstanceDetail.healthStatus', { defaultValue: 'Health status' })}
+      <Animated.View
+        style={[
+          styles.scrollLayer,
+          {
+            transform: [{ translateY: contentLayerTranslateY }],
+          },
+        ]}
+      >
+        <Animated.ScrollView
+          style={styles.scrollView}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+          onScroll={handleContentLayerScroll}
+          scrollEventThrottle={16}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={handleRefresh}
+              tintColor={COLORS.primary}
+            />
+          }
+        >
+        <Animated.View
+          style={{
+            transform: [{ translateY: contentInnerTranslateY }],
+          }}
+        >
+        <View style={styles.contentCard}>
+          <View style={styles.dragHandleWrap}>
+            <View style={styles.dragHandle} />
+          </View>
+
+          <View style={styles.nameRow}>
+            <View style={styles.nameWrap}>
+              <Text style={styles.name}>{instanceDetail.plantName}</Text>
+              <Text style={styles.code}>{instanceDetail.sku}</Text>
+            </View>
+            <View style={styles.titleBadge}>
+              <Ionicons name="git-commit-outline" size={14} color="#14532D" />
+              <Text style={styles.titleBadgeText}>
+                {t('catalog.typePlantInstance', { defaultValue: 'Instance' })}
+              </Text>
+            </View>
+          </View>
+
+          <Text style={styles.price}>{`${instanceDetail.specificPrice.toLocaleString(locale)}₫`}</Text>
+
+          <View style={styles.metaRow}>
+            <View style={styles.metaBadge}>
+              <Ionicons name="business-outline" size={14} color="#4C9A66" />
+              <Text style={styles.metaBadgeText}>{instanceDetail.nurseryName}</Text>
+            </View>
+            <View style={[styles.metaBadge, !isAvailable && styles.metaBadgeDanger]}>
+              <Ionicons
+                name={isAvailable ? 'checkmark-circle-outline' : 'close-circle-outline'}
+                size={14}
+                color={isAvailable ? '#4C9A66' : '#B91C1C'}
+              />
+              <Text style={styles.metaBadgeText}>{instanceDetail.statusName}</Text>
+            </View>
+          </View>
+
+          <View style={styles.nurseryInfoCard}>
+            <Text style={styles.nurseryInfoTitle}>
+              {t('plantInstanceDetail.nurseryInfo', {
+                defaultValue: 'Nursery information',
+              })}
+            </Text>
+
+            <View style={styles.nurseryInfoRow}>
+              <Ionicons name="business-outline" size={14} color={COLORS.textSecondary} />
+              <Text style={styles.nurseryInfoLabel}>
+                {t('plantInstanceDetail.nursery', { defaultValue: 'Nursery' })}:
+              </Text>
+              <Text style={styles.nurseryInfoValue}>
+                {instanceDetail.nurseryName || t('common.updating', { defaultValue: 'Updating' })}
+              </Text>
+            </View>
+
+            <View style={styles.nurseryInfoRow}>
+              <Ionicons name="location-outline" size={14} color={COLORS.textSecondary} />
+              <Text style={styles.nurseryInfoLabel}>
+                {t('plantInstanceDetail.nurseryAddress', {
+                  defaultValue: 'Address',
+                })}
+                :
+              </Text>
+              <Text style={styles.nurseryInfoValue}>
+                {nurseryAddress || t('common.updating', { defaultValue: 'Updating' })}
+              </Text>
+            </View>
+
+            <View style={styles.nurseryInfoRow}>
+              <Ionicons name="call-outline" size={14} color={COLORS.textSecondary} />
+              <Text style={styles.nurseryInfoLabel}>
+                {t('plantInstanceDetail.nurseryPhone', {
+                  defaultValue: 'Phone',
+                })}
+                :
+              </Text>
+              <Text style={styles.nurseryInfoValue}>
+                {nurseryPhone || t('common.updating', { defaultValue: 'Updating' })}
+              </Text>
+            </View>
+          </View>
+
+          <Text style={styles.description}>
+            {instanceDetail.description ||
+              t('common.updating', { defaultValue: 'Updating' })}
           </Text>
-          <Text style={styles.metaValue}>
-            {instanceDetail.healthStatus || t('common.updating', { defaultValue: 'Updating' })}
-          </Text>
+
+          <View style={styles.sectionWrap}>
+            <Text style={styles.sectionTitle}>
+              {t('plantInstanceDetail.highlights', {
+                defaultValue: 'Instance highlights',
+              })}
+            </Text>
+            <View style={styles.attrGrid}>
+              <AttributeCard
+                icon="pulse-outline"
+                iconColor="#15803D"
+                iconBg="#DCFCE7"
+                label={t('plantInstanceDetail.healthStatus', { defaultValue: 'Health status' })}
+                value={
+                  instanceDetail.healthStatus ||
+                  t('common.updating', { defaultValue: 'Updating' })
+                }
+              />
+              <AttributeCard
+                icon="resize-outline"
+                iconColor="#B45309"
+                iconBg="#FEF3C7"
+                label={t('plantInstanceDetail.height', { defaultValue: 'Height' })}
+                value={
+                  instanceDetail.height != null
+                    ? `${instanceDetail.height} cm`
+                    : t('common.updating', { defaultValue: 'Updating' })
+                }
+              />
+              <AttributeCard
+                icon="ellipse-outline"
+                iconColor="#1D4ED8"
+                iconBg="#DBEAFE"
+                label={t('plantInstanceDetail.trunkDiameter', {
+                  defaultValue: 'Trunk diameter',
+                })}
+                value={
+                  instanceDetail.trunkDiameter != null
+                    ? `${instanceDetail.trunkDiameter} mm`
+                    : t('common.updating', { defaultValue: 'Updating' })
+                }
+              />
+              <AttributeCard
+                icon="hourglass-outline"
+                iconColor="#0E7490"
+                iconBg="#CFFAFE"
+                label={t('plantInstanceDetail.age', { defaultValue: 'Age' })}
+                value={
+                  instanceDetail.age != null
+                    ? t('plantInstanceDetail.ageMonth', {
+                        defaultValue: '{{count}} months',
+                        count: instanceDetail.age,
+                      })
+                    : t('common.updating', { defaultValue: 'Updating' })
+                }
+              />
+            </View>
+          </View>
+
+          <View style={[styles.bottomSpacer, { height: bottomSpacerHeight }]} />
         </View>
+        </Animated.View>
+        </Animated.ScrollView>
+      </Animated.View>
 
-        <View style={styles.metaCard}>
-          <Text style={styles.metaLabel}>
-            {t('plantInstanceDetail.status', { defaultValue: 'Status' })}
-          </Text>
-          <Text style={styles.metaValue}>{instanceDetail.statusName}</Text>
-        </View>
-
-        <View style={styles.metaCard}>
-          <Text style={styles.metaLabel}>
-            {t('plantInstanceDetail.height', { defaultValue: 'Height' })}
-          </Text>
-          <Text style={styles.metaValue}>
-            {instanceDetail.height != null
-              ? `${instanceDetail.height} cm`
-              : t('common.updating', { defaultValue: 'Updating' })}
-          </Text>
-        </View>
-
-        <View style={styles.metaCard}>
-          <Text style={styles.metaLabel}>
-            {t('plantInstanceDetail.trunkDiameter', { defaultValue: 'Trunk diameter' })}
-          </Text>
-          <Text style={styles.metaValue}>
-            {instanceDetail.trunkDiameter != null
-              ? `${instanceDetail.trunkDiameter} mm`
-              : t('common.updating', { defaultValue: 'Updating' })}
-          </Text>
-        </View>
-
-        <View style={styles.metaCard}>
-          <Text style={styles.metaLabel}>
-            {t('plantInstanceDetail.age', { defaultValue: 'Age' })}
-          </Text>
-          <Text style={styles.metaValue}>
-            {instanceDetail.age != null
-              ? t('plantInstanceDetail.ageMonth', {
-                  defaultValue: '{{count}} months',
-                  count: instanceDetail.age,
-                })
-              : t('common.updating', { defaultValue: 'Updating' })}
-          </Text>
-        </View>
-
-        <View style={styles.metaCard}>
-          <Text style={styles.metaLabel}>
-            {t('plantInstanceDetail.description', { defaultValue: 'Description' })}
-          </Text>
-          <Text style={styles.metaValue}>
-            {instanceDetail.description || t('common.updating', { defaultValue: 'Updating' })}
-          </Text>
-        </View>
-      </ScrollView>
-
-      <View style={styles.bottomBar}>
+      <View
+        style={[styles.bottomBar, { paddingBottom: bottomBarPaddingBottom }]}
+        onLayout={handleBottomBarLayout}
+      >
         <TouchableOpacity
           style={[styles.buyNowBtn, (!isAvailable || isSubmitting) && styles.buyNowBtnDisabled]}
           disabled={!isAvailable || isSubmitting}
           onPress={handleBuyNow}
         >
-          <Text style={styles.buyNowText}>
-            {t('plantDetail.buyNow', { defaultValue: 'Buy now' })}
-          </Text>
+          {isSubmitting ? (
+            <ActivityIndicator size="small" color="#102216" />
+          ) : (
+            <Text style={styles.buyNowText}>
+              {t('plantDetail.buyNow', { defaultValue: 'Buy now' })}
+            </Text>
+          )}
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -365,114 +594,326 @@ export default function PlantInstanceDetailScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F7F8F6',
+    backgroundColor: '#F6F8F6',
   },
-  loaderWrap: {
+  loaderContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F6F8F6',
+    paddingHorizontal: SPACING.xl,
+  },
+  errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     gap: SPACING.md,
-    paddingHorizontal: SPACING.lg,
+    backgroundColor: '#F6F8F6',
+    paddingHorizontal: SPACING.xl,
   },
-  header: {
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#0D1B12',
+  },
+  errorText: {
+    textAlign: 'center',
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    lineHeight: 22,
+  },
+  errorButton: {
+    backgroundColor: '#13EC5B',
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.sm,
+    borderRadius: 16,
+  },
+  retryText: {
+    color: '#102216',
+    fontWeight: '700',
+  },
+  heroWrap: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: IMAGE_HEIGHT,
+    backgroundColor: COLORS.gray200,
+    zIndex: 1,
+    elevation: 1,
+  },
+  heroOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    paddingTop: 48,
+    paddingHorizontal: 16,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
+    zIndex: 6,
+    elevation: 6,
   },
-  headerBtn: {
-    width: 34,
-    height: 34,
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 9999,
+    backgroundColor: 'rgba(255,255,255,0.20)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerTitle: {
-    fontSize: FONTS.sizes.xl,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
+  heroActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
-  content: {
-    paddingHorizontal: SPACING.lg,
-    paddingBottom: SPACING['5xl'],
+  heartBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 9999,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  heroImage: {
-    width: '100%',
-    height: 220,
-    borderRadius: RADIUS.lg,
-    marginBottom: SPACING.md,
-    backgroundColor: '#E3E7E3',
+  cartBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 9999,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cartDot: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.error,
+  },
+  scrollLayer: {
+    ...StyleSheet.absoluteFillObject,
+    top: IMAGE_HEIGHT - 24,
+    overflow: 'visible',
+    zIndex: 3,
+    elevation: 3,
+  },
+  scrollView: {
+    flex: 1,
+    overflow: 'visible',
+  },
+  scrollContent: {
+    paddingTop: 0,
+    paddingBottom: 0,
+  },
+  contentCard: {
+    backgroundColor: '#F6F8F6',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 32,
+    paddingHorizontal: SPACING.xl,
+    paddingBottom: 0,
+  },
+  dragHandleWrap: {
+    position: 'absolute',
+    top: 12,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  dragHandle: {
+    width: 48,
+    height: 4,
+    borderRadius: 9999,
+    backgroundColor: '#D1D5DB',
+  },
+  nameRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: SPACING.sm,
+  },
+  nameWrap: {
+    flex: 1,
   },
   name: {
-    fontSize: FONTS.sizes['2xl'],
+    fontSize: 24,
     fontWeight: '700',
-    color: COLORS.textPrimary,
+    color: '#0D1B12',
+    lineHeight: 30,
   },
   code: {
-    fontSize: FONTS.sizes.sm,
-    color: COLORS.textSecondary,
+    fontSize: 13,
+    color: '#6B7280',
     marginTop: 2,
   },
-  price: {
-    fontSize: FONTS.sizes.xl,
-    color: COLORS.primary,
-    fontWeight: '700',
-    marginTop: SPACING.sm,
-    marginBottom: SPACING.sm,
+  titleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#DCFCE7',
+    borderRadius: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
   },
-  metaCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: RADIUS.md,
-    padding: SPACING.md,
-    marginTop: SPACING.sm,
-    borderWidth: 1,
-    borderColor: '#D9E5DD',
-  },
-  metaLabel: {
-    fontSize: FONTS.sizes.sm,
-    color: COLORS.textSecondary,
-    marginBottom: 4,
+  titleBadgeText: {
+    fontSize: 12,
     fontWeight: '600',
+    color: '#14532D',
   },
-  metaValue: {
-    fontSize: FONTS.sizes.md,
-    color: COLORS.textPrimary,
+  price: {
+    marginTop: 4,
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#13EC5B',
+    lineHeight: 32,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12,
+  },
+  metaBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#E7F3EB',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  metaBadgeDanger: {
+    backgroundColor: '#FEE2E2',
+  },
+  metaBadgeText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#4C9A66',
+  },
+  nurseryInfoCard: {
+    marginTop: SPACING.sm,
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#DCFCE7',
+    backgroundColor: '#F8FFF9',
+    gap: 6,
+  },
+  nurseryInfoTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#14532D',
+  },
+  nurseryInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+  },
+  nurseryInfoLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
+  nurseryInfoValue: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#0D1B12',
+    lineHeight: 17,
+  },
+  description: {
+    marginTop: SPACING.lg,
+    fontSize: 16,
+    fontWeight: '400',
+    color: '#4B5563',
+    lineHeight: 26,
+  },
+  sectionWrap: {
+    marginTop: SPACING.xl,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0D1B12',
+    lineHeight: 28,
+  },
+  attrGrid: {
+    marginTop: SPACING.lg,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  attrCard: {
+    width: ATTR_CARD_WIDTH,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    backgroundColor: COLORS.white,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#F5F5F5',
+    ...SHADOWS.sm,
+  },
+  attrIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  attrTextWrap: {
+    flex: 1,
+    flexShrink: 1,
+  },
+  attrLabel: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: '#6B7280',
+    marginBottom: 4,
+  },
+  attrValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0D1B12',
     lineHeight: 20,
   },
+  bottomSpacer: {
+    height: 104,
+  },
   bottomBar: {
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
     borderTopWidth: 1,
-    borderTopColor: COLORS.border,
+    borderTopColor: '#F5F5F5',
     backgroundColor: COLORS.white,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.sm,
+    paddingBottom: SPACING.lg,
+    zIndex: 3,
+    elevation: 3,
+    gap: 10,
   },
   buyNowBtn: {
-    backgroundColor: '#13EC5B',
     borderRadius: 24,
-    paddingVertical: SPACING.md,
+    borderWidth: 0,
+    backgroundColor: '#13EC5B',
+    height: 42,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   buyNowBtnDisabled: {
     opacity: 0.45,
   },
   buyNowText: {
-    fontSize: FONTS.sizes.lg,
+    fontSize: 16,
     color: '#102216',
-    fontWeight: '700',
-  },
-  errorText: {
-    textAlign: 'center',
-    color: COLORS.textSecondary,
-    fontSize: FONTS.sizes.md,
-  },
-  retryButton: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: SPACING.xl,
-    paddingVertical: SPACING.sm,
-    borderRadius: RADIUS.md,
-  },
-  retryText: {
-    color: COLORS.white,
     fontWeight: '700',
   },
 });

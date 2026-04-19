@@ -27,6 +27,11 @@ const FALLBACK_GROUPS: Record<string, SystemEnumValue[]> = {
     { value: 3, name: 'Medium' },
     { value: 4, name: 'Large' },
   ],
+  GrowthRate: [
+    { value: 1, name: 'Slow' },
+    { value: 2, name: 'Moderate' },
+    { value: 3, name: 'Fast' },
+  ],
   ComboType: [
     { value: 1, name: 'Space' },
     { value: 2, name: 'Fengshui' },
@@ -128,6 +133,7 @@ const GROUP_ALIASES: Record<string, string[]> = {
   CareLevelType: ['CareLevelType', 'careLevelType', 'careLevel'],
   PlantSort: ['PlantSort', 'plantSort', 'plant-sort', 'sortBy'],
   PlantSize: ['PlantSize', 'plantSize', 'size'],
+  GrowthRate: ['GrowthRate', 'growthRate', 'plantGrowthRate'],
   ComboType: ['ComboType', 'comboType'],
   SeasonType: ['SeasonType', 'seasonType', 'comboSeason'],
   UnifiedSearchSortBy: ['UnifiedSearchSortBy', 'unifiedSearchSortBy', 'shopSortBy'],
@@ -155,7 +161,13 @@ const GROUP_ALIASES: Record<string, string[]> = {
 };
 
 const RESOURCE_GROUPS: Record<string, string[]> = {
-  plants: ['PlacementType', 'PlantSize', 'CareLevelType', 'FengShuiElement'],
+  plants: [
+    'PlacementType',
+    'PlantSize',
+    'GrowthRate',
+    'CareLevelType',
+    'FengShuiElement',
+  ],
   combos: ['ComboType', 'SeasonType'],
   shopunified: ['ComboType', 'SeasonType', 'UnifiedSearchSortBy', 'SortDirection'],
   shopsearchconfigshopunified: [

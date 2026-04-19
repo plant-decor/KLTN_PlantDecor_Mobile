@@ -1306,10 +1306,10 @@ export default function CatalogScreen() {
             {material.materialName}
           </Text>
           <Text style={styles.productMeta} numberOfLines={1}>
-            {`${material.nurseryName} • ${t('catalog.stock', { defaultValue: 'Stock' })}: ${material.availableQuantity}`}
+            {`${material.unit}`}
           </Text>
           <View style={styles.productFooter}>
-            <Text style={styles.productPrice}>{material.basePrice}</Text>
+            <Text style={styles.productPrice}>{formatMoney(material.basePrice, locale)}</Text>
             <View style={styles.productActions}>
               <TouchableOpacity
                 style={styles.addButton}

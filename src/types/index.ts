@@ -758,6 +758,8 @@ export interface ShopInstanceSearchItem {
   plantName: string;
   currentNurseryId: number;
   nurseryName: string;
+  nurseryAddress?: string | null;
+  nurseryPhone?: string | null;
   sku: string;
   specificPrice: number;
   height?: number | null;
@@ -792,6 +794,8 @@ export interface PlantInstanceDetail {
   plantName: string;
   currentNurseryId: number;
   nurseryName: string;
+  nurseryAddress?: string | null;
+  nurseryPhone?: string | null;
   sku: string;
   specificPrice: number;
   height?: number | null;

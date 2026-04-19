@@ -1,5 +1,4 @@
 import i18n from 'i18next';
-import * as Localization from 'expo-localization';
 import * as SecureStore from 'expo-secure-store';
 import { initReactI18next } from 'react-i18next';
 import en from './translations/en';
@@ -23,8 +22,7 @@ const languageDetector = {
         return;
       }
 
-      const deviceLanguage = Localization.getLocales()?.[0]?.languageCode;
-      callback(deviceLanguage === 'vi' ? 'vi' : 'en');
+      callback('en');
     } catch {
       callback('en');
     }
@@ -44,6 +42,7 @@ i18n
   .use(initReactI18next)
   .init({
     resources,
+    lng: 'en',
     fallbackLng: 'en',
     supportedLngs: ['en', 'vi'],
     compatibilityJSON: 'v4',

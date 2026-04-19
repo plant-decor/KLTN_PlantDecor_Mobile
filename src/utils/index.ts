@@ -73,3 +73,8 @@ export {
   isServiceRegistrationCancellableStatus,
   isServiceRegistrationPendingApprovalStatus,
 } from './serviceRegistrationStatus';
+export {
+  resolveImageUri,
+  resolveImageUris,
+  resolvePrimaryImageUri,
+} from './image';
