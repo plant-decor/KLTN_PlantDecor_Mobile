@@ -868,8 +868,9 @@ export default function CheckoutScreen() {
                 </View>
                 <View style={styles.orderInfo}>
                   <Text style={styles.orderName}>{item.name}</Text>
-                  <Text style={styles.orderSize}>{t('checkout.size', { size: item.size || fallbackSize })}</Text>
+                  {/* <Text style={styles.orderSize}>{t('checkout.size', { size: item.size || fallbackSize })}</Text> */}
                   <Text style={styles.orderPrice}>{(item.price || 0).toLocaleString(locale)}đ</Text>
+                  <Text style={styles.subtotalText}>{`Subtotal: ${(item.price * item.quantity || 0).toLocaleString(locale)}đ`}</Text>
                 </View>
               </View>
             ))
@@ -1153,6 +1154,11 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes['2xl'],
     fontWeight: '700',
     color: COLORS.primaryLight,
+  },
+  subtotalText: {
+    marginTop: 2,
+    fontSize: FONTS.sizes.lg,
+    color: COLORS.primaryDark,
   },
   emptyOrderText: {
     fontSize: FONTS.sizes.md,

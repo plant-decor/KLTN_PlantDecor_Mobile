@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   Modal,
   RefreshControl,
   ScrollView,
@@ -16,17 +17,29 @@ import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
+import * as ImagePicker from 'expo-image-picker';
 import { COLORS, FONTS, RADIUS, SHADOWS, SPACING } from '../../constants';
 import { BrandedHeader } from '../../components/branding';
 import { orderService } from '../../services';
 import { useAuthStore } from '../../stores';
-import { OrderNursery, RootStackParamList } from '../../types';
-import { getOrderStatusColors, getOrderStatusLabel, notify } from '../../utils';
+import { OrderLineItem, OrderNursery, RootStackParamList } from '../../types';
+import {
+  getOrderStatusColors,
+  getOrderStatusLabel,
+  notify,
+  parseDeliveryNoteWithImage,
+  resolveImageUri,
+} from '../../utils';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'ShippingList'>;
 type StatusFilter = 'assigned' | 'shipping' | 'delivered' | 'delivery-failed';
 type ShipperActionType = 'start-shipping' | 'mark-delivered' | 'mark-delivery-failed';
 type PageToken = number | 'left-ellipsis' | 'right-ellipsis';
+type SelectedDeliveryImage = {
+  uri: string;
+  fileName: string;
+  mimeType: string;
+};
 
 const PAGE_SIZE = 10;
 const SCREEN_BG = '#F6F8F6';
@@ -70,6 +83,69 @@ const isOrderInFilter = (order: OrderNursery, filter: StatusFilter): boolean =>
 
 const buildOrderCode = (id: number): string => `DH-${String(id).padStart(4, '0')}`;
 
+const resolveNumericId = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }
+
+  return null;
+};
+
+const resolveOrderDetailId = (order: OrderNursery): number => {
+  const orderRecord = order as OrderNursery & {
+    orderID?: unknown;
+    parentOrderId?: unknown;
+  };
+
+  return (
+    resolveNumericId(orderRecord.orderId) ??
+    resolveNumericId(orderRecord.orderID) ??
+    resolveNumericId(orderRecord.parentOrderId) ??
+    order.id
+  );
+};
+
+const resolveLineItemImage = (lineItem: OrderLineItem): string | null => {
+  const possibleValues: unknown[] = [
+    lineItem.itemImageUrl,
+    lineItem.itemImage,
+    lineItem.primaryImageUrl,
+    lineItem.imageUrl,
+  ];
+
+  for (const value of possibleValues) {
+    const uri = resolveImageUri(value);
+    if (uri) {
+      return uri;
+    }
+  }
+
+  return null;
+};
+
+const resolveImageMimeType = (fileName: string): string => {
+  const normalizedName = fileName.toLowerCase();
+
+  if (normalizedName.endsWith('.png')) {
+    return 'image/png';
+  }
+
+  if (normalizedName.endsWith('.webp')) {
+    return 'image/webp';
+  }
+
+  if (normalizedName.endsWith('.heic') || normalizedName.endsWith('.heif')) {
+    return 'image/heic';
+  }
+
+  return 'image/jpeg';
+};
+
 export default function ShippingListScreen() {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
@@ -95,6 +171,8 @@ export default function ShippingListScreen() {
   const [actionType, setActionType] = useState<ShipperActionType | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<OrderNursery | null>(null);
   const [actionNote, setActionNote] = useState('');
+  const [selectedDeliveryImage, setSelectedDeliveryImage] = useState<SelectedDeliveryImage | null>(null);
+  const [previewImageUri, setPreviewImageUri] = useState<string | null>(null);
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
   const [processingOrderId, setProcessingOrderId] = useState<number | null>(null);
 
@@ -137,20 +215,20 @@ export default function ShippingListScreen() {
     (filter: StatusFilter) => {
       if (filter === 'assigned') {
         return t('shippingList.filterAssigned', {
-          defaultValue: 'Chờ lấy hàng',
+          defaultValue: 'Assigned',
         });
       }
 
       if (filter === 'shipping') {
-        return t('shippingList.filterShipping', { defaultValue: 'Đang giao' });
+        return t('shippingList.filterShipping', { defaultValue: 'Shipping' });
       }
 
       if (filter === 'delivered') {
-        return t('shippingList.filterDelivered', { defaultValue: 'Đã giao' });
+        return t('shippingList.filterDelivered', { defaultValue: 'Delivered' });
       }
 
       return t('shippingList.filterDeliveryFailed', {
-        defaultValue: 'Giao thất bại',
+        defaultValue: 'Delivery failed',
       });
     },
     [t]
@@ -159,18 +237,18 @@ export default function ShippingListScreen() {
   const getStatusHint = useCallback(
     (statusName: string) => {
       if (isShippingStatus(statusName)) {
-        return t('shippingList.hintShipping', { defaultValue: 'Đang trên tuyến' });
+        return t('shippingList.hintShipping', { defaultValue: 'In transit' });
       }
 
       if (isAssignedStatus(statusName)) {
-        return t('shippingList.hintAssigned', { defaultValue: 'Cần lấy hàng' });
+        return t('shippingList.hintAssigned', { defaultValue: 'Ready for pickup' });
       }
 
       if (isDeliveredStatus(statusName)) {
-        return t('shippingList.hintDelivered', { defaultValue: 'Đã hoàn tất' });
+        return t('shippingList.hintDelivered', { defaultValue: 'Completed' });
       }
 
-      return t('shippingList.hintDefault', { defaultValue: 'Cập nhật mới nhất' });
+      return t('shippingList.hintDefault', { defaultValue: 'Latest update' });
     },
     [t]
   );
@@ -184,6 +262,7 @@ export default function ShippingListScreen() {
     setActionType(null);
     setSelectedOrder(null);
     setActionNote('');
+    setSelectedDeliveryImage(null);
   }, [isSubmittingAction]);
 
   const loadOrders = useCallback(
@@ -335,6 +414,88 @@ export default function ShippingListScreen() {
     });
   }, []);
 
+  const handleDeliveryImageAsset = useCallback(
+    (asset?: ImagePicker.ImagePickerAsset) => {
+      const selectedUri = asset?.uri?.trim();
+      if (!selectedUri) {
+        notify({
+          title: t('common.error', { defaultValue: 'Error' }),
+          message: t('shippingList.imageMissing', {
+            defaultValue: 'Please choose an image.',
+          }),
+        });
+        return;
+      }
+
+      const fallbackFileName = selectedUri.split('/').pop() || `delivery-${Date.now()}.jpg`;
+      const fileName = asset?.fileName?.trim() || fallbackFileName;
+      const mimeType = asset?.mimeType?.trim() || resolveImageMimeType(fileName);
+
+      setSelectedDeliveryImage({
+        uri: selectedUri,
+        fileName,
+        mimeType,
+      });
+    },
+    [t]
+  );
+
+  const handlePickDeliveryImage = useCallback(async () => {
+    if (isSubmittingAction) {
+      return;
+    }
+
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      notify({
+        title: t('common.error', { defaultValue: 'Error' }),
+        message: t('shippingList.mediaPermissionDenied', {
+          defaultValue: 'Please grant photo library access to upload delivery image.',
+        }),
+      });
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      allowsEditing: false,
+      quality: 0.8,
+    });
+
+    if (result.canceled) {
+      return;
+    }
+
+    handleDeliveryImageAsset(result.assets?.[0]);
+  }, [handleDeliveryImageAsset, isSubmittingAction, t]);
+
+  const handleCaptureDeliveryImage = useCallback(async () => {
+    if (isSubmittingAction) {
+      return;
+    }
+
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      notify({
+        title: t('common.error', { defaultValue: 'Error' }),
+        message: t('shippingList.cameraPermissionDenied', {
+          defaultValue: 'Please grant camera access to take delivery image.',
+        }),
+      });
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: false,
+      quality: 0.8,
+    });
+
+    if (result.canceled) {
+      return;
+    }
+
+    handleDeliveryImageAsset(result.assets?.[0]);
+  }, [handleDeliveryImageAsset, isSubmittingAction, t]);
+
   const openActionModal = (order: OrderNursery, nextAction: ShipperActionType) => {
     if (
       nextAction === 'start-shipping' &&
@@ -345,7 +506,7 @@ export default function ShippingListScreen() {
         title: t('common.error', { defaultValue: 'Error' }),
         message: t('shippingList.oneShippingRule', {
           defaultValue:
-            'Bạn đang có 1 đơn đang giao. Hãy hoàn tất đơn đó trước khi bắt đầu đơn mới.',
+            'You already have one order in shipping. Complete it before starting a new one.',
         }),
       });
       return;
@@ -356,8 +517,10 @@ export default function ShippingListScreen() {
     if (nextAction === 'start-shipping') {
       setActionNote(order.shipperNote || '');
     } else {
-      setActionNote(order.deliveryNote || '');
+      const parsedDelivery = parseDeliveryNoteWithImage(order.deliveryNote);
+      setActionNote(parsedDelivery.note || '');
     }
+    setSelectedDeliveryImage(null);
     setModalVisible(true);
   };
 
@@ -375,7 +538,7 @@ export default function ShippingListScreen() {
         title: t('common.error', { defaultValue: 'Error' }),
         message: t('shippingList.oneShippingRule', {
           defaultValue:
-            'Bạn đang có 1 đơn đang giao. Hãy hoàn tất đơn đó trước khi bắt đầu đơn mới.',
+            'You already have one order in shipping. Complete it before starting a new one.',
         }),
       });
       return;
@@ -386,6 +549,16 @@ export default function ShippingListScreen() {
       notify({
         title: t('common.error', { defaultValue: 'Error' }),
         message: t('shippingList.noteRequired', { defaultValue: 'Please enter a note.' }),
+      });
+      return;
+    }
+
+    if (actionType === 'mark-delivered' && !selectedDeliveryImage) {
+      notify({
+        title: t('common.error', { defaultValue: 'Error' }),
+        message: t('shippingList.imageRequired', {
+          defaultValue: 'Please select a delivery image before confirming.',
+        }),
       });
       return;
     }
@@ -402,6 +575,7 @@ export default function ShippingListScreen() {
           : actionType === 'mark-delivered'
           ? await orderService.markDelivered(selectedOrder.id, {
               deliveryNote: trimmedNote,
+              deliveryImage: selectedDeliveryImage!,
             })
           : await orderService.markDeliveryFailed(selectedOrder.id, {
               failureReason: trimmedNote,
@@ -441,6 +615,7 @@ export default function ShippingListScreen() {
       setActionType(null);
       setSelectedOrder(null);
       setActionNote('');
+      setSelectedDeliveryImage(null);
 
       void loadOrders(activeFilter, {
         pageNumber: currentPage,
@@ -466,10 +641,21 @@ export default function ShippingListScreen() {
   const handleContact = (order: OrderNursery) => {
     notify({
       message: t('shippingList.contactInfo', {
-        defaultValue: `Liên hệ vựa ${order.nurseryName} để phối hợp giao hàng.`,
+        defaultValue: 'Contact nursery {{nurseryName}} to coordinate delivery.',
+        nurseryName: order.nurseryName,
       }),
     });
   };
+
+  const handleViewOrderDetail = useCallback(
+    (order: OrderNursery) => {
+      navigation.navigate('ShipperOrderDetail', {
+        orderId: resolveOrderDetailId(order),
+        nurseryOrderId: order.id,
+      });
+    },
+    [navigation]
+  );
 
   const renderOrderCard = ({ item }: { item: OrderNursery }) => {
     const statusColors = getOrderStatusColors(item.statusName);
@@ -481,6 +667,12 @@ export default function ShippingListScreen() {
     const canShowStart = canStartShipping(item.statusName);
     const canShowDelivered = canMarkDelivered(item.statusName);
     const canShowDeliveryFailed = canMarkDeliveryFailed(item.statusName);
+    const totalUnits = item.items.reduce((sum, lineItem) => sum + Math.max(0, lineItem.quantity || 0), 0);
+    const parsedDelivery = parseDeliveryNoteWithImage(item.deliveryNote);
+    const displayNote =
+      parsedDelivery.note ||
+      item.shipperNote ||
+      t('shippingList.noShipperNote', { defaultValue: 'No shipper note yet.' });
 
     return (
       <View style={[styles.orderCard, isDeliveredStatus(item.statusName) && styles.orderCardDelivered]}>
@@ -501,31 +693,29 @@ export default function ShippingListScreen() {
             <Text style={styles.statusHintText}>{getStatusHint(item.statusName)}</Text>
           </View>
 
-          <TouchableOpacity style={styles.moreIconButton}>
-            <Ionicons name="ellipsis-horizontal" size={18} color={TEXT_DARK} />
+          <TouchableOpacity
+            style={styles.moreIconButton}
+            onPress={() => handleViewOrderDetail(item)}
+            disabled={isActionLoading}
+          >
+            <Ionicons name="open-outline" size={18} color={TEXT_DARK} />
           </TouchableOpacity>
         </View>
 
         <Text style={styles.orderCodeText}>
           {t('shippingList.orderCode', {
-            defaultValue: 'Đơn hàng #{{code}}',
+            defaultValue: 'Order #{{code}}',
             code: buildOrderCode(item.id),
           })}
         </Text>
 
         <View style={styles.infoRow}>
-          <Ionicons name="business-outline" size={16} color={ACCENT_GREEN} />
-          <Text style={styles.infoRowText} numberOfLines={1}>
-            {item.nurseryName}
-          </Text>
-        </View>
-
-        <View style={styles.infoRow}>
           <Ionicons name="cube-outline" size={16} color={COLORS.gray500} />
           <Text style={styles.infoRowTextMuted} numberOfLines={1}>
             {t('shippingList.itemsAndSubtotal', {
-              defaultValue: '{{count}} sản phẩm • {{subtotal}}',
+              defaultValue: '{{count}} items • {{units}} qty • {{subtotal}}',
               count: item.items.length,
+              units: totalUnits,
               subtotal: formatCurrency(item.subTotalAmount),
             })}
           </Text>
@@ -533,15 +723,38 @@ export default function ShippingListScreen() {
 
         <View style={styles.divider} />
 
-        {item.items.slice(0, 2).map((lineItem) => (
-          <View key={`${item.id}-${lineItem.id}`} style={styles.lineItemRow}>
-            <Text style={styles.lineItemName} numberOfLines={1}>
-              {lineItem.itemName}
-            </Text>
-            <Text style={styles.lineItemMeta}>x{lineItem.quantity}</Text>
-            <Text style={styles.lineItemPrice}>{formatCurrency(lineItem.price)}</Text>
-          </View>
-        ))}
+        {item.items.slice(0, 2).map((lineItem) => {
+          const imageUri = resolveLineItemImage(lineItem);
+
+          return (
+            <View key={`${item.id}-${lineItem.id}`} style={styles.lineItemRow}>
+              {imageUri ? (
+                <Image source={{ uri: imageUri }} style={styles.lineItemImage} resizeMode="cover" />
+              ) : (
+                <View style={styles.lineItemImagePlaceholder}>
+                  <Ionicons name="image-outline" size={16} color={COLORS.gray500} />
+                </View>
+              )}
+
+              <View style={styles.lineItemBody}>
+                <Text style={styles.lineItemName} numberOfLines={1}>
+                  {lineItem.itemName}
+                </Text>
+                <View style={styles.lineItemMetaRow}>
+                  <View style={styles.lineItemQtyBadge}>
+                    <Text style={styles.lineItemQtyBadgeText}>
+                      {t('shippingList.qtyLabel', {
+                        defaultValue: 'Qty {{count}}',
+                        count: lineItem.quantity,
+                      })}
+                    </Text>
+                  </View>
+                  <Text style={styles.lineItemPrice}>{formatCurrency(lineItem.price)}</Text>
+                </View>
+              </View>
+            </View>
+          );
+        })}
 
         {item.items.length > 2 ? (
           <Text style={styles.moreItemsText}>
@@ -555,16 +768,48 @@ export default function ShippingListScreen() {
         <View style={styles.noteWrap}>
           <Ionicons name="chatbubble-ellipses-outline" size={15} color={COLORS.gray600} />
           <Text style={styles.noteText} numberOfLines={2}>
-            {item.deliveryNote ||
-              item.shipperNote ||
-              t('shippingList.noShipperNote', { defaultValue: 'No shipper note yet.' })}
+            {displayNote}
           </Text>
         </View>
+
+        {parsedDelivery.deliveryImageUrl ? (
+          <View style={styles.noteDeliveryImageWrap}>
+            <Text style={styles.noteDeliveryImageLabel}>
+              {t('shippingList.deliveryImageLabel', {
+                defaultValue: 'Delivery image',
+              })}
+            </Text>
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => setPreviewImageUri(parsedDelivery.deliveryImageUrl)}
+            >
+              <Image
+                source={{ uri: parsedDelivery.deliveryImageUrl }}
+                style={styles.noteDeliveryImagePreview}
+                resizeMode="cover"
+              />
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
+        <TouchableOpacity
+          style={styles.viewDetailButton}
+          onPress={() => handleViewOrderDetail(item)}
+          disabled={isActionLoading}
+        >
+          <Ionicons name="document-text-outline" size={16} color={COLORS.primary} />
+          <Text style={styles.viewDetailButtonText}>
+            {t('shippingList.viewOrderDetail', {
+              defaultValue: 'View order detail',
+            })}
+          </Text>
+          <Ionicons name="chevron-forward" size={16} color={COLORS.primary} />
+        </TouchableOpacity>
 
         {isStartBlocked ? (
           <Text style={styles.lockHintText}>
             {t('shippingList.lockHint', {
-              defaultValue: 'Hoàn tất đơn đang giao trước khi lấy đơn mới.',
+              defaultValue: 'Complete your active shipping order before taking a new one.',
             })}
           </Text>
         ) : null}
@@ -581,7 +826,7 @@ export default function ShippingListScreen() {
           >
             <Ionicons name="call-outline" size={15} color={TEXT_DARK} />
             <Text style={styles.contactButtonText}>
-              {t('shippingList.contact', { defaultValue: 'Liên hệ' })}
+              {t('shippingList.contact', { defaultValue: 'Contact' })}
             </Text>
           </TouchableOpacity>
 
@@ -600,7 +845,7 @@ export default function ShippingListScreen() {
                 <>
                   <Ionicons name="bag-check-outline" size={15} color={COLORS.white} />
                   <Text style={styles.primaryActionButtonText}>
-                    {t('shippingList.pickedUp', { defaultValue: 'Đã lấy' })}
+                    {t('shippingList.pickedUp', { defaultValue: 'Picked up' })}
                   </Text>
                 </>
               )}
@@ -623,7 +868,7 @@ export default function ShippingListScreen() {
                 <>
                   <Ionicons name="checkmark-done-outline" size={15} color={ACCENT_DARK} />
                   <Text style={[styles.primaryActionButtonText, styles.primaryActionButtonTextDark]}>
-                    {t('shippingList.complete', { defaultValue: 'Hoàn tất' })}
+                    {t('shippingList.complete', { defaultValue: 'Complete' })}
                   </Text>
                 </>
               )}
@@ -642,7 +887,7 @@ export default function ShippingListScreen() {
                 <>
                   <Ionicons name="close-circle-outline" size={15} color={COLORS.white} />
                   <Text style={styles.failureActionButtonText}>
-                    {t('shippingList.markDeliveryFailed', { defaultValue: 'Báo thất bại' })}
+                    {t('shippingList.markDeliveryFailed', { defaultValue: 'Mark failed' })}
                   </Text>
                 </>
               )}
@@ -681,18 +926,18 @@ export default function ShippingListScreen() {
       <BrandedHeader
         containerStyle={styles.header}
         sideWidth={52}
-        title={t('shippingList.screenTitle', { defaultValue: 'Danh sách Giao hàng' })}
+        title={t('shippingList.screenTitle', { defaultValue: 'Shipping List' })}
         left={
           <TouchableOpacity style={styles.headerButton} onPress={() => navigation.goBack()}>
             <Ionicons name="chevron-back" size={22} color={TEXT_DARK} />
           </TouchableOpacity>
         }
-        right={
-          <View style={styles.notificationButton}>
-            <Ionicons name="notifications-outline" size={20} color={TEXT_DARK} />
-            <View style={styles.notificationDot} />
-          </View>
-        }
+        // right={
+        //   <View style={styles.notificationButton}>
+        //     <Ionicons name="notifications-outline" size={20} color={TEXT_DARK} />
+        //     <View style={styles.notificationDot} />
+        //   </View>
+        // }
         brandVariant='none'
       />
 
@@ -701,7 +946,7 @@ export default function ShippingListScreen() {
           <Ionicons name="lock-closed-outline" size={15} color={COLORS.warning} />
           <Text style={styles.lockBannerText}>
             {t('shippingList.activeShippingBanner', {
-              defaultValue: 'Đang giao đơn #{{code}}. Hoàn tất để nhận đơn mới.',
+              defaultValue: 'Shipping order #{{code}} is active. Complete it to accept a new one.',
               code: buildOrderCode(activeShippingOrder.id),
             })}
           </Text>
@@ -786,7 +1031,7 @@ export default function ShippingListScreen() {
           <View style={[styles.paginationWrap, { paddingBottom: Math.max(insets.bottom, SPACING.sm) }]}>
             <Text style={styles.paginationMetaText}>
               {t('shippingList.paginationMeta', {
-                defaultValue: 'Trang {{current}}/{{total}} • {{count}} đơn',
+                defaultValue: 'Page {{current}}/{{total}} • {{count}} orders',
                 current: currentPage,
                 total: totalPages,
                 count: totalCount,
@@ -842,6 +1087,27 @@ export default function ShippingListScreen() {
         </>
       )}
 
+      <Modal
+        visible={Boolean(previewImageUri)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPreviewImageUri(null)}
+      >
+        <View style={styles.fullImageModalOverlay}>
+          <TouchableOpacity
+            style={styles.fullImageCloseButton}
+            onPress={() => setPreviewImageUri(null)}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="close" size={24} color={COLORS.white} />
+          </TouchableOpacity>
+
+          {previewImageUri ? (
+            <Image source={{ uri: previewImageUri }} style={styles.fullImagePreview} resizeMode="contain" />
+          ) : null}
+        </View>
+      </Modal>
+
       <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={closeActionModal}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
@@ -895,6 +1161,64 @@ export default function ShippingListScreen() {
               onChangeText={setActionNote}
               editable={!isSubmittingAction}
             />
+
+            {actionType === 'mark-delivered' ? (
+              <View style={styles.modalImageSection}>
+                <Text style={styles.modalImageLabel}>
+                  {t('shippingList.deliveryImageLabel', {
+                    defaultValue: 'Delivery image',
+                  })}
+                </Text>
+
+                <View style={styles.modalImageActionsRow}>
+                  <TouchableOpacity
+                    style={[styles.modalImageActionButton, isSubmittingAction && styles.disabledButton]}
+                    onPress={() => {
+                      void handlePickDeliveryImage();
+                    }}
+                    disabled={isSubmittingAction}
+                  >
+                    <Ionicons name="images-outline" size={16} color={COLORS.textPrimary} />
+                    <Text style={styles.modalImageActionText}>
+                      {t('shippingList.chooseImage', {
+                        defaultValue: 'Choose image',
+                      })}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.modalImageActionButton, isSubmittingAction && styles.disabledButton]}
+                    onPress={() => {
+                      void handleCaptureDeliveryImage();
+                    }}
+                    disabled={isSubmittingAction}
+                  >
+                    <Ionicons name="camera-outline" size={16} color={COLORS.textPrimary} />
+                    <Text style={styles.modalImageActionText}>
+                      {t('shippingList.takePhoto', {
+                        defaultValue: 'Take photo',
+                      })}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {selectedDeliveryImage ? (
+                  <View style={styles.modalImagePreviewRow}>
+                    <Image
+                      source={{ uri: selectedDeliveryImage.uri }}
+                      style={styles.modalImagePreview}
+                      resizeMode="cover"
+                    />
+                    <Text style={styles.modalImagePreviewText} numberOfLines={2}>
+                      {t('shippingList.selectedImage', {
+                        defaultValue: 'Selected: {{name}}',
+                        name: selectedDeliveryImage.fileName,
+                      })}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
 
             <View style={styles.modalActions}>
               <TouchableOpacity
@@ -1126,21 +1450,50 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
-    marginBottom: SPACING.xs,
+    marginBottom: SPACING.sm,
+  },
+  lineItemImage: {
+    width: 42,
+    height: 42,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.gray100,
+  },
+  lineItemImagePlaceholder: {
+    width: 42,
+    height: 42,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.gray100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lineItemBody: {
+    flex: 1,
+    gap: 4,
   },
   lineItemName: {
-    flex: 1,
     fontSize: FONTS.sizes.md,
     color: TEXT_DARK,
+    fontWeight: '600',
   },
-  lineItemMeta: {
-    minWidth: 26,
-    textAlign: 'right',
+  lineItemMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SPACING.sm,
+  },
+  lineItemQtyBadge: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 3,
+    borderRadius: RADIUS.full,
+    backgroundColor: '#E8F7EF',
+  },
+  lineItemQtyBadgeText: {
     fontSize: FONTS.sizes.sm,
-    color: COLORS.textSecondary,
+    color: '#166534',
+    fontWeight: '700',
   },
   lineItemPrice: {
-    minWidth: 92,
+    minWidth: 98,
     textAlign: 'right',
     fontSize: FONTS.sizes.md,
     fontWeight: '600',
@@ -1162,6 +1515,64 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.sm,
     lineHeight: 18,
     color: COLORS.gray700,
+  },
+  noteDeliveryImageWrap: {
+    marginTop: SPACING.sm,
+    gap: SPACING.xs,
+  },
+  noteDeliveryImageLabel: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+    fontWeight: '700',
+  },
+  noteDeliveryImagePreview: {
+    width: '100%',
+    height: 128,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.gray100,
+  },
+  fullImageModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.lg,
+  },
+  fullImageCloseButton: {
+    position: 'absolute',
+    top: SPACING['3xl'],
+    right: SPACING.lg,
+    width: 36,
+    height: 36,
+    borderRadius: RADIUS.full,
+    backgroundColor: 'rgba(17, 24, 39, 0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+  fullImagePreview: {
+    width: '100%',
+    height: '82%',
+  },
+  viewDetailButton: {
+    marginTop: SPACING.sm,
+    height: 38,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.gray50,
+    paddingHorizontal: SPACING.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SPACING.xs,
+  },
+  viewDetailButtonText: {
+    flex: 1,
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.primary,
+    fontWeight: '700',
   },
   lockHintText: {
     marginTop: SPACING.sm,
@@ -1361,6 +1772,59 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.md,
     color: COLORS.textPrimary,
     backgroundColor: COLORS.gray50,
+  },
+  modalImageSection: {
+    marginTop: SPACING.md,
+    gap: SPACING.sm,
+  },
+  modalImageLabel: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textPrimary,
+    fontWeight: '700',
+  },
+  modalImageActionsRow: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+  },
+  modalImageActionButton: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.sm,
+  },
+  modalImageActionText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textPrimary,
+    fontWeight: '600',
+  },
+  modalImagePreviewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.gray50,
+    padding: SPACING.sm,
+  },
+  modalImagePreview: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.gray100,
+  },
+  modalImagePreviewText: {
+    flex: 1,
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
   },
   modalActions: {
     marginTop: SPACING.lg,

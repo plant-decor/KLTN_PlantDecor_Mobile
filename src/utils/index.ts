@@ -78,3 +78,4 @@ export {
   resolveImageUris,
   resolvePrimaryImageUri,
 } from './image';
+export { parseDeliveryNoteWithImage } from './deliveryNote';

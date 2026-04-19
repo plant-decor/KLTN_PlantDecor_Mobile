@@ -1,7 +1,6 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
-  Image,
   Modal,
   RefreshControl,
   ScrollView,
@@ -10,18 +9,24 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Image,
 } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import * as ImagePicker from 'expo-image-picker';
-import { COLORS, FONTS, RADIUS, SHADOWS, SPACING } from '../../constants';
 import { BrandedHeader } from '../../components/branding';
+import { COLORS, FONTS, RADIUS, SHADOWS, SPACING } from '../../constants';
 import { orderService } from '../../services';
 import { useAuthStore } from '../../stores';
-import { OrderLineItem, OrderNursery, RootStackParamList } from '../../types';
+import {
+  OrderLineItem,
+  OrderNursery,
+  RootStackParamList,
+  ShipperNurseryOrderDetailPayload,
+} from '../../types';
 import {
   getOrderStatusColors,
   getOrderStatusLabel,
@@ -30,7 +35,8 @@ import {
   resolveImageUri,
 } from '../../utils';
 
-type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'ShipperHome'>;
+type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'ShipperOrderDetail'>;
+type ScreenRouteProp = RouteProp<RootStackParamList, 'ShipperOrderDetail'>;
 type ShipperActionType = 'start-shipping' | 'mark-delivered' | 'mark-delivery-failed';
 type SelectedDeliveryImage = {
   uri: string;
@@ -38,37 +44,24 @@ type SelectedDeliveryImage = {
   mimeType: string;
 };
 
-const ASSIGNED_STATUS = 3;
 const SHIPPING_STATUS = 4;
 
 const buildOrderCode = (id: number): string => `DH-${String(id).padStart(4, '0')}`;
 
-const resolveNumericId = (value: unknown): number | null => {
-  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
-    return value;
-  }
+const normalizeToken = (value: string): string => value.trim().toLowerCase();
 
-  if (typeof value === 'string') {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-  }
+const isAssignedStatus = (statusName: string): boolean => normalizeToken(statusName).includes('assign');
 
-  return null;
+const isShippingStatus = (statusName: string): boolean => {
+  const token = normalizeToken(statusName);
+  return token.includes('ship') && !token.includes('deliver');
 };
 
-const resolveOrderDetailId = (order: OrderNursery): number => {
-  const orderRecord = order as OrderNursery & {
-    orderID?: unknown;
-    parentOrderId?: unknown;
-  };
+const canStartShipping = (statusName: string): boolean => isAssignedStatus(statusName);
 
-  return (
-    resolveNumericId(orderRecord.orderId) ??
-    resolveNumericId(orderRecord.orderID) ??
-    resolveNumericId(orderRecord.parentOrderId) ??
-    order.id
-  );
-};
+const canMarkDelivered = (statusName: string): boolean => isShippingStatus(statusName);
+
+const canMarkDeliveryFailed = (statusName: string): boolean => isShippingStatus(statusName);
 
 const resolveLineItemImage = (lineItem: OrderLineItem): string | null => {
   const possibleValues: unknown[] = [
@@ -106,19 +99,18 @@ const resolveImageMimeType = (fileName: string): string => {
   return 'image/jpeg';
 };
 
-export default function ShipperHomeScreen() {
+export default function ShipperOrderDetailScreen() {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
-  const insets = useSafeAreaInsets();
-  const user = useAuthStore((state) => state.user);
-  const logout = useAuthStore((state) => state.logout);
-  const isSigningOut = useAuthStore((state) => state.isSigningOut);
+  const route = useRoute<ScreenRouteProp>();
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+
+  const { orderId, nurseryOrderId } = route.params;
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
 
-  const [shippingOrder, setShippingOrder] = useState<OrderNursery | null>(null);
-  const [assignedOrders, setAssignedOrders] = useState<OrderNursery[]>([]);
-  const [isLoadingOrders, setIsLoadingOrders] = useState(false);
+  const [order, setOrder] = useState<ShipperNurseryOrderDetailPayload | null>(null);
+  const [activeShippingOrder, setActiveShippingOrder] = useState<OrderNursery | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -127,37 +119,16 @@ export default function ShipperHomeScreen() {
   const [selectedOrder, setSelectedOrder] = useState<OrderNursery | null>(null);
   const [actionNote, setActionNote] = useState('');
   const [selectedDeliveryImage, setSelectedDeliveryImage] = useState<SelectedDeliveryImage | null>(null);
+  const [previewImageUri, setPreviewImageUri] = useState<string | null>(null);
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
   const [processingOrderId, setProcessingOrderId] = useState<number | null>(null);
-
-  const displayName =
-    typeof user?.fullName === 'string' && user.fullName.trim().length > 0
-      ? user.fullName.trim()
-      : t('shipperHome.defaultName', { defaultValue: 'Shipper' });
-
-  const displayEmail =
-    typeof user?.email === 'string' && user.email.trim().length > 0
-      ? user.email.trim()
-      : t('shipperHome.noEmail', { defaultValue: 'No email available' });
-
-  const displayPhone =
-    typeof user?.phoneNumber === 'string' && user.phoneNumber.trim().length > 0
-      ? user.phoneNumber.trim()
-      : typeof user?.phone === 'string' && user.phone.trim().length > 0
-      ? user.phone.trim()
-      : null;
-
-  const nurseryName =
-    typeof user?.nurseryName === 'string' && user.nurseryName.trim().length > 0
-      ? user.nurseryName.trim()
-      : t('shipperHome.nurseryFallback', { defaultValue: 'None' });
 
   const formatCurrency = useCallback(
     (value: number) => `${(value || 0).toLocaleString(locale)}đ`,
     [locale]
   );
 
-  const loadStatusOrders = useCallback(
+  const loadDetail = useCallback(
     async (options?: { refresh?: boolean; background?: boolean }) => {
       if (!isAuthenticated) {
         return;
@@ -169,45 +140,41 @@ export default function ShipperHomeScreen() {
         if (options?.refresh) {
           setIsRefreshing(true);
         } else {
-          setIsLoadingOrders(true);
+          setIsLoading(true);
         }
       }
 
       try {
         setErrorMessage(null);
 
-        const [shippingPayload, assignedPayload] = await Promise.all([
+        const detailId = nurseryOrderId ?? orderId;
+
+        const [detailPayload, shippingPayload] = await Promise.all([
+          orderService.getShipperNurseryOrderDetail(detailId),
           orderService.getNurseryOrders({
             status: SHIPPING_STATUS,
             pageNumber: 1,
             pageSize: 1,
           }),
-          orderService.getNurseryOrders({
-            status: ASSIGNED_STATUS,
-            pageNumber: 1,
-            pageSize: 50,
-          }),
         ]);
 
-        const oldestAssigned = [...(assignedPayload.items ?? [])].sort((left, right) => left.id - right.id);
-
-        setShippingOrder(shippingPayload.items[0] ?? null);
-        setAssignedOrders(oldestAssigned.slice(0, 1));
+        setOrder(detailPayload);
+        setActiveShippingOrder(shippingPayload.items[0] ?? null);
       } catch (error: any) {
         const apiMessage = error?.response?.data?.message;
         setErrorMessage(
           typeof apiMessage === 'string' && apiMessage.trim().length > 0
             ? apiMessage
-            : t('shippingList.loadFailed', {
-                defaultValue: 'Unable to load shipping orders. Please try again.',
+            : t('shipperOrderDetail.loadFailed', {
+                defaultValue: 'Unable to load shipping order detail. Please try again.',
               })
         );
       } finally {
-        setIsLoadingOrders(false);
+        setIsLoading(false);
         setIsRefreshing(false);
       }
     },
-    [isAuthenticated, t]
+    [isAuthenticated, nurseryOrderId, orderId, t]
   );
 
   useFocusEffect(
@@ -216,21 +183,9 @@ export default function ShipperHomeScreen() {
         return;
       }
 
-      void loadStatusOrders();
-    }, [isAuthenticated, loadStatusOrders])
+      void loadDetail();
+    }, [isAuthenticated, loadDetail])
   );
-
-  const handleLogout = async () => {
-    if (!isAuthenticated || isSigningOut) {
-      return;
-    }
-
-    try {
-      await logout();
-    } catch (error) {
-      throw error;
-    }
-  };
 
   const closeActionModal = useCallback(() => {
     if (isSubmittingAction) {
@@ -327,30 +282,34 @@ export default function ShipperHomeScreen() {
   }, [handleDeliveryImageAsset, isSubmittingAction, t]);
 
   const openActionModal = useCallback(
-    (order: OrderNursery, nextAction: ShipperActionType) => {
-      if (nextAction === 'start-shipping' && shippingOrder && shippingOrder.id !== order.id) {
+    (targetOrder: OrderNursery, nextAction: ShipperActionType) => {
+      if (
+        nextAction === 'start-shipping' &&
+        activeShippingOrder &&
+        activeShippingOrder.id !== targetOrder.id
+      ) {
         notify({
           title: t('common.error', { defaultValue: 'Error' }),
           message: t('shippingList.oneShippingRule', {
             defaultValue:
-              'You already have one order in shipping. Complete it before starting a new order.',
+              'You already have one order in shipping. Complete it before starting a new one.',
           }),
         });
         return;
       }
 
-      setSelectedOrder(order);
+      setSelectedOrder(targetOrder);
       setActionType(nextAction);
       if (nextAction === 'start-shipping') {
-        setActionNote(order.shipperNote || '');
+        setActionNote(targetOrder.shipperNote || '');
       } else {
-        const parsedDelivery = parseDeliveryNoteWithImage(order.deliveryNote);
+        const parsedDelivery = parseDeliveryNoteWithImage(targetOrder.deliveryNote);
         setActionNote(parsedDelivery.note || '');
       }
       setSelectedDeliveryImage(null);
       setModalVisible(true);
     },
-    [shippingOrder, t]
+    [activeShippingOrder, t]
   );
 
   const submitAction = useCallback(async () => {
@@ -358,12 +317,16 @@ export default function ShipperHomeScreen() {
       return;
     }
 
-    if (actionType === 'start-shipping' && shippingOrder && shippingOrder.id !== selectedOrder.id) {
+    if (
+      actionType === 'start-shipping' &&
+      activeShippingOrder &&
+      activeShippingOrder.id !== selectedOrder.id
+    ) {
       notify({
         title: t('common.error', { defaultValue: 'Error' }),
         message: t('shippingList.oneShippingRule', {
           defaultValue:
-            'You already have one order in shipping. Complete it before starting a new order.',
+            'You already have one order in shipping. Complete it before starting a new one.',
         }),
       });
       return;
@@ -392,31 +355,20 @@ export default function ShipperHomeScreen() {
     setProcessingOrderId(selectedOrder.id);
 
     try {
-      const updatedOrder =
-        actionType === 'start-shipping'
-          ? await orderService.startShipping(selectedOrder.id, {
-              shipperNote: trimmedNote,
-            })
-          : actionType === 'mark-delivered'
-          ? await orderService.markDelivered(selectedOrder.id, {
-              deliveryNote: trimmedNote,
-              deliveryImage: selectedDeliveryImage!,
-            })
-          : await orderService.markDeliveryFailed(selectedOrder.id, {
-              failureReason: trimmedNote,
-            });
-
       if (actionType === 'start-shipping') {
-        setShippingOrder(updatedOrder);
+        await orderService.startShipping(selectedOrder.id, {
+          shipperNote: trimmedNote,
+        });
+      } else if (actionType === 'mark-delivered') {
+        await orderService.markDelivered(selectedOrder.id, {
+          deliveryNote: trimmedNote,
+          deliveryImage: selectedDeliveryImage!,
+        });
+      } else {
+        await orderService.markDeliveryFailed(selectedOrder.id, {
+          failureReason: trimmedNote,
+        });
       }
-
-      if (actionType !== 'start-shipping' && shippingOrder && shippingOrder.id === updatedOrder.id) {
-        setShippingOrder(null);
-      }
-
-      setAssignedOrders((previousOrders) =>
-        previousOrders.filter((order) => order.id !== updatedOrder.id)
-      );
 
       notify({
         title: t('common.success', { defaultValue: 'Success' }),
@@ -435,7 +387,7 @@ export default function ShipperHomeScreen() {
       });
 
       closeActionModal();
-      void loadStatusOrders({ background: true });
+      void loadDetail({ background: true });
     } catch (error: any) {
       const apiMessage = error?.response?.data?.message;
       notify({
@@ -454,53 +406,147 @@ export default function ShipperHomeScreen() {
   }, [
     actionNote,
     actionType,
+    activeShippingOrder,
     closeActionModal,
-    loadStatusOrders,
+    loadDetail,
     selectedDeliveryImage,
     selectedOrder,
-    shippingOrder,
     t,
   ]);
 
   const handleContact = useCallback(
-    (order: OrderNursery) => {
+    (targetOrder: OrderNursery) => {
       notify({
         message: t('shippingList.contactInfo', {
           defaultValue: 'Contact nursery {{nurseryName}} to coordinate delivery.',
-          nurseryName: order.nurseryName,
+          nurseryName: targetOrder.nurseryName,
         }),
       });
     },
     [t]
   );
 
-  const handleViewOrderDetail = useCallback(
-    (order: OrderNursery) => {
-      navigation.navigate('ShipperOrderDetail', {
-        orderId: resolveOrderDetailId(order),
-        nurseryOrderId: order.id,
-      });
-    },
-    [navigation]
-  );
+  if (!isAuthenticated) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.centerStateWrap}>
+          <Ionicons name="person-circle-outline" size={76} color={COLORS.gray300} />
+          <Text style={styles.centerTitle}>
+            {t('common.loginRequiredTitle', { defaultValue: 'Login required' })}
+          </Text>
+          <Text style={styles.centerSubtitle}>
+            {t('common.loginRequiredMessage', {
+              defaultValue: 'Please login to continue.',
+            })}
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
-  const renderOrderCard = useCallback(
-    (order: OrderNursery, sectionType: 'shipping' | 'assigned') => {
-      const statusColors = getOrderStatusColors(order.statusName);
-      const isActionLoading = processingOrderId === order.id;
-      const isStartBlocked =
-        sectionType === 'assigned' && !!shippingOrder && shippingOrder.id !== order.id;
-      const totalUnits = order.items.reduce(
-        (sum, lineItem) => sum + Math.max(0, lineItem.quantity || 0),
-        0
-      );
-      const previewLineItem = order.items[0];
-      const previewImageUri = previewLineItem ? resolveLineItemImage(previewLineItem) : null;
+  if (isLoading && !order) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.centerStateWrap}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
-      return (
-        <View key={`${sectionType}-${order.id}`} style={styles.orderCard}>
-          <View style={styles.cardTopRow}>
-            {/* <View
+  if (!order) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <BrandedHeader
+          containerStyle={styles.header}
+          sideWidth={44}
+          title={t('shipperOrderDetail.title', {
+            defaultValue: 'Shipping order detail',
+          })}
+          left={
+            <TouchableOpacity style={styles.headerButton} onPress={() => navigation.goBack()}>
+              <Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} />
+            </TouchableOpacity>
+          }
+          right={<View style={styles.headerPlaceholder} />}
+          brandVariant="none"
+        />
+
+        <View style={styles.centerStateWrap}>
+          <Ionicons name="alert-circle-outline" size={70} color={COLORS.gray300} />
+          <Text style={styles.centerTitle}>
+            {t('shipperOrderDetail.emptyTitle', { defaultValue: 'Shipping order not found' })}
+          </Text>
+          <Text style={styles.centerSubtitle}>{errorMessage}</Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => {
+              void loadDetail();
+            }}
+          >
+            <Text style={styles.retryButtonText}>{t('common.retry', { defaultValue: 'Retry' })}</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const displayedStatusName = order.statusName;
+  const statusColors = getOrderStatusColors(displayedStatusName);
+
+  const canShowStart = canStartShipping(order.statusName);
+  const canShowDelivered = canMarkDelivered(order.statusName);
+  const canShowDeliveryFailed = canMarkDeliveryFailed(order.statusName);
+  const isActionLoading = processingOrderId === order.id;
+  const totalUnits = order.items.reduce((sum, lineItem) => sum + Math.max(0, lineItem.quantity || 0), 0);
+  const parsedDelivery = parseDeliveryNoteWithImage(order.deliveryNote);
+  const isStartBlocked =
+    canShowStart &&
+    Boolean(activeShippingOrder) &&
+    activeShippingOrder?.id !== order.id;
+
+  return (
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <BrandedHeader
+        containerStyle={styles.header}
+        sideWidth={44}
+        title={t('shipperOrderDetail.title', {
+          defaultValue: 'Shipping order detail',
+        })}
+        left={
+          <TouchableOpacity style={styles.headerButton} onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} />
+          </TouchableOpacity>
+        }
+        right={<View style={styles.headerPlaceholder} />}
+        brandVariant="none"
+      />
+
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={() => void loadDetail({ refresh: true })}
+            tintColor={COLORS.primary}
+          />
+        }
+      >
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>
+            {t('shipperOrderDetail.orderInformation', {
+              defaultValue: 'Order information',
+            })}
+          </Text>
+
+          <View style={styles.topRow}>
+            <Text style={styles.orderCodeText}>
+              {t('shippingList.orderCode', {
+                defaultValue: 'Order #{{code}}',
+                code: buildOrderCode(order.id),
+              })}
+            </Text>
+            <View
               style={[
                 styles.statusBadge,
                 {
@@ -509,90 +555,182 @@ export default function ShipperHomeScreen() {
               ]}
             >
               <Text style={[styles.statusBadgeText, { color: statusColors.textColor }]}>
-                {getOrderStatusLabel(order.statusName, t)}
+                {getOrderStatusLabel(displayedStatusName, t)}
               </Text>
             </View>
-
-            <TouchableOpacity
-              style={[styles.iconButton, isActionLoading && styles.disabledButton]}
-              onPress={() => handleViewOrderDetail(order)}
-              disabled={isActionLoading}
-            >
-              <Ionicons name="open-outline" size={16} color={COLORS.textPrimary} />
-            </TouchableOpacity> */}
           </View>
 
-          <Text style={styles.orderCodeText}>
-            {t('shippingList.orderCode', {
-              defaultValue: 'Order #{{code}}',
+          <Text style={styles.metaText}>
+            {t('shipperOrderDetail.parentOrderCode', {
+              defaultValue: 'Parent order: {{code}}',
+              code: buildOrderCode(order.orderId),
+            })}
+          </Text>
+          <Text style={styles.metaText}>
+            {t('shipperOrderDetail.nurseryOrderCode', {
+              defaultValue: 'Nursery order: {{code}}',
               code: buildOrderCode(order.id),
             })}
           </Text>
+          <Text style={styles.metaText}>
+            {t('shipperOrderDetail.nurseryLabel', {
+              defaultValue: 'Nursery: {{name}}',
+              name: order.nurseryName,
+            })}
+          </Text>
+          <Text style={styles.metaText}>
+            {t('shippingList.subTotal', { defaultValue: 'Sub total' })}: {formatCurrency(order.subTotalAmount)}
+          </Text>
+          <Text style={styles.metaText}>
+            {t('shipperOrderDetail.totalUnits', {
+              defaultValue: 'Total units: {{count}}',
+              count: totalUnits,
+            })}
+          </Text>
+        </View>
 
-          <View style={styles.infoRow}>
-            <Ionicons name="cube-outline" size={15} color={COLORS.gray500} />
-            <Text style={styles.infoTextMuted} numberOfLines={1}>
-              {t('shippingList.itemsAndSubtotal', {
-                defaultValue: '{{count}} items • {{units}} qty • {{subtotal}}',
-                count: order.items.length,
-                units: totalUnits,
-                subtotal: formatCurrency(order.subTotalAmount),
+        {activeShippingOrder && activeShippingOrder.id !== order.id ? (
+          <View style={styles.lockBanner}>
+            <Ionicons name="lock-closed-outline" size={15} color={COLORS.warning} />
+            <Text style={styles.lockBannerText}>
+              {t('shippingList.activeShippingBanner', {
+                defaultValue: 'Shipping order #{{code}} is active. Complete it to accept a new one.',
+                code: buildOrderCode(activeShippingOrder.id),
               })}
             </Text>
           </View>
+        ) : null}
 
-          {previewLineItem ? (
-            <View style={styles.itemPreviewRow}>
-              {previewImageUri ? (
-                <Image source={{ uri: previewImageUri }} style={styles.itemPreviewImage} resizeMode="cover" />
-              ) : (
-                <View style={styles.itemPreviewImagePlaceholder}>
-                  <Ionicons name="image-outline" size={15} color={COLORS.gray500} />
-                </View>
-              )}
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>{t('orderDetail.receiver', { defaultValue: 'Receiver information' })}</Text>
+          <Text style={styles.metaText}>
+            {t('shipperOrderDetail.customerId', {
+              defaultValue: 'Customer ID: {{id}}',
+              id: order.customerId,
+            })}
+          </Text>
 
-              <View style={styles.itemPreviewMeta}>
-                <Text style={styles.itemPreviewName} numberOfLines={1}>
-                  {previewLineItem.itemName}
-                </Text>
+          <View style={styles.receiverFieldRow}>
+            <Text style={styles.receiverFieldLabel}>
+              {t('shipperOrderDetail.receiverNameLabel', {
+                defaultValue: 'Name',
+              })}
+            </Text>
+            <Text style={styles.receiverFieldValue}>{order.customerName || '--'}</Text>
+          </View>
 
-                <View style={styles.itemPreviewMetaRow}>
-                  <View style={styles.qtyBadge}>
-                    <Text style={styles.qtyBadgeText}>
-                      {t('shippingList.qtyLabel', {
-                        defaultValue: 'Qty {{count}}',
-                        count: previewLineItem.quantity,
-                      })}
-                    </Text>
+          <View style={styles.receiverFieldRow}>
+            <Text style={styles.receiverFieldLabel}>
+              {t('shipperOrderDetail.receiverPhoneLabel', {
+                defaultValue: 'Phone',
+              })}
+            </Text>
+            <Text style={styles.receiverFieldValue}>{order.customerPhone || '--'}</Text>
+          </View>
+
+          <View style={styles.receiverFieldRow}>
+            <Text style={styles.receiverFieldLabel}>
+              {t('shipperOrderDetail.receiverEmailLabel', {
+                defaultValue: 'Email',
+              })}
+            </Text>
+            <Text style={styles.receiverFieldValue}>
+              {order.customerEmail ||
+                t('shipperOrderDetail.notAvailable', {
+                  defaultValue: 'Not available',
+                })}
+            </Text>
+          </View>
+
+          <View style={styles.receiverFieldRow}>
+            <Text style={styles.receiverFieldLabel}>
+              {t('shipperOrderDetail.receiverAddressLabel', {
+                defaultValue: 'Address',
+              })}
+            </Text>
+            <Text style={styles.receiverFieldValue}>{order.customerAddress || '--'}</Text>
+          </View>
+
+          {order.note ? (
+            <Text style={styles.noteText}>
+              {t('orderDetail.note', { defaultValue: 'Note' })}: {order.note}
+            </Text>
+          ) : null}
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>{t('orderDetail.items', { defaultValue: 'Items' })}</Text>
+
+          <View style={styles.infoRow}>
+            <Ionicons name="business-outline" size={16} color={COLORS.primary} />
+            <Text style={styles.infoText} numberOfLines={1}>
+              {order.nurseryName}
+            </Text>
+            <Text style={styles.priceText}>{formatCurrency(order.subTotalAmount)}</Text>
+          </View>
+
+          {order.items.map((lineItem) => {
+            const imageUri = resolveLineItemImage(lineItem);
+            return (
+              <View key={`shipper-detail-${order.id}-${lineItem.id}`} style={styles.lineItemRow}>
+                {imageUri ? (
+                  <Image source={{ uri: imageUri }} style={styles.lineItemImage} resizeMode="cover" />
+                ) : (
+                  <View style={styles.lineItemImagePlaceholder}>
+                    <Ionicons name="image-outline" size={16} color={COLORS.gray500} />
                   </View>
-                  <Text style={styles.itemPreviewPrice}>{formatCurrency(previewLineItem.price)}</Text>
+                )}
+
+                <View style={styles.lineItemBody}>
+                  <Text style={styles.lineItemName} numberOfLines={2}>
+                    {lineItem.itemName}
+                  </Text>
+
+                  <View style={styles.lineItemMetaRow}>
+                    <View style={styles.qtyBadge}>
+                      <Text style={styles.qtyBadgeText}>
+                        {t('shippingList.qtyLabel', {
+                          defaultValue: 'Qty {{count}}',
+                          count: lineItem.quantity,
+                        })}
+                      </Text>
+                    </View>
+
+                    <Text style={styles.priceText}>{formatCurrency(lineItem.price)}</Text>
+                  </View>
                 </View>
               </View>
+            );
+          })}
+
+          <View style={styles.noteWrap}>
+            <Ionicons name="chatbubble-ellipses-outline" size={15} color={COLORS.gray600} />
+            <Text style={styles.noteContent} numberOfLines={3}>
+              {parsedDelivery.note ||
+                order.shipperNote ||
+                t('shippingList.noShipperNote', { defaultValue: 'No shipper note yet.' })}
+            </Text>
+          </View>
+
+          {parsedDelivery.deliveryImageUrl ? (
+            <View style={styles.noteDeliveryImageWrap}>
+              <Text style={styles.noteDeliveryImageLabel}>
+                {t('shippingList.deliveryImageLabel', {
+                  defaultValue: 'Delivery image',
+                })}
+              </Text>
+              <TouchableOpacity
+                activeOpacity={0.9}
+                onPress={() => setPreviewImageUri(parsedDelivery.deliveryImageUrl)}
+              >
+                <Image
+                  source={{ uri: parsedDelivery.deliveryImageUrl }}
+                  style={styles.noteDeliveryImagePreview}
+                  resizeMode="cover"
+                />
+              </TouchableOpacity>
             </View>
           ) : null}
-
-          {order.items.length > 1 ? (
-            <Text style={styles.moreItemsText}>
-              {t('shippingList.moreItems', {
-                defaultValue: '+{{count}} more items',
-                count: order.items.length - 1,
-              })}
-            </Text>
-          ) : null}
-
-          <TouchableOpacity
-            style={styles.detailButton}
-            onPress={() => handleViewOrderDetail(order)}
-            disabled={isActionLoading}
-          >
-            <Ionicons name="document-text-outline" size={15} color={COLORS.primary} />
-            <Text style={styles.detailButtonText}>
-              {t('shippingList.viewOrderDetail', {
-                defaultValue: 'View order detail',
-              })}
-            </Text>
-            <Ionicons name="chevron-forward" size={15} color={COLORS.primary} />
-          </TouchableOpacity>
 
           {isStartBlocked ? (
             <Text style={styles.lockHintText}>
@@ -606,7 +744,7 @@ export default function ShipperHomeScreen() {
             <TouchableOpacity
               style={[
                 styles.contactButton,
-                sectionType === 'shipping' && styles.contactButtonCompact,
+                (canShowDelivered || canShowDeliveryFailed) && styles.contactButtonCompact,
                 isActionLoading && styles.disabledButton,
               ]}
               onPress={() => handleContact(order)}
@@ -618,12 +756,9 @@ export default function ShipperHomeScreen() {
               </Text>
             </TouchableOpacity>
 
-            {sectionType === 'assigned' ? (
+            {canShowStart ? (
               <TouchableOpacity
-                style={[
-                  styles.primaryButton,
-                  (isStartBlocked || isActionLoading) && styles.disabledButton,
-                ]}
+                style={[styles.primaryButton, (isStartBlocked || isActionLoading) && styles.disabledButton]}
                 onPress={() => openActionModal(order, 'start-shipping')}
                 disabled={isStartBlocked || isActionLoading}
               >
@@ -638,247 +773,70 @@ export default function ShipperHomeScreen() {
                   </>
                 )}
               </TouchableOpacity>
-            ) : (
-              <>
-                <TouchableOpacity
-                  style={[styles.primaryButton, styles.primaryButtonHighlight, isActionLoading && styles.disabledButton]}
-                  onPress={() => openActionModal(order, 'mark-delivered')}
-                  disabled={isActionLoading}
-                >
-                  {isActionLoading ? (
-                    <ActivityIndicator size="small" color={COLORS.white} />
-                  ) : (
-                    <>
-                      <Ionicons name="checkmark-done-outline" size={15} color={COLORS.white} />
-                      <Text style={styles.primaryButtonText}>
-                        {t('shippingList.complete', { defaultValue: 'Complete' })}
-                      </Text>
-                    </>
-                  )}
-                </TouchableOpacity>
+            ) : null}
 
-                <TouchableOpacity
-                  style={[styles.failureButton, isActionLoading && styles.disabledButton]}
-                  onPress={() => openActionModal(order, 'mark-delivery-failed')}
-                  disabled={isActionLoading}
-                >
-                  {isActionLoading ? (
-                    <ActivityIndicator size="small" color={COLORS.white} />
-                  ) : (
-                    <>
-                      <Ionicons name="close-circle-outline" size={15} color={COLORS.white} />
-                      <Text style={styles.failureButtonText}>
-                        {t('shippingList.markDeliveryFailed', { defaultValue: 'Mark failed' })}
-                      </Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              </>
-            )}
+            {canShowDelivered ? (
+              <TouchableOpacity
+                style={[styles.primaryButton, styles.primaryButtonHighlight, isActionLoading && styles.disabledButton]}
+                onPress={() => openActionModal(order, 'mark-delivered')}
+                disabled={isActionLoading}
+              >
+                {isActionLoading ? (
+                  <ActivityIndicator size="small" color={COLORS.white} />
+                ) : (
+                  <>
+                    <Ionicons name="checkmark-done-outline" size={15} color={COLORS.white} />
+                    <Text style={styles.primaryButtonText}>
+                      {t('shippingList.complete', { defaultValue: 'Complete' })}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            ) : null}
+
+            {canShowDeliveryFailed ? (
+              <TouchableOpacity
+                style={[styles.failureButton, isActionLoading && styles.disabledButton]}
+                onPress={() => openActionModal(order, 'mark-delivery-failed')}
+                disabled={isActionLoading}
+              >
+                {isActionLoading ? (
+                  <ActivityIndicator size="small" color={COLORS.white} />
+                ) : (
+                  <>
+                    <Ionicons name="close-circle-outline" size={15} color={COLORS.white} />
+                    <Text style={styles.failureButtonText}>
+                      {t('shippingList.markDeliveryFailed', { defaultValue: 'Mark failed' })}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            ) : null}
           </View>
         </View>
-      );
-    },
-    [
-      formatCurrency,
-      handleContact,
-      handleViewOrderDetail,
-      openActionModal,
-      processingOrderId,
-      shippingOrder,
-      t,
-    ]
-  );
 
-  const shippingSection = useMemo(() => {
-    if (isLoadingOrders && !shippingOrder) {
-      return (
-        <View style={styles.sectionLoaderWrap}>
-          <ActivityIndicator size="small" color={COLORS.primary} />
-        </View>
-      );
-    }
-
-    if (!shippingOrder) {
-      return (
-        <View style={styles.emptyStateWrap}>
-          <Ionicons name="car-outline" size={22} color={COLORS.gray500} />
-          <Text style={styles.emptyStateText}>
-            {t('shipperHome.emptyShippingOrder', {
-              defaultValue: 'No order is currently in shipping status.',
-            })}
-          </Text>
-        </View>
-      );
-    }
-
-    return renderOrderCard(shippingOrder, 'shipping');
-  }, [isLoadingOrders, renderOrderCard, shippingOrder, t]);
-
-  const assignedSection = useMemo(() => {
-    if (isLoadingOrders && assignedOrders.length === 0) {
-      return (
-        <View style={styles.sectionLoaderWrap}>
-          <ActivityIndicator size="small" color={COLORS.primary} />
-        </View>
-      );
-    }
-
-    if (assignedOrders.length === 0) {
-      return (
-        <View style={styles.emptyStateWrap}>
-          <Ionicons name="cube-outline" size={22} color={COLORS.gray500} />
-          <Text style={styles.emptyStateText}>
-            {t('shipperHome.emptyAssignedOrders', {
-              defaultValue: 'No assigned orders at the moment.',
-            })}
-          </Text>
-        </View>
-      );
-    }
-
-    return assignedOrders.map((order) => renderOrderCard(order, 'assigned'));
-  }, [assignedOrders, isLoadingOrders, renderOrderCard, t]);
-
-  return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <BrandedHeader
-        containerStyle={styles.header}
-        sideWidth={44}
-        // title={t('shipperHome.headerTitle', { defaultValue: 'Shipper hub' })}
-        left={<View style={styles.headerPlaceholder} />}
-        right={
-          <TouchableOpacity
-            style={[styles.headerActionButton, (isSigningOut || !isAuthenticated) && styles.disabledButton]}
-            onPress={handleLogout}
-            disabled={isSigningOut || !isAuthenticated}
-          >
-            {isSigningOut ? (
-              <ActivityIndicator size="small" color={COLORS.primary} />
-            ) : (
-              <Ionicons name="log-out-outline" size={20} color={COLORS.primary} />
-            )}
-          </TouchableOpacity>
-        }
-        brandVariant="logoWithText"
-      />
-
-      <ScrollView
-        contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={() => void loadStatusOrders({ refresh: true })}
-            tintColor={COLORS.primary}
-          />
-        }
-      >
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionLabel}>
-            {t('shipperHome.profileSectionTitle', { defaultValue: 'User profile' })}
-          </Text>
-
-          <View style={styles.profileRow}>
-            <View style={styles.avatarWrap}>
-              <Ionicons name="person" size={26} color={COLORS.primary} />
-            </View>
-
-            <View style={styles.profileMeta}>
-              <Text style={styles.profileName} numberOfLines={1}>
-                {displayName}
-              </Text>
-              <Text style={styles.profileNursery} numberOfLines={1}>
-                {t('shipperHome.nurseryLabel', {
-                  defaultValue: 'Nursery: {{nursery}}',
-                  nursery: nurseryName,
-                })}
-              </Text>
-              <Text style={styles.profileContact} numberOfLines={1}>
-                {displayEmail}
-              </Text>
-              {displayPhone ? (
-                <Text style={styles.profileContact} numberOfLines={1}>
-                  {displayPhone}
-                </Text>
-              ) : null}
-            </View>
-          </View>
-
-          <TouchableOpacity
-            style={[styles.secondaryButton, (isSigningOut || !isAuthenticated) && styles.disabledButton]}
-            activeOpacity={0.8}
-            onPress={handleLogout}
-            disabled={isSigningOut || !isAuthenticated}
-          >
-            {isSigningOut ? (
-              <ActivityIndicator size="small" color={COLORS.textPrimary} />
-            ) : (
-              <>
-                <Ionicons name="power-outline" size={16} color={COLORS.textPrimary} />
-                <Text style={styles.secondaryButtonText}>
-                  {t('shipperHome.signOut', { defaultValue: 'Sign out' })}
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
-
-        {shippingOrder ? (
-          <View style={styles.lockBanner}>
-            <Ionicons name="lock-closed-outline" size={14} color={COLORS.warning} />
-            <Text style={styles.lockBannerText}>
-              {t('shippingList.activeShippingBanner', {
-                defaultValue: 'Shipping order #{{code}} is active. Complete it to accept a new one.',
-                code: buildOrderCode(shippingOrder.id),
-              })}
-            </Text>
-          </View>
-        ) : null}
-
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionLabel}>
-            {t('shipperHome.shippingStatusOrderTitle', {
-              defaultValue: 'Shipping status order',
-            })}
-          </Text>
-          {shippingSection}
-        </View>
-
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionLabel}>
-            {t('shipperHome.assignedStatusOrdersTitle', {
-              defaultValue: 'Assigned status orders',
-            })}
-          </Text>
-          {assignedSection}
-        </View>
-
-        {errorMessage ? (
-          <View style={styles.errorBanner}>
-            <Text style={styles.errorBannerText}>{errorMessage}</Text>
-          </View>
-        ) : null}
       </ScrollView>
 
-      <View
-        style={[
-          styles.stickyBottomBar,
-          {
-            paddingBottom: Math.max(insets.bottom, SPACING.sm),
-          },
-        ]}
+      <Modal
+        visible={Boolean(previewImageUri)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPreviewImageUri(null)}
       >
-        <TouchableOpacity
-          style={styles.primaryCtaButton}
-          activeOpacity={0.85}
-          onPress={() => navigation.navigate('ShippingList')}
-        >
-          <Ionicons name="list-outline" size={18} color={COLORS.white} />
-          <Text style={styles.primaryCtaButtonText}>
-            {t('shipperHome.openShippingList', { defaultValue: 'Open shipping list' })}
-          </Text>
-        </TouchableOpacity>
-      </View>
+        <View style={styles.fullImageModalOverlay}>
+          <TouchableOpacity
+            style={styles.fullImageCloseButton}
+            onPress={() => setPreviewImageUri(null)}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="close" size={24} color={COLORS.white} />
+          </TouchableOpacity>
+
+          {previewImageUri ? (
+            <Image source={{ uri: previewImageUri }} style={styles.fullImagePreview} resizeMode="contain" />
+          ) : null}
+        </View>
+      </Modal>
 
       <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={closeActionModal}>
         <View style={styles.modalOverlay}>
@@ -1039,72 +997,104 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.md,
-    paddingBottom: SPACING.md,
+    paddingVertical: SPACING.md,
+  },
+  headerButton: {
+    width: 36,
+    height: 36,
+    borderRadius: RADIUS.full,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerPlaceholder: {
     width: 36,
     height: 36,
   },
-  headerActionButton: {
-    width: 36,
-    height: 36,
-    borderRadius: RADIUS.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.white,
-  },
   content: {
-    paddingHorizontal: SPACING.xl,
-    paddingBottom: SPACING.xl,
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING['3xl'],
     gap: SPACING.md,
   },
-  sectionCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.lg,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    ...SHADOWS.sm,
+  centerStateWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: SPACING['2xl'],
   },
-  sectionLabel: {
+  centerTitle: {
+    marginTop: SPACING.md,
+    fontSize: FONTS.sizes['2xl'],
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    textAlign: 'center',
+  },
+  centerSubtitle: {
+    marginTop: SPACING.sm,
+    fontSize: FONTS.sizes.md,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+  },
+  retryButton: {
+    marginTop: SPACING.lg,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.sm,
+  },
+  retryButtonText: {
+    color: COLORS.white,
     fontSize: FONTS.sizes.md,
     fontWeight: '700',
-    textTransform: 'uppercase',
-    color: COLORS.primary,
-    marginBottom: SPACING.sm,
   },
-  profileRow: {
+  card: {
+    backgroundColor: COLORS.white,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    padding: SPACING.md,
+    ...SHADOWS.sm,
+  },
+  topRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.md,
-    marginBottom: SPACING.lg,
+    justifyContent: 'space-between',
+    gap: SPACING.sm,
   },
-  avatarWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: RADIUS.full,
-    backgroundColor: '#E9FBEF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  profileMeta: {
+  orderCodeText: {
     flex: 1,
-    gap: 2,
-  },
-  profileName: {
-    fontSize: FONTS.sizes.xl,
+    fontSize: FONTS.sizes.lg,
+    fontWeight: '700',
     color: COLORS.textPrimary,
+  },
+  statusBadge: {
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
+  },
+  statusBadgeText: {
+    fontSize: FONTS.sizes.sm,
     fontWeight: '700',
   },
-  profileNursery: {
-    fontSize: FONTS.sizes.sm,
-    color: COLORS.primary,
-    fontWeight: '600',
+  metaText: {
+    fontSize: FONTS.sizes.md,
+    color: COLORS.textPrimary,
+    marginTop: SPACING.xs,
+    lineHeight: 20,
   },
-  profileContact: {
+  receiverFieldRow: {
+    marginTop: SPACING.sm,
+  },
+  receiverFieldLabel: {
     fontSize: FONTS.sizes.sm,
     color: COLORS.textSecondary,
+    fontWeight: '700',
+  },
+  receiverFieldValue: {
+    marginTop: 2,
+    fontSize: FONTS.sizes.md,
+    color: COLORS.textPrimary,
+    fontWeight: '600',
+    lineHeight: 20,
   },
   lockBanner: {
     flexDirection: 'row',
@@ -1123,119 +1113,64 @@ const styles = StyleSheet.create({
     color: '#854D0E',
     fontWeight: '600',
   },
-  sectionLoaderWrap: {
-    minHeight: 64,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyStateWrap: {
-    minHeight: 64,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
-  emptyStateText: {
-    flex: 1,
-    fontSize: FONTS.sizes.sm,
-    color: COLORS.textSecondary,
-  },
-  orderCard: {
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    backgroundColor: COLORS.white,
-    padding: SPACING.md,
-    gap: SPACING.xs,
-  },
-  cardTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: -SPACING.md,
-  },
-  statusBadge: {
-    borderRadius: RADIUS.md,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 4,
-  },
-  statusBadgeText: {
-    fontSize: FONTS.sizes.sm,
-    fontWeight: '700',
-  },
-  iconButton: {
-    width: 32,
-    height: 32,
-    borderRadius: RADIUS.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.gray50,
-  },
-  orderCodeText: {
+  sectionTitle: {
     fontSize: FONTS.sizes.lg,
-    color: COLORS.textPrimary,
     fontWeight: '700',
+    color: COLORS.textPrimary,
+    marginBottom: SPACING.xs,
+  },
+  noteText: {
+    marginTop: SPACING.xs,
+    fontSize: FONTS.sizes.md,
+    color: COLORS.textPrimary,
+    lineHeight: 20,
   },
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.xs,
+    marginTop: SPACING.sm,
   },
   infoText: {
     flex: 1,
-    fontSize: FONTS.sizes.sm,
+    fontSize: FONTS.sizes.md,
     color: COLORS.textPrimary,
     fontWeight: '600',
   },
-  infoTextMuted: {
-    flex: 1,
-    fontSize: FONTS.sizes.sm,
-    color: COLORS.textSecondary,
-  },
-  itemPreviewRow: {
-    marginTop: SPACING.xs,
+  lineItemRow: {
+    marginTop: SPACING.sm,
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
   },
-  itemPreviewImage: {
-    width: 40,
-    height: 40,
+  lineItemImage: {
+    width: 44,
+    height: 44,
     borderRadius: RADIUS.md,
     backgroundColor: COLORS.gray100,
   },
-  itemPreviewImagePlaceholder: {
-    width: 40,
-    height: 40,
+  lineItemImagePlaceholder: {
+    width: 44,
+    height: 44,
     borderRadius: RADIUS.md,
     backgroundColor: COLORS.gray100,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  itemPreviewMeta: {
+  lineItemBody: {
     flex: 1,
     gap: 4,
   },
-  itemPreviewName: {
-    fontSize: FONTS.sizes.sm,
+  lineItemName: {
+    fontSize: FONTS.sizes.md,
     color: COLORS.textPrimary,
     fontWeight: '600',
   },
-  itemPreviewMetaRow: {
+  lineItemMetaRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: SPACING.xs,
-  },
-  itemPreviewPrice: {
-    fontSize: FONTS.sizes.sm,
-    color: COLORS.textPrimary,
-    fontWeight: '700',
+    justifyContent: 'space-between',
+    gap: SPACING.sm,
   },
   qtyBadge: {
     borderRadius: RADIUS.full,
@@ -1248,38 +1183,74 @@ const styles = StyleSheet.create({
     color: '#166534',
     fontWeight: '700',
   },
-  moreItemsText: {
-    marginTop: SPACING.xs,
+  priceText: {
     fontSize: FONTS.sizes.sm,
-    color: COLORS.textSecondary,
-  },
-  detailButton: {
-    marginTop: SPACING.xs,
-    height: 34,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.gray50,
-    paddingHorizontal: SPACING.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: SPACING.xs,
-  },
-  detailButtonText: {
-    flex: 1,
-    fontSize: FONTS.sizes.sm,
-    color: COLORS.primary,
+    color: COLORS.textPrimary,
     fontWeight: '700',
   },
+  noteWrap: {
+    marginTop: SPACING.sm,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACING.xs,
+  },
+  noteContent: {
+    flex: 1,
+    fontSize: FONTS.sizes.md,
+    color: COLORS.textPrimary,
+    lineHeight: 20,
+  },
+  noteDeliveryImageWrap: {
+    marginTop: SPACING.sm,
+    gap: SPACING.xs,
+  },
+  noteDeliveryImageLabel: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+    fontWeight: '700',
+  },
+  noteDeliveryImagePreview: {
+    width: '100%',
+    height: 140,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.gray100,
+  },
+  fullImageModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.lg,
+  },
+  fullImageCloseButton: {
+    position: 'absolute',
+    top: SPACING['3xl'],
+    right: SPACING.lg,
+    width: 36,
+    height: 36,
+    borderRadius: RADIUS.full,
+    backgroundColor: 'rgba(17, 24, 39, 0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+  fullImagePreview: {
+    width: '100%',
+    height: '82%',
+  },
   lockHintText: {
-    marginTop: SPACING.xs,
+    marginTop: SPACING.sm,
     fontSize: FONTS.sizes.sm,
     color: '#854D0E',
     fontWeight: '600',
   },
+  emptyInlineText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+  },
   actionRow: {
-    marginTop: SPACING.sm,
+    marginTop: SPACING.md,
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.xs,
@@ -1334,56 +1305,6 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.sm,
     color: COLORS.white,
     fontWeight: '700',
-  },
-  errorBanner: {
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: 'rgba(185, 28, 28, 0.28)',
-    backgroundColor: 'rgba(254, 242, 242, 0.95)',
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-  },
-  errorBannerText: {
-    fontSize: FONTS.sizes.sm,
-    color: '#991B1B',
-    fontWeight: '600',
-  },
-  stickyBottomBar: {
-    borderTopWidth: 1,
-    borderTopColor: COLORS.borderLight,
-    backgroundColor: 'rgba(246, 248, 246, 0.98)',
-    paddingTop: SPACING.sm,
-    paddingHorizontal: SPACING.xl,
-  },
-  primaryCtaButton: {
-    borderRadius: RADIUS.lg,
-    backgroundColor: COLORS.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: SPACING.xs,
-    paddingVertical: SPACING.md,
-  },
-  primaryCtaButtonText: {
-    color: COLORS.white,
-    fontSize: FONTS.sizes.md,
-    fontWeight: '700',
-  },
-  secondaryButton: {
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADIUS.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: SPACING.xs,
-    paddingVertical: SPACING.md,
-    backgroundColor: COLORS.surface,
-  },
-  secondaryButtonText: {
-    color: COLORS.textPrimary,
-    fontSize: FONTS.sizes.md,
-    fontWeight: '600',
   },
   modalOverlay: {
     flex: 1,

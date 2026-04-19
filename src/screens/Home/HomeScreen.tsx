@@ -658,24 +658,6 @@ export default function HomeScreen() {
     [closeNurseryPicker, requireAuth, t]
   );
 
-  const formatNurseryPrice = useCallback(
-    (minPrice?: number, maxPrice?: number) => {
-      const safeMin = minPrice ?? 0;
-      const safeMax = maxPrice ?? 0;
-
-      if (!safeMin && !safeMax) {
-        return t('plantDetail.priceContact', { defaultValue: 'Contact' });
-      }
-
-      if (safeMin === safeMax) {
-        return formatMoney(safeMin, locale);
-      }
-
-      return `${formatMoney(safeMin, locale)} - ${formatMoney(safeMax, locale)}`;
-    },
-    [locale, t]
-  );
-
   const handleConfirmNurseryAdd = useCallback(
     async (goToCheckout = false) => {
       if (!pendingNurserySelection || selectedCartNurseryId === null) {
@@ -809,6 +791,7 @@ export default function HomeScreen() {
             nurseryName: option.name,
             address: option.address,
             phone: option.phone,
+            availableCount: option.quantity ?? undefined,
             actionId: option.nurseryMaterialId ?? null,
           }));
         }
@@ -834,6 +817,7 @@ export default function HomeScreen() {
             nurseryName: option.name,
             address: option.address,
             phone: option.phone,
+            availableCount: option.quantity ?? undefined,
             actionId: option.nurseryPlantComboId ?? null,
           }));
         }
@@ -1472,9 +1456,6 @@ export default function HomeScreen() {
                             defaultValue: 'Available',
                           })}
                           : {nursery.availableCount ?? 0}
-                        </Text>
-                        <Text style={styles.nurseryPickerItemPrice}>
-                          {formatNurseryPrice(nursery.minPrice, nursery.maxPrice)}
                         </Text>
                       </View>
                     </TouchableOpacity>

@@ -316,6 +316,11 @@ const normalizeUser = (rawUser: any): User => {
     status: rawUser?.status,
     isVerified: rawUser?.isVerified,
     role: normalizedRole,
+    nurseryId: typeof rawUser?.nurseryId === 'number' ? rawUser.nurseryId : undefined,
+    nurseryName:
+      typeof rawUser?.nurseryName === 'string' && rawUser.nurseryName.trim().length > 0
+        ? rawUser.nurseryName.trim()
+        : undefined,
   };
 };
 

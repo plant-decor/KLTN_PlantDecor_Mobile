@@ -252,6 +252,8 @@ export const API = {
 
     //Shipping
     NURSERY_ORDERS: "/shipper/nursery-orders/my",
+    SHIPPER_NURSERY_ORDER_DETAIL: (orderId: number) =>
+      `/shipper/nursery-orders/${orderId}`,
     START_SHIPPING: (orderId: number) =>
       `/shipper/nursery-orders/${orderId}/start-shipping`,
     MARK_DELIVERED: (orderId: number) =>

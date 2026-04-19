@@ -1,4 +1,11 @@
-import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -14,15 +21,18 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-} from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
-import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
-import { useTranslation } from 'react-i18next';
-import { COLORS, FONTS, RADIUS, SHADOWS, SPACING } from '../../constants';
-import { BrandMark } from '../../components/branding';
+} from "react-native";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { RouteProp, useNavigation, useRoute } from "@react-navigation/native";
+import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
+import { useTranslation } from "react-i18next";
+import { COLORS, FONTS, RADIUS, SHADOWS, SPACING } from "../../constants";
+import { BrandMark } from "../../components/branding";
 import {
   AddCartItemRequest,
   CheckoutItem,
@@ -34,31 +44,36 @@ import {
   ShopSearchComboSummary,
   ShopSearchRequest,
   WishlistItemType,
-} from '../../types';
-import { useAuthStore, useCartStore, usePlantStore, useWishlistStore } from '../../stores';
-import { plantService } from '../../services';
-import { getWishlistKey, notify } from '../../utils';
+} from "../../types";
+import {
+  useAuthStore,
+  useCartStore,
+  usePlantStore,
+  useWishlistStore,
+} from "../../stores";
+import { plantService } from "../../services";
+import { getWishlistKey, notify } from "../../utils";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type NumberOption = { value: number; label: string };
 type StringOption = { value: string; label: string };
 type WishlistTarget = { itemType: WishlistItemType; itemId: number };
-type PageToken = number | 'left-ellipsis' | 'right-ellipsis';
+type PageToken = number | "left-ellipsis" | "right-ellipsis";
 type FilterSectionKey =
-  | 'productTypes'
-  | 'priceRange'
-  | 'sort'
-  | 'careLevel'
-  | 'placement'
-  | 'size'
-  | 'fengShui'
-  | 'combo'
-  | 'features'
-  | 'categories'
-  | 'tags'
-  | 'nursery';
+  | "productTypes"
+  | "priceRange"
+  | "sort"
+  | "careLevel"
+  | "placement"
+  | "size"
+  | "fengShui"
+  | "combo"
+  | "features"
+  | "categories"
+  | "tags"
+  | "nursery";
 
-type NurseryPickerMode = 'plant' | 'material' | 'combo';
+type NurseryPickerMode = "plant" | "material" | "combo";
 
 type NurseryPickerOption = {
   nurseryId: number;
@@ -76,30 +91,30 @@ type PendingNurserySelection = {
   displayName: string;
   image?: string;
   unitPrice: number;
-  buyNowItemTypeName: 'CommonPlant' | 'NurseryMaterial' | 'NurseryPlantCombo';
+  buyNowItemTypeName: "CommonPlant" | "NurseryMaterial" | "NurseryPlantCombo";
 };
 
-const { width } = Dimensions.get('window');
+const { width } = Dimensions.get("window");
 const CARD_WIDTH = (width - SPACING.lg * 3) / 2;
 const PAGE_SIZE_OPTIONS = [10, 20, 40, 80];
 const DEFAULT_PAGE_SIZE = 20;
 const DEFAULT_SORT_BY_OPTIONS: StringOption[] = [
-  { value: 'Name', label: 'Name' },
-  { value: 'Price', label: 'Price' },
-  { value: 'Size', label: 'Size' },
-  { value: 'AvailableInstances', label: 'Available' },
-  { value: 'CreatedAt', label: 'Newest' },
+  { value: "Name", label: "Name" },
+  { value: "Price", label: "Price" },
+  { value: "Size", label: "Size" },
+  { value: "AvailableInstances", label: "Available" },
+  { value: "CreatedAt", label: "Newest" },
 ];
 const DEFAULT_SORT_DIRECTION_OPTIONS: StringOption[] = [
-  { value: 'Asc', label: 'Asc' },
-  { value: 'Desc', label: 'Desc' },
+  { value: "Asc", label: "Asc" },
+  { value: "Desc", label: "Desc" },
 ];
-const PLACEHOLDER_IMAGE = 'https://via.placeholder.com/320x320?text=PlantDecor';
+const PLACEHOLDER_IMAGE = "https://via.placeholder.com/320x320?text=PlantDecor";
 const FLOATING_TAB_BAR_OFFSET = 12;
 const MIN_FLOATING_TAB_BAR_HEIGHT = 64;
 
 const normalizeLookup = (value: string): string =>
-  value.replace(/[^a-z0-9]/gi, '').toLowerCase();
+  value.replace(/[^a-z0-9]/gi, "").toLowerCase();
 
 const toPositiveInt = (value: unknown): number | null => {
   const numeric = Number(value);
@@ -111,10 +126,12 @@ const toPositiveInt = (value: unknown): number | null => {
 
 const findGroup = (
   groups: ShopSearchConfigGroup[],
-  aliases: string[]
+  aliases: string[],
 ): ShopSearchConfigGroup | undefined => {
   const normalizedAliases = aliases.map(normalizeLookup);
-  return groups.find((group) => normalizedAliases.includes(normalizeLookup(group.groupName)));
+  return groups.find((group) =>
+    normalizedAliases.includes(normalizeLookup(group.groupName)),
+  );
 };
 
 const toNumberOptions = (group?: ShopSearchConfigGroup): NumberOption[] => {
@@ -161,11 +178,11 @@ const formatMoney = (amount: number, locale: string): string =>
   `${Math.max(0, amount).toLocaleString(locale)}₫`;
 
 const getItemKey = (item: ShopSearchItem, index: number): string => {
-  if (item.type === 'Plant') {
+  if (item.type === "Plant") {
     return `Plant-${item.plant?.id ?? index}`;
   }
 
-  if (item.type === 'Material') {
+  if (item.type === "Material") {
     return `Material-${item.material?.id ?? index}`;
   }
 
@@ -173,36 +190,40 @@ const getItemKey = (item: ShopSearchItem, index: number): string => {
 };
 
 const resolveWishlistTarget = (item: ShopSearchItem): WishlistTarget | null => {
-  if (item.type === 'Plant' && item.plant) {
+  if (item.type === "Plant" && item.plant) {
     const entityId = toPositiveInt(item.plant.id);
     const commonPlantId = toPositiveInt(item.plant.commonPlantId);
     const shouldUsePlantInstanceTarget =
       item.plant.isUniqueInstance ||
-      (entityId !== null && commonPlantId !== null && entityId !== commonPlantId);
+      (entityId !== null &&
+        commonPlantId !== null &&
+        entityId !== commonPlantId);
 
     if (shouldUsePlantInstanceTarget && entityId) {
-      return { itemType: 'PlantInstance', itemId: entityId };
+      return { itemType: "PlantInstance", itemId: entityId };
     }
 
     const plantId = commonPlantId ?? entityId;
     if (plantId) {
-      return { itemType: 'Plant', itemId: plantId };
+      return { itemType: "Plant", itemId: plantId };
     }
 
     return null;
   }
 
-  if (item.type === 'Material' && item.material) {
-    const materialId = toPositiveInt(item.material.materialId ?? item.material.id);
+  if (item.type === "Material" && item.material) {
+    const materialId = toPositiveInt(
+      item.material.materialId ?? item.material.id,
+    );
     if (materialId) {
-      return { itemType: 'Material', itemId: materialId };
+      return { itemType: "Material", itemId: materialId };
     }
   }
 
-  if (item.type === 'Combo' && item.combo) {
+  if (item.type === "Combo" && item.combo) {
     const comboId = toPositiveInt(item.combo.id);
     if (comboId) {
-      return { itemType: 'PlantCombo', itemId: comboId };
+      return { itemType: "PlantCombo", itemId: comboId };
     }
   }
 
@@ -212,10 +233,10 @@ const resolveWishlistTarget = (item: ShopSearchItem): WishlistTarget | null => {
 export default function CatalogScreen() {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
-  const route = useRoute<RouteProp<RootStackParamList, 'Catalog'>>();
+  const route = useRoute<RouteProp<RootStackParamList, "Catalog">>();
   const routeKeyword = useMemo(() => {
     const value = route.params?.keyword;
-    return typeof value === 'string' ? value.trim() : '';
+    return typeof value === "string" ? value.trim() : "";
   }, [route.params?.keyword]);
   const insets = useSafeAreaInsets();
   const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
@@ -229,21 +250,24 @@ export default function CatalogScreen() {
   const addCartItem = useCartStore((state) => state.addCartItem);
   const fetchCart = useCartStore((state) => state.fetchCart);
   const hasLoadedCart = useCartStore((state) => state.hasLoadedCart);
-  const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
+  const locale = i18n.language === "vi" ? "vi-VN" : "en-US";
   const effectiveTabBarHeight = useMemo(() => {
     if (tabBarHeight <= 0) {
       return 0;
     }
 
-    return Math.max(tabBarHeight + FLOATING_TAB_BAR_OFFSET, MIN_FLOATING_TAB_BAR_HEIGHT);
+    return Math.max(
+      tabBarHeight + FLOATING_TAB_BAR_OFFSET,
+      MIN_FLOATING_TAB_BAR_HEIGHT,
+    );
   }, [tabBarHeight]);
   const bottomContentInset = useMemo(
     () => effectiveTabBarHeight + insets.bottom + SPACING.sm,
-    [effectiveTabBarHeight, insets.bottom]
+    [effectiveTabBarHeight, insets.bottom],
   );
   const filterFooterPaddingBottom = useMemo(
     () => effectiveTabBarHeight + insets.bottom + SPACING.lg,
-    [effectiveTabBarHeight, insets.bottom]
+    [effectiveTabBarHeight, insets.bottom],
   );
 
   const wishlistStatus = useWishlistStore((state) => state.statusByKey);
@@ -266,19 +290,33 @@ export default function CatalogScreen() {
 
   const [keyword, setKeyword] = useState(routeKeyword);
   const [priceRange, setPriceRange] = useState({ min: 0, max: 0 });
-  const [minPriceInput, setMinPriceInput] = useState('');
-  const [maxPriceInput, setMaxPriceInput] = useState('');
-  const [selectedCareLevel, setSelectedCareLevel] = useState<number | null>(null);
-  const [selectedPlacement, setSelectedPlacement] = useState<number | null>(null);
+  const [minPriceInput, setMinPriceInput] = useState("");
+  const [maxPriceInput, setMaxPriceInput] = useState("");
+  const [selectedCareLevel, setSelectedCareLevel] = useState<number | null>(
+    null,
+  );
+  const [selectedPlacement, setSelectedPlacement] = useState<number | null>(
+    null,
+  );
   const [selectedSizes, setSelectedSizes] = useState<number[]>([]);
-  const [selectedFengShuiElement, setSelectedFengShuiElement] = useState<number | null>(null);
-  const [selectedComboType, setSelectedComboType] = useState<number | null>(null);
-  const [selectedComboSeason, setSelectedComboSeason] = useState<number | null>(null);
+  const [selectedFengShuiElement, setSelectedFengShuiElement] = useState<
+    number | null
+  >(null);
+  const [selectedComboType, setSelectedComboType] = useState<number | null>(
+    null,
+  );
+  const [selectedComboSeason, setSelectedComboSeason] = useState<number | null>(
+    null,
+  );
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<number[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
-  const [selectedNurseryId, setSelectedNurseryId] = useState<number | null>(null);
+  const [selectedNurseryId, setSelectedNurseryId] = useState<number | null>(
+    null,
+  );
   const [sortBy, setSortBy] = useState(DEFAULT_SORT_BY_OPTIONS[0].value);
-  const [sortDirection, setSortDirection] = useState(DEFAULT_SORT_DIRECTION_OPTIONS[0].value);
+  const [sortDirection, setSortDirection] = useState(
+    DEFAULT_SORT_DIRECTION_OPTIONS[0].value,
+  );
 
   const [toxicity, setToxicity] = useState(false);
   const [airPurifying, setAirPurifying] = useState(false);
@@ -296,14 +334,20 @@ export default function CatalogScreen() {
   const [sizeOptions, setSizeOptions] = useState<NumberOption[]>([]);
   const [fengShuiOptions, setFengShuiOptions] = useState<NumberOption[]>([]);
   const [comboTypeOptions, setComboTypeOptions] = useState<NumberOption[]>([]);
-  const [comboSeasonOptions, setComboSeasonOptions] = useState<NumberOption[]>([]);
+  const [comboSeasonOptions, setComboSeasonOptions] = useState<NumberOption[]>(
+    [],
+  );
   const [categoryOptions, setCategoryOptions] = useState<NumberOption[]>([]);
   const [tagOptions, setTagOptions] = useState<NumberOption[]>([]);
-  const [nurseryFilterOptions, setNurseryFilterOptions] = useState<NumberOption[]>([]);
-  const [sortByOptions, setSortByOptions] = useState<StringOption[]>(DEFAULT_SORT_BY_OPTIONS);
-  const [sortDirectionOptions, setSortDirectionOptions] = useState<StringOption[]>(
-    DEFAULT_SORT_DIRECTION_OPTIONS
+  const [nurseryFilterOptions, setNurseryFilterOptions] = useState<
+    NumberOption[]
+  >([]);
+  const [sortByOptions, setSortByOptions] = useState<StringOption[]>(
+    DEFAULT_SORT_BY_OPTIONS,
   );
+  const [sortDirectionOptions, setSortDirectionOptions] = useState<
+    StringOption[]
+  >(DEFAULT_SORT_DIRECTION_OPTIONS);
 
   const [showFilters, setShowFilters] = useState(false);
   const [isFilterDataLoading, setIsFilterDataLoading] = useState(false);
@@ -328,9 +372,12 @@ export default function CatalogScreen() {
   const [isNurseryPickerLoading, setIsNurseryPickerLoading] = useState(false);
   const [pendingNurserySelection, setPendingNurserySelection] =
     useState<PendingNurserySelection | null>(null);
-  const [availableNurseryOptions, setAvailableNurseryOptions] =
-    useState<NurseryPickerOption[]>([]);
-  const [selectedCartNurseryId, setSelectedCartNurseryId] = useState<number | null>(null);
+  const [availableNurseryOptions, setAvailableNurseryOptions] = useState<
+    NurseryPickerOption[]
+  >([]);
+  const [selectedCartNurseryId, setSelectedCartNurseryId] = useState<
+    number | null
+  >(null);
   const [selectedCartQuantity, setSelectedCartQuantity] = useState(1);
 
   const filterHeight = useRef(new Animated.Value(0)).current;
@@ -340,12 +387,12 @@ export default function CatalogScreen() {
 
   const toggleArrayValue = (
     value: number,
-    setState: React.Dispatch<React.SetStateAction<number[]>>
+    setState: React.Dispatch<React.SetStateAction<number[]>>,
   ) => {
     setState((previous) =>
       previous.includes(value)
         ? previous.filter((currentValue) => currentValue !== value)
-        : [...previous, value]
+        : [...previous, value],
     );
   };
 
@@ -367,43 +414,46 @@ export default function CatalogScreen() {
   const loadFilterSources = useCallback(async () => {
     setIsFilterDataLoading(true);
     try {
-      const [config, categoriesPayload, tagsPayload, nurseryPayload] = await Promise.all([
-        plantService.getShopUnifiedSearchConfig(),
-        plantService.getAdminCategories({ pageNumber: 1, pageSize: 200 }),
-        plantService.getAdminTags({ pageNumber: 1, pageSize: 200 }),
-        plantService.searchNurseries({
-          pagination: {
-            pageNumber: 1,
-            pageSize: 200,
-          },
-        }),
-      ]);
+      const [config, categoriesPayload, tagsPayload, nurseryPayload] =
+        await Promise.all([
+          plantService.getShopUnifiedSearchConfig(),
+          plantService.getAdminCategories({ pageNumber: 1, pageSize: 200 }),
+          plantService.getAdminTags({ pageNumber: 1, pageSize: 200 }),
+          plantService.searchNurseries({
+            pagination: {
+              pageNumber: 1,
+              pageSize: 200,
+            },
+          }),
+        ]);
 
       const filterGroups = config.filterEnums ?? [];
       const sortGroups = config.sortEnums ?? [];
 
       const nextPlacementOptions = toNumberOptions(
-        findGroup(filterGroups, ['PlacementType', 'placementType'])
+        findGroup(filterGroups, ["PlacementType", "placementType"]),
       );
       const nextCareLevelOptions = toNumberOptions(
-        findGroup(filterGroups, ['CareLevelType', 'careLevelType'])
+        findGroup(filterGroups, ["CareLevelType", "careLevelType"]),
       );
-      const nextSizeOptions = toNumberOptions(findGroup(filterGroups, ['PlantSize', 'plantSize']));
+      const nextSizeOptions = toNumberOptions(
+        findGroup(filterGroups, ["PlantSize", "plantSize"]),
+      );
       const nextFengShuiOptions = toNumberOptions(
-        findGroup(filterGroups, ['FengShuiElement', 'fengShuiElement'])
+        findGroup(filterGroups, ["FengShuiElement", "fengShuiElement"]),
       );
       const nextComboTypeOptions = toNumberOptions(
-        findGroup(filterGroups, ['ComboType', 'comboType'])
+        findGroup(filterGroups, ["ComboType", "comboType"]),
       );
       const nextComboSeasonOptions = toNumberOptions(
-        findGroup(filterGroups, ['SeasonType', 'seasonType', 'comboSeason'])
+        findGroup(filterGroups, ["SeasonType", "seasonType", "comboSeason"]),
       );
 
       const nextSortByOptions = toStringOptions(
-        findGroup(sortGroups, ['UnifiedSearchSortBy', 'sortBy'])
+        findGroup(sortGroups, ["UnifiedSearchSortBy", "sortBy"]),
       );
       const nextSortDirectionOptions = toStringOptions(
-        findGroup(sortGroups, ['SortDirection', 'sortDirection'])
+        findGroup(sortGroups, ["SortDirection", "sortDirection"]),
       );
 
       setPlacementOptions(nextPlacementOptions);
@@ -412,22 +462,28 @@ export default function CatalogScreen() {
       setFengShuiOptions(nextFengShuiOptions);
       setComboTypeOptions(nextComboTypeOptions);
       setComboSeasonOptions(nextComboSeasonOptions);
-      setSortByOptions(nextSortByOptions.length > 0 ? nextSortByOptions : DEFAULT_SORT_BY_OPTIONS);
+      setSortByOptions(
+        nextSortByOptions.length > 0
+          ? nextSortByOptions
+          : DEFAULT_SORT_BY_OPTIONS,
+      );
       setSortDirectionOptions(
         nextSortDirectionOptions.length > 0
           ? nextSortDirectionOptions
-          : DEFAULT_SORT_DIRECTION_OPTIONS
+          : DEFAULT_SORT_DIRECTION_OPTIONS,
       );
 
-      setSortBy((previous) =>
-        previous ||
-        nextSortByOptions[0]?.value ||
-        DEFAULT_SORT_BY_OPTIONS[0].value
+      setSortBy(
+        (previous) =>
+          previous ||
+          nextSortByOptions[0]?.value ||
+          DEFAULT_SORT_BY_OPTIONS[0].value,
       );
-      setSortDirection((previous) =>
-        previous ||
-        nextSortDirectionOptions[0]?.value ||
-        DEFAULT_SORT_DIRECTION_OPTIONS[0].value
+      setSortDirection(
+        (previous) =>
+          previous ||
+          nextSortDirectionOptions[0]?.value ||
+          DEFAULT_SORT_DIRECTION_OPTIONS[0].value,
       );
 
       setCategoryOptions(
@@ -443,7 +499,7 @@ export default function CatalogScreen() {
               label: category.name,
             };
           })
-          .filter((option): option is NumberOption => Boolean(option))
+          .filter((option): option is NumberOption => Boolean(option)),
       );
 
       setTagOptions(
@@ -452,20 +508,21 @@ export default function CatalogScreen() {
             value: tag.id,
             label: tag.tagName,
           }))
-          .filter((option) => Number.isFinite(option.value))
+          .filter((option) => Number.isFinite(option.value)),
       );
 
       setNurseryFilterOptions(
         (nurseryPayload.items ?? []).map((nursery) => ({
           value: nursery.id,
           label: nursery.name,
-        }))
+        })),
       );
     } catch (loadError) {
-      console.warn('Catalog filter source load failed:', loadError);
+      console.warn("Catalog filter source load failed:", loadError);
       notify({
-        message: t('catalog.filterConfigLoadFailed', {
-          defaultValue: 'Could not load all filter options. Fallback values will be used.',
+        message: t("catalog.filterConfigLoadFailed", {
+          defaultValue:
+            "Could not load all filter options. Fallback values will be used.",
         }),
       });
     } finally {
@@ -481,7 +538,7 @@ export default function CatalogScreen() {
     (
       targetPage: number,
       targetPageSize: number,
-      keywordOverride?: string
+      keywordOverride?: string,
     ): ShopSearchRequest => ({
       pagination: {
         pageNumber: targetPage,
@@ -490,7 +547,8 @@ export default function CatalogScreen() {
       keyword: (keywordOverride ?? keyword).trim() || undefined,
       minPrice: priceRange.min > 0 ? priceRange.min : undefined,
       maxPrice: priceRange.max > 0 ? priceRange.max : undefined,
-      categoryIds: selectedCategoryIds.length > 0 ? selectedCategoryIds : undefined,
+      categoryIds:
+        selectedCategoryIds.length > 0 ? selectedCategoryIds : undefined,
       tagIds: selectedTagIds.length > 0 ? selectedTagIds : undefined,
       petSafe: petSafe ? true : undefined,
       childSafe: childSafe ? true : undefined,
@@ -535,11 +593,15 @@ export default function CatalogScreen() {
       sortBy,
       sortDirection,
       toxicity,
-    ]
+    ],
   );
 
   const performSearch = useCallback(
-    async (request: ShopSearchRequest, fallbackPage: number, fallbackPageSize: number) => {
+    async (
+      request: ShopSearchRequest,
+      fallbackPage: number,
+      fallbackPageSize: number,
+    ) => {
       setIsLoading(true);
       setError(null);
 
@@ -558,8 +620,8 @@ export default function CatalogScreen() {
       } catch (searchError: any) {
         const message =
           searchError?.response?.data?.message ||
-          t('catalog.searchFailed', {
-            defaultValue: 'Unable to search products right now.',
+          t("catalog.searchFailed", {
+            defaultValue: "Unable to search products right now.",
           });
 
         setError(message);
@@ -573,15 +635,23 @@ export default function CatalogScreen() {
         setIsLoading(false);
       }
     },
-    [t]
+    [t],
   );
 
   const executeSearch = useCallback(
-    async (targetPage: number, targetPageSize: number, keywordOverride?: string) => {
-      const request = buildSearchRequest(targetPage, targetPageSize, keywordOverride);
+    async (
+      targetPage: number,
+      targetPageSize: number,
+      keywordOverride?: string,
+    ) => {
+      const request = buildSearchRequest(
+        targetPage,
+        targetPageSize,
+        keywordOverride,
+      );
       await performSearch(request, targetPage, targetPageSize);
     },
-    [buildSearchRequest, performSearch]
+    [buildSearchRequest, performSearch],
   );
 
   useEffect(() => {
@@ -626,21 +696,24 @@ export default function CatalogScreen() {
       }
 
       Alert.alert(
-        t('common.loginRequiredTitle', { defaultValue: 'Login required' }),
-        t('common.loginRequiredMessage', {
-          defaultValue: 'Please login to continue.',
+        t("common.loginRequiredTitle", { defaultValue: "Login required" }),
+        t("common.loginRequiredMessage", {
+          defaultValue: "Please login to continue.",
         }),
         [
-          { text: t('common.cancel', { defaultValue: 'Cancel' }), style: 'cancel' },
           {
-            text: t('common.login', { defaultValue: 'Login' }),
-            onPress: () => navigation.navigate('Login'),
+            text: t("common.cancel", { defaultValue: "Cancel" }),
+            style: "cancel",
           },
-        ]
+          {
+            text: t("common.login", { defaultValue: "Login" }),
+            onPress: () => navigation.navigate("Login"),
+          },
+        ],
       );
       return false;
     },
-    [isAuthenticated, navigation, t]
+    [isAuthenticated, navigation, t],
   );
 
   const wishlistTargets = useMemo(
@@ -648,7 +721,7 @@ export default function CatalogScreen() {
       shopItems
         .map((item) => resolveWishlistTarget(item))
         .filter((target): target is WishlistTarget => Boolean(target)),
-    [shopItems]
+    [shopItems],
   );
 
   useEffect(() => {
@@ -658,7 +731,12 @@ export default function CatalogScreen() {
     }
 
     void ensureWishlistStatus(wishlistTargets);
-  }, [clearWishlistStatus, ensureWishlistStatus, isAuthenticated, wishlistTargets]);
+  }, [
+    clearWishlistStatus,
+    ensureWishlistStatus,
+    isAuthenticated,
+    wishlistTargets,
+  ]);
 
   const isWishlisted = useCallback(
     (item: ShopSearchItem): boolean => {
@@ -667,9 +745,11 @@ export default function CatalogScreen() {
         return false;
       }
 
-      return wishlistStatus[getWishlistKey(target.itemType, target.itemId)] ?? false;
+      return (
+        wishlistStatus[getWishlistKey(target.itemType, target.itemId)] ?? false
+      );
     },
-    [wishlistStatus]
+    [wishlistStatus],
   );
 
   const handleToggleWishlist = useCallback(
@@ -681,8 +761,8 @@ export default function CatalogScreen() {
       const target = resolveWishlistTarget(item);
       if (!target) {
         notify({
-          message: t('wishlist.invalidItem', {
-            defaultValue: 'Unable to add this item to wishlist.',
+          message: t("wishlist.invalidItem", {
+            defaultValue: "Unable to add this item to wishlist.",
           }),
         });
         return;
@@ -695,8 +775,12 @@ export default function CatalogScreen() {
         await toggleWishlist(target.itemType, target.itemId);
         notify({
           message: wasInWishlist
-            ? t('wishlist.removeSuccess', { defaultValue: 'Removed from wishlist.' })
-            : t('wishlist.addedMessage', { defaultValue: 'Added to wishlist.' }),
+            ? t("wishlist.removeSuccess", {
+                defaultValue: "Removed from wishlist.",
+              })
+            : t("wishlist.addedMessage", {
+                defaultValue: "Added to wishlist.",
+              }),
         });
       } catch (wishlistError: any) {
         const apiMessage = wishlistError?.response?.data?.message;
@@ -704,16 +788,16 @@ export default function CatalogScreen() {
           message:
             apiMessage ||
             (wasInWishlist
-              ? t('wishlist.removeFailed', {
-                  defaultValue: 'Unable to remove from wishlist.',
+              ? t("wishlist.removeFailed", {
+                  defaultValue: "Unable to remove from wishlist.",
                 })
-              : t('wishlist.addFailed', {
-                  defaultValue: 'Unable to add to wishlist.',
+              : t("wishlist.addFailed", {
+                  defaultValue: "Unable to add to wishlist.",
                 })),
         });
       }
     },
-    [requireAuth, t, toggleWishlist, wishlistStatus]
+    [requireAuth, t, toggleWishlist, wishlistStatus],
   );
 
   const submitAddToCart = useCallback(
@@ -722,23 +806,23 @@ export default function CatalogScreen() {
         return null;
       }
 
-      console.log('[Catalog][submitAddToCart] request:', request);
+      console.log("[Catalog][submitAddToCart] request:", request);
       const payload = await addCartItem(request);
 
       if (!payload) {
-        console.warn('[Catalog][submitAddToCart] failed:', {
+        console.warn("[Catalog][submitAddToCart] failed:", {
           request,
-          error: 'Store addCartItem returned null',
+          error: "Store addCartItem returned null",
         });
         notify({
-          message: t('cart.addFailed', {
-            defaultValue: 'Unable to add to cart.',
+          message: t("cart.addFailed", {
+            defaultValue: "Unable to add to cart.",
           }),
         });
         return null;
       }
 
-      console.log('[Catalog][submitAddToCart] response:', {
+      console.log("[Catalog][submitAddToCart] response:", {
         cartItemId: payload.id,
         commonPlantId: payload.commonPlantId,
         nurseryPlantComboId: payload.nurseryPlantComboId,
@@ -747,7 +831,7 @@ export default function CatalogScreen() {
 
       return payload;
     },
-    [addCartItem, requireAuth, t]
+    [addCartItem, requireAuth, t],
   );
 
   const closeNurseryPicker = useCallback(() => {
@@ -762,7 +846,7 @@ export default function CatalogScreen() {
   const openNurseryPicker = useCallback(
     async (
       selection: PendingNurserySelection,
-      fetchOptions: () => Promise<NurseryPickerOption[]>
+      fetchOptions: () => Promise<NurseryPickerOption[]>,
     ) => {
       if (!requireAuth()) {
         return;
@@ -784,8 +868,8 @@ export default function CatalogScreen() {
         notify({
           message:
             pickerError?.response?.data?.message ||
-            t('catalog.loadNurseryFailed', {
-              defaultValue: 'Unable to load available nurseries.',
+            t("catalog.loadNurseryFailed", {
+              defaultValue: "Unable to load available nurseries.",
             }),
         });
         closeNurseryPicker();
@@ -793,25 +877,7 @@ export default function CatalogScreen() {
         setIsNurseryPickerLoading(false);
       }
     },
-    [closeNurseryPicker, requireAuth, t]
-  );
-
-  const formatNurseryPrice = useCallback(
-    (minPrice?: number, maxPrice?: number) => {
-      const safeMin = minPrice ?? 0;
-      const safeMax = maxPrice ?? 0;
-
-      if (!safeMin && !safeMax) {
-        return t('plantDetail.priceContact', { defaultValue: 'Contact' });
-      }
-
-      if (safeMin === safeMax) {
-        return formatMoney(safeMin, locale);
-      }
-
-      return `${formatMoney(safeMin, locale)} - ${formatMoney(safeMax, locale)}`;
-    },
-    [locale, t]
+    [closeNurseryPicker, requireAuth, t],
   );
 
   const handleConfirmNurseryAdd = useCallback(
@@ -821,13 +887,13 @@ export default function CatalogScreen() {
       }
 
       const selectedNursery = availableNurseryOptions.find(
-        (option) => option.nurseryId === selectedCartNurseryId
+        (option) => option.nurseryId === selectedCartNurseryId,
       );
 
       if (!selectedNursery || selectedNursery.actionId == null) {
         notify({
-          message: t('cart.addFailed', {
-            defaultValue: 'Unable to add to cart.',
+          message: t("cart.addFailed", {
+            defaultValue: "Unable to add to cart.",
           }),
         });
         return;
@@ -848,8 +914,8 @@ export default function CatalogScreen() {
         };
 
         closeNurseryPicker();
-        navigation.navigate('Checkout', {
-          source: 'buy-now',
+        navigation.navigate("Checkout", {
+          source: "buy-now",
           items: [checkoutItem],
         });
         return;
@@ -857,11 +923,17 @@ export default function CatalogScreen() {
 
       const request: AddCartItemRequest = {
         commonPlantId:
-          pendingNurserySelection.mode === 'plant' ? selectedNursery.actionId : null,
+          pendingNurserySelection.mode === "plant"
+            ? selectedNursery.actionId
+            : null,
         nurseryPlantComboId:
-          pendingNurserySelection.mode === 'combo' ? selectedNursery.actionId : null,
+          pendingNurserySelection.mode === "combo"
+            ? selectedNursery.actionId
+            : null,
         nurseryMaterialId:
-          pendingNurserySelection.mode === 'material' ? selectedNursery.actionId : null,
+          pendingNurserySelection.mode === "material"
+            ? selectedNursery.actionId
+            : null,
         quantity,
       };
 
@@ -872,7 +944,7 @@ export default function CatalogScreen() {
       }
 
       notify({
-        message: t('cart.addedMessage', { defaultValue: 'Added to cart.' }),
+        message: t("cart.addedMessage", { defaultValue: "Added to cart." }),
       });
       closeNurseryPicker();
     },
@@ -885,15 +957,15 @@ export default function CatalogScreen() {
       selectedCartQuantity,
       submitAddToCart,
       t,
-    ]
+    ],
   );
 
   const handleSelectNurseryForCart = useCallback(
     async (plant: ShopSearchPlantSummary) => {
       if (plant.isUniqueInstance) {
         notify({
-          message: t('catalog.uniquePlantCannotCart', {
-            defaultValue: 'Unique plants cannot be added to cart directly.',
+          message: t("catalog.uniquePlantCannotCart", {
+            defaultValue: "Unique plants cannot be added to cart directly.",
           }),
         });
         return;
@@ -901,11 +973,11 @@ export default function CatalogScreen() {
 
       await openNurseryPicker(
         {
-          mode: 'plant',
+          mode: "plant",
           displayName: plant.name,
           image: plant.primaryImageUrl ?? undefined,
           unitPrice: plant.basePrice,
-          buyNowItemTypeName: 'CommonPlant',
+          buyNowItemTypeName: "CommonPlant",
         },
         async () => {
           const options = await fetchNurseriesGotCommonPlantByPlantId(plant.id);
@@ -919,19 +991,20 @@ export default function CatalogScreen() {
             minPrice: option.minPrice,
             maxPrice: option.maxPrice,
           }));
-        }
+        },
       );
     },
-    [fetchNurseriesGotCommonPlantByPlantId, openNurseryPicker, t]
+    [fetchNurseriesGotCommonPlantByPlantId, openNurseryPicker, t],
   );
 
   const handleAddMaterialToCart = useCallback(
     async (material: ShopSearchMaterialSummary) => {
-      const materialEntityId = toPositiveInt(material.materialId) ?? toPositiveInt(material.id);
+      const materialEntityId =
+        toPositiveInt(material.materialId) ?? toPositiveInt(material.id);
       if (!materialEntityId) {
         notify({
-          message: t('checkout.invalidCheckoutItems', {
-            defaultValue: 'Cannot resolve buy now item for order creation.',
+          message: t("checkout.invalidCheckoutItems", {
+            defaultValue: "Cannot resolve buy now item for order creation.",
           }),
           useAlert: true,
         });
@@ -940,50 +1013,55 @@ export default function CatalogScreen() {
 
       await openNurseryPicker(
         {
-          mode: 'material',
+          mode: "material",
           displayName: material.materialName,
           image: material.primaryImageUrl?.trim() || undefined,
           unitPrice: material.basePrice,
-          buyNowItemTypeName: 'NurseryMaterial',
+          buyNowItemTypeName: "NurseryMaterial",
         },
         async () => {
-          const options = await fetchNurseriesGotMaterialByMaterialId(materialEntityId);
+          const options =
+            await fetchNurseriesGotMaterialByMaterialId(materialEntityId);
           return (options ?? []).map((option) => ({
             nurseryId: option.id,
             nurseryName: option.name,
             address: option.address,
             phone: option.phone,
+            availableCount: option.quantity ?? undefined,
             actionId: option.nurseryMaterialId ?? null,
           }));
-        }
+        },
       );
     },
-    [fetchNurseriesGotMaterialByMaterialId, openNurseryPicker, t]
+    [fetchNurseriesGotMaterialByMaterialId, openNurseryPicker, t],
   );
 
   const handleAddComboToCart = useCallback(
     async (combo: ShopSearchComboSummary) => {
       await openNurseryPicker(
         {
-          mode: 'combo',
+          mode: "combo",
           displayName: combo.name,
           image: combo.primaryImageUrl?.trim() || undefined,
           unitPrice: Math.max(0, combo.price || 0),
-          buyNowItemTypeName: 'NurseryPlantCombo',
+          buyNowItemTypeName: "NurseryPlantCombo",
         },
         async () => {
-          const options = await fetchNurseriesGotPlantComboByPlantComboId(combo.id);
+          const options = await fetchNurseriesGotPlantComboByPlantComboId(
+            combo.id,
+          );
           return (options ?? []).map((option) => ({
             nurseryId: option.id,
             nurseryName: option.name,
             address: option.address,
             phone: option.phone,
+            availableCount: option.quantity ?? undefined,
             actionId: option.nurseryPlantComboId ?? null,
           }));
-        }
+        },
       );
     },
-    [fetchNurseriesGotPlantComboByPlantComboId, openNurseryPicker]
+    [fetchNurseriesGotPlantComboByPlantComboId, openNurseryPicker],
   );
 
   const handleSearch = useCallback(() => {
@@ -1007,14 +1085,15 @@ export default function CatalogScreen() {
   }, [executeSearch, pageSize]);
 
   const resetFilters = useCallback(() => {
-    const resetSortBy = sortByOptions[0]?.value ?? DEFAULT_SORT_BY_OPTIONS[0].value;
+    const resetSortBy =
+      sortByOptions[0]?.value ?? DEFAULT_SORT_BY_OPTIONS[0].value;
     const resetSortDirection =
       sortDirectionOptions[0]?.value ?? DEFAULT_SORT_DIRECTION_OPTIONS[0].value;
 
-    setKeyword('');
+    setKeyword("");
     setPriceRange({ min: 0, max: 0 });
-    setMinPriceInput('');
-    setMaxPriceInput('');
+    setMinPriceInput("");
+    setMaxPriceInput("");
     setSelectedCareLevel(null);
     setSelectedPlacement(null);
     setSelectedSizes([]);
@@ -1058,7 +1137,7 @@ export default function CatalogScreen() {
       setPageSize(nextPageSize);
       void executeSearch(1, nextPageSize);
     },
-    [executeSearch]
+    [executeSearch],
   );
 
   const handlePrevPage = useCallback(() => {
@@ -1079,20 +1158,28 @@ export default function CatalogScreen() {
 
   const handlePageSelect = useCallback(
     (targetPage: number) => {
-      if (isLoading || targetPage === pageNumber || targetPage < 1 || targetPage > totalPages) {
+      if (
+        isLoading ||
+        targetPage === pageNumber ||
+        targetPage < 1 ||
+        targetPage > totalPages
+      ) {
         return;
       }
 
       void executeSearch(targetPage, pageSize);
     },
-    [executeSearch, isLoading, pageNumber, pageSize, totalPages]
+    [executeSearch, isLoading, pageNumber, pageSize, totalPages],
   );
 
   const visiblePageTokens = useMemo<PageToken[]>(() => {
     const normalizedTotalPages = Math.max(1, totalPages);
 
     if (normalizedTotalPages <= 7) {
-      return Array.from({ length: normalizedTotalPages }, (_, index) => index + 1);
+      return Array.from(
+        { length: normalizedTotalPages },
+        (_, index) => index + 1,
+      );
     }
 
     const tokens: PageToken[] = [1];
@@ -1100,7 +1187,7 @@ export default function CatalogScreen() {
     const endPage = Math.min(normalizedTotalPages - 1, pageNumber + 1);
 
     if (startPage > 2) {
-      tokens.push('left-ellipsis');
+      tokens.push("left-ellipsis");
     }
 
     for (let nextPage = startPage; nextPage <= endPage; nextPage += 1) {
@@ -1108,7 +1195,7 @@ export default function CatalogScreen() {
     }
 
     if (endPage < normalizedTotalPages - 1) {
-      tokens.push('right-ellipsis');
+      tokens.push("right-ellipsis");
     }
 
     tokens.push(normalizedTotalPages);
@@ -1117,7 +1204,7 @@ export default function CatalogScreen() {
 
   const handleMinPriceChange = useCallback((text: string) => {
     setMinPriceInput(text);
-    const numeric = Number(text.replace(/[^0-9]/g, ''));
+    const numeric = Number(text.replace(/[^0-9]/g, ""));
     if (Number.isFinite(numeric)) {
       setPriceRange((previous) => ({ ...previous, min: numeric }));
       return;
@@ -1128,7 +1215,7 @@ export default function CatalogScreen() {
 
   const handleMaxPriceChange = useCallback((text: string) => {
     setMaxPriceInput(text);
-    const numeric = Number(text.replace(/[^0-9]/g, ''));
+    const numeric = Number(text.replace(/[^0-9]/g, ""));
     if (Number.isFinite(numeric)) {
       setPriceRange((previous) => ({ ...previous, max: numeric }));
       return;
@@ -1145,14 +1232,16 @@ export default function CatalogScreen() {
   const renderChip = (
     option: NumberOption,
     isActive: boolean,
-    onPress: () => void
+    onPress: () => void,
   ) => (
     <TouchableOpacity
       key={option.value}
       style={[styles.filterChip, isActive && styles.filterChipActive]}
       onPress={onPress}
     >
-      <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>
+      <Text
+        style={[styles.filterChipText, isActive && styles.filterChipTextActive]}
+      >
         {option.label}
       </Text>
     </TouchableOpacity>
@@ -1161,14 +1250,16 @@ export default function CatalogScreen() {
   const renderStringChip = (
     option: StringOption,
     isActive: boolean,
-    onPress: () => void
+    onPress: () => void,
   ) => (
     <TouchableOpacity
       key={option.value}
       style={[styles.filterChip, isActive && styles.filterChipActive]}
       onPress={onPress}
     >
-      <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>
+      <Text
+        style={[styles.filterChipText, isActive && styles.filterChipTextActive]}
+      >
         {option.label}
       </Text>
     </TouchableOpacity>
@@ -1191,7 +1282,7 @@ export default function CatalogScreen() {
         >
           <Text style={styles.sectionHeaderTitle}>{title}</Text>
           <Ionicons
-            name={expandedSections[sectionKey] ? 'chevron-up' : 'chevron-down'}
+            name={expandedSections[sectionKey] ? "chevron-up" : "chevron-down"}
             size={18}
             color={COLORS.textSecondary}
           />
@@ -1202,19 +1293,28 @@ export default function CatalogScreen() {
         ) : null}
       </View>
     ),
-    [expandedSections, toggleSection]
+    [expandedSections, toggleSection],
   );
 
-  const renderPlantCard = (item: ShopSearchItem, plant: ShopSearchPlantSummary) => {
+  const renderPlantCard = (
+    item: ShopSearchItem,
+    plant: ShopSearchPlantSummary,
+  ) => {
     const imageUrl = plant.primaryImageUrl || PLACEHOLDER_IMAGE;
 
     return (
       <TouchableOpacity
         style={styles.productCard}
-        onPress={() => navigation.navigate('PlantDetail', { plantId: String(plant.id) })}
+        onPress={() =>
+          navigation.navigate("PlantDetail", { plantId: String(plant.id) })
+        }
       >
         <View style={styles.productImageContainer}>
-          <Image source={{ uri: imageUrl }} style={styles.productImage} resizeMode="cover" />
+          <Image
+            source={{ uri: imageUrl }}
+            style={styles.productImage}
+            resizeMode="cover"
+          />
           {!plant.isUniqueInstance && (
             <TouchableOpacity
               style={styles.favoriteButton}
@@ -1224,14 +1324,16 @@ export default function CatalogScreen() {
               }}
             >
               <Ionicons
-                name={isWishlisted(item) ? 'heart' : 'heart-outline'}
+                name={isWishlisted(item) ? "heart" : "heart-outline"}
                 size={18}
                 color={isWishlisted(item) ? COLORS.error : COLORS.white}
               />
             </TouchableOpacity>
           )}
           <View style={styles.typeBadge}>
-            <Text style={styles.typeBadgeText}>{t('catalog.typePlant', { defaultValue: 'Plant' })}</Text>
+            <Text style={styles.typeBadgeText}>
+              {t("catalog.typePlant", { defaultValue: "Plant" })}
+            </Text>
           </View>
         </View>
 
@@ -1240,10 +1342,12 @@ export default function CatalogScreen() {
             {plant.name}
           </Text>
           <Text style={styles.productMeta} numberOfLines={1}>
-            {`${plant.careLevelTypeName || '-'} • ${plant.sizeName || '-'}`}
+            {`${plant.careLevelTypeName || "-"} • ${plant.sizeName || "-"}`}
           </Text>
           <View style={styles.productFooter}>
-            <Text style={styles.productPrice}>{formatMoney(plant.basePrice, locale)}</Text>
+            <Text style={styles.productPrice}>
+              {formatMoney(plant.basePrice, locale)}
+            </Text>
             {!plant.isUniqueInstance && (
               <TouchableOpacity
                 style={styles.addButton}
@@ -1261,23 +1365,32 @@ export default function CatalogScreen() {
     );
   };
 
-  const renderMaterialCard = (item: ShopSearchItem, material: ShopSearchMaterialSummary) => {
+  const renderMaterialCard = (
+    item: ShopSearchItem,
+    material: ShopSearchMaterialSummary,
+  ) => {
     const materialId = material.materialId || material.id;
-    const materialImageUrl = material.primaryImageUrl?.trim() || '';
+    const materialImageUrl = material.primaryImageUrl?.trim() || "";
 
     return (
       <TouchableOpacity
         style={styles.productCard}
         onPress={() =>
-          navigation.navigate('MaterialDetail', {
+          navigation.navigate("MaterialDetail", {
             materialId,
             nurseryMaterialId: material.id,
           })
         }
       >
-        <View style={[styles.productImageContainer, styles.materialImageContainer]}>
+        <View
+          style={[styles.productImageContainer, styles.materialImageContainer]}
+        >
           {materialImageUrl ? (
-            <Image source={{ uri: materialImageUrl }} style={styles.productImage} resizeMode="cover" />
+            <Image
+              source={{ uri: materialImageUrl }}
+              style={styles.productImage}
+              resizeMode="cover"
+            />
           ) : (
             <Ionicons name="cube-outline" size={48} color={COLORS.primary} />
           )}
@@ -1289,14 +1402,14 @@ export default function CatalogScreen() {
             }}
           >
             <Ionicons
-              name={isWishlisted(item) ? 'heart' : 'heart-outline'}
+              name={isWishlisted(item) ? "heart" : "heart-outline"}
               size={18}
               color={isWishlisted(item) ? COLORS.error : COLORS.white}
             />
           </TouchableOpacity>
           <View style={[styles.typeBadge, styles.typeBadgeMaterial]}>
             <Text style={styles.typeBadgeText}>
-              {t('catalog.typeMaterial', { defaultValue: 'Material' })}
+              {t("catalog.typeMaterial", { defaultValue: "Material" })}
             </Text>
           </View>
         </View>
@@ -1309,7 +1422,9 @@ export default function CatalogScreen() {
             {`${material.unit}`}
           </Text>
           <View style={styles.productFooter}>
-            <Text style={styles.productPrice}>{formatMoney(material.basePrice, locale)}</Text>
+            <Text style={styles.productPrice}>
+              {formatMoney(material.basePrice, locale)}
+            </Text>
             <View style={styles.productActions}>
               <TouchableOpacity
                 style={styles.addButton}
@@ -1327,23 +1442,36 @@ export default function CatalogScreen() {
     );
   };
 
-  const renderComboCard = (item: ShopSearchItem, combo: ShopSearchComboSummary) => {
-    const comboImageUrl = combo.primaryImageUrl?.trim() || '';
+  const renderComboCard = (
+    item: ShopSearchItem,
+    combo: ShopSearchComboSummary,
+  ) => {
+    const comboImageUrl = combo.primaryImageUrl?.trim() || "";
 
     return (
       <TouchableOpacity
         style={styles.productCard}
         onPress={() =>
-          navigation.navigate('ComboDetail', {
+          navigation.navigate("ComboDetail", {
             comboId: combo.id,
           })
         }
       >
-        <View style={[styles.productImageContainer, styles.comboImageContainer]}>
+        <View
+          style={[styles.productImageContainer, styles.comboImageContainer]}
+        >
           {comboImageUrl ? (
-            <Image source={{ uri: comboImageUrl }} style={styles.productImage} resizeMode="cover" />
+            <Image
+              source={{ uri: comboImageUrl }}
+              style={styles.productImage}
+              resizeMode="cover"
+            />
           ) : (
-            <Ionicons name="albums-outline" size={46} color={COLORS.primaryDark} />
+            <Ionicons
+              name="albums-outline"
+              size={46}
+              color={COLORS.primaryDark}
+            />
           )}
           <TouchableOpacity
             style={styles.favoriteButton}
@@ -1353,13 +1481,15 @@ export default function CatalogScreen() {
             }}
           >
             <Ionicons
-              name={isWishlisted(item) ? 'heart' : 'heart-outline'}
+              name={isWishlisted(item) ? "heart" : "heart-outline"}
               size={18}
               color={isWishlisted(item) ? COLORS.error : COLORS.white}
             />
           </TouchableOpacity>
           <View style={[styles.typeBadge, styles.typeBadgeCombo]}>
-            <Text style={styles.typeBadgeText}>{t('catalog.typeCombo', { defaultValue: 'Combo' })}</Text>
+            <Text style={styles.typeBadgeText}>
+              {t("catalog.typeCombo", { defaultValue: "Combo" })}
+            </Text>
           </View>
         </View>
 
@@ -1368,10 +1498,12 @@ export default function CatalogScreen() {
             {combo.name}
           </Text>
           <Text style={styles.productMeta} numberOfLines={1}>
-            {combo.comboTypeName || '-'}
+            {combo.comboTypeName || "-"}
           </Text>
           <View style={styles.productFooter}>
-            <Text style={styles.productPrice}>{formatMoney(combo.price, locale)}</Text>
+            <Text style={styles.productPrice}>
+              {formatMoney(combo.price, locale)}
+            </Text>
             <View style={styles.productActions}>
               <TouchableOpacity
                 style={styles.addButton}
@@ -1390,15 +1522,15 @@ export default function CatalogScreen() {
   };
 
   const renderResultCard = ({ item }: { item: ShopSearchItem }) => {
-    if (item.type === 'Plant' && item.plant) {
+    if (item.type === "Plant" && item.plant) {
       return renderPlantCard(item, item.plant);
     }
 
-    if (item.type === 'Material' && item.material) {
+    if (item.type === "Material" && item.material) {
       return renderMaterialCard(item, item.material);
     }
 
-    if (item.type === 'Combo' && item.combo) {
+    if (item.type === "Combo" && item.combo) {
       return renderComboCard(item, item.combo);
     }
 
@@ -1413,273 +1545,340 @@ export default function CatalogScreen() {
         contentContainerStyle={[
           styles.filterContent,
           {
-            paddingBottom: filterFooterPaddingBottom + SPACING['4xl'],
+            paddingBottom: filterFooterPaddingBottom + SPACING["4xl"],
           },
         ]}
       >
         <View style={styles.filterHeader}>
-          <Text style={styles.filterTitle}>{t('catalog.filters')}</Text>
+          <Text style={styles.filterTitle}>{t("catalog.filters")}</Text>
           <TouchableOpacity onPress={resetFilters}>
-            <Text style={styles.resetText}>{t('catalog.reset')}</Text>
+            <Text style={styles.resetText}>{t("catalog.reset")}</Text>
           </TouchableOpacity>
         </View>
 
-      {renderCollapsibleSection(
-        'productTypes',
-        t('catalog.productTypes', { defaultValue: 'Product types' }),
-        <View style={styles.chipWrap}>
-          <TouchableOpacity
-            style={[styles.filterChip, includePlants && styles.filterChipActive]}
-            onPress={() => setIncludePlants((previous) => !previous)}
-          >
-            <Text style={[styles.filterChipText, includePlants && styles.filterChipTextActive]}>
-              {t('catalog.typePlant', { defaultValue: 'Plant' })}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.filterChip, includeMaterials && styles.filterChipActive]}
-            onPress={() => setIncludeMaterials((previous) => !previous)}
-          >
-            <Text style={[styles.filterChipText, includeMaterials && styles.filterChipTextActive]}>
-              {t('catalog.typeMaterial', { defaultValue: 'Material' })}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.filterChip, includeCombos && styles.filterChipActive]}
-            onPress={() => setIncludeCombos((previous) => !previous)}
-          >
-            <Text style={[styles.filterChipText, includeCombos && styles.filterChipTextActive]}>
-              {t('catalog.typeCombo', { defaultValue: 'Combo' })}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {renderCollapsibleSection(
-        'priceRange',
-        t('catalog.priceRange'),
-        <View style={styles.priceInputContainer}>
-          <View style={styles.priceInputWrapper}>
-            <Text style={styles.priceInputLabel}>{t('catalog.minPrice')}</Text>
-            <TextInput
-              style={styles.priceInput}
-              value={minPriceInput}
-              onChangeText={handleMinPriceChange}
-              keyboardType="numeric"
-              placeholder="0"
-            />
-          </View>
-          <View style={styles.priceInputWrapper}>
-            <Text style={styles.priceInputLabel}>{t('catalog.maxPrice')}</Text>
-            <TextInput
-              style={styles.priceInput}
-              value={maxPriceInput}
-              onChangeText={handleMaxPriceChange}
-              keyboardType="numeric"
-              placeholder="0"
-            />
-          </View>
-        </View>
-      )}
-
-      {renderCollapsibleSection(
-        'sort',
-        t('catalog.sortBy'),
-        <>
+        {renderCollapsibleSection(
+          "productTypes",
+          t("catalog.productTypes", { defaultValue: "Product types" }),
           <View style={styles.chipWrap}>
-            {sortByOptions.map((option) =>
-              renderStringChip(option, sortBy === option.value, () => setSortBy(option.value))
-            )}
-          </View>
-          <Text style={[styles.sectionTitle, styles.sectionSubTitle]}>
-            {t('catalog.sortDirection', { defaultValue: 'Sort direction' })}
-          </Text>
+            <TouchableOpacity
+              style={[
+                styles.filterChip,
+                includePlants && styles.filterChipActive,
+              ]}
+              onPress={() => setIncludePlants((previous) => !previous)}
+            >
+              <Text
+                style={[
+                  styles.filterChipText,
+                  includePlants && styles.filterChipTextActive,
+                ]}
+              >
+                {t("catalog.typePlant", { defaultValue: "Plant" })}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.filterChip,
+                includeMaterials && styles.filterChipActive,
+              ]}
+              onPress={() => setIncludeMaterials((previous) => !previous)}
+            >
+              <Text
+                style={[
+                  styles.filterChipText,
+                  includeMaterials && styles.filterChipTextActive,
+                ]}
+              >
+                {t("catalog.typeMaterial", { defaultValue: "Material" })}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.filterChip,
+                includeCombos && styles.filterChipActive,
+              ]}
+              onPress={() => setIncludeCombos((previous) => !previous)}
+            >
+              <Text
+                style={[
+                  styles.filterChipText,
+                  includeCombos && styles.filterChipTextActive,
+                ]}
+              >
+                {t("catalog.typeCombo", { defaultValue: "Combo" })}
+              </Text>
+            </TouchableOpacity>
+          </View>,
+        )}
+
+        {renderCollapsibleSection(
+          "priceRange",
+          t("catalog.priceRange"),
+          <View style={styles.priceInputContainer}>
+            <View style={styles.priceInputWrapper}>
+              <Text style={styles.priceInputLabel}>
+                {t("catalog.minPrice")}
+              </Text>
+              <TextInput
+                style={styles.priceInput}
+                value={minPriceInput}
+                onChangeText={handleMinPriceChange}
+                keyboardType="numeric"
+                placeholder="0"
+              />
+            </View>
+            <View style={styles.priceInputWrapper}>
+              <Text style={styles.priceInputLabel}>
+                {t("catalog.maxPrice")}
+              </Text>
+              <TextInput
+                style={styles.priceInput}
+                value={maxPriceInput}
+                onChangeText={handleMaxPriceChange}
+                keyboardType="numeric"
+                placeholder="0"
+              />
+            </View>
+          </View>,
+        )}
+
+        {renderCollapsibleSection(
+          "sort",
+          t("catalog.sortBy"),
+          <>
+            <View style={styles.chipWrap}>
+              {sortByOptions.map((option) =>
+                renderStringChip(option, sortBy === option.value, () =>
+                  setSortBy(option.value),
+                ),
+              )}
+            </View>
+            <Text style={[styles.sectionTitle, styles.sectionSubTitle]}>
+              {t("catalog.sortDirection", { defaultValue: "Sort direction" })}
+            </Text>
+            <View style={styles.chipWrap}>
+              {sortDirectionOptions.map((option) =>
+                renderStringChip(option, sortDirection === option.value, () =>
+                  setSortDirection(option.value),
+                ),
+              )}
+            </View>
+          </>,
+        )}
+
+        {renderCollapsibleSection(
+          "careLevel",
+          t("catalog.careLevel"),
           <View style={styles.chipWrap}>
-            {sortDirectionOptions.map((option) =>
-              renderStringChip(option, sortDirection === option.value, () =>
-                setSortDirection(option.value)
-              )
+            {careLevelOptions.map((option) =>
+              renderChip(option, selectedCareLevel === option.value, () =>
+                setSelectedCareLevel((previous) =>
+                  previous === option.value ? null : option.value,
+                ),
+              ),
             )}
-          </View>
-        </>
-      )}
+          </View>,
+        )}
 
-      {renderCollapsibleSection(
-        'careLevel',
-        t('catalog.careLevel'),
-        <View style={styles.chipWrap}>
-          {careLevelOptions.map((option) =>
-            renderChip(option, selectedCareLevel === option.value, () =>
-              setSelectedCareLevel((previous) =>
-                previous === option.value ? null : option.value
-              )
-            )
-          )}
-        </View>
-      )}
-
-      {renderCollapsibleSection(
-        'placement',
-        t('catalog.placement'),
-        <View style={styles.chipWrap}>
-          {placementOptions.map((option) =>
-            renderChip(option, selectedPlacement === option.value, () =>
-              setSelectedPlacement((previous) =>
-                previous === option.value ? null : option.value
-              )
-            )
-          )}
-        </View>
-      )}
-
-      {renderCollapsibleSection(
-        'size',
-        t('catalog.size', { defaultValue: 'Sizes' }),
-        <View style={styles.chipWrap}>
-          {sizeOptions.map((option) =>
-            renderChip(option, selectedSizes.includes(option.value), () =>
-              toggleArrayValue(option.value, setSelectedSizes)
-            )
-          )}
-        </View>
-      )}
-
-      {renderCollapsibleSection(
-        'fengShui',
-        t('catalog.fengShui'),
-        <View style={styles.chipWrap}>
-          {fengShuiOptions.map((option) =>
-            renderChip(option, selectedFengShuiElement === option.value, () =>
-              setSelectedFengShuiElement((previous) =>
-                previous === option.value ? null : option.value
-              )
-            )
-          )}
-        </View>
-      )}
-
-      {renderCollapsibleSection(
-        'combo',
-        t('catalog.comboType', { defaultValue: 'Combo type' }),
-        <>
+        {renderCollapsibleSection(
+          "placement",
+          t("catalog.placement"),
           <View style={styles.chipWrap}>
-            {comboTypeOptions.map((option) =>
-              renderChip(option, selectedComboType === option.value, () =>
-                setSelectedComboType((previous) =>
-                  previous === option.value ? null : option.value
-                )
-              )
+            {placementOptions.map((option) =>
+              renderChip(option, selectedPlacement === option.value, () =>
+                setSelectedPlacement((previous) =>
+                  previous === option.value ? null : option.value,
+                ),
+              ),
             )}
-          </View>
+          </View>,
+        )}
 
-          <Text style={[styles.sectionTitle, styles.sectionSubTitle]}>
-            {t('catalog.comboSeason', { defaultValue: 'Combo season' })}
-          </Text>
+        {renderCollapsibleSection(
+          "size",
+          t("catalog.size", { defaultValue: "Sizes" }),
           <View style={styles.chipWrap}>
-            {comboSeasonOptions.map((option) =>
-              renderChip(option, selectedComboSeason === option.value, () =>
-                setSelectedComboSeason((previous) =>
-                  previous === option.value ? null : option.value
-                )
-              )
+            {sizeOptions.map((option) =>
+              renderChip(option, selectedSizes.includes(option.value), () =>
+                toggleArrayValue(option.value, setSelectedSizes),
+              ),
             )}
-          </View>
-        </>
-      )}
+          </View>,
+        )}
 
-      {renderCollapsibleSection(
-        'features',
-        t('catalog.features'),
-        <View style={styles.chipWrap}>
-          <TouchableOpacity
-            style={[styles.filterChip, toxicity && styles.filterChipActive]}
-            onPress={() => setToxicity((previous) => !previous)}
-          >
-            <Text style={[styles.filterChipText, toxicity && styles.filterChipTextActive]}>
-              {t('catalog.toxicity')}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.filterChip, airPurifying && styles.filterChipActive]}
-            onPress={() => setAirPurifying((previous) => !previous)}
-          >
-            <Text style={[styles.filterChipText, airPurifying && styles.filterChipTextActive]}>
-              {t('catalog.airPurifying')}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.filterChip, hasFlower && styles.filterChipActive]}
-            onPress={() => setHasFlower((previous) => !previous)}
-          >
-            <Text style={[styles.filterChipText, hasFlower && styles.filterChipTextActive]}>
-              {t('catalog.hasFlower')}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.filterChip, petSafe && styles.filterChipActive]}
-            onPress={() => setPetSafe((previous) => !previous)}
-          >
-            <Text style={[styles.filterChipText, petSafe && styles.filterChipTextActive]}>
-              {t('catalog.petSafe')}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.filterChip, childSafe && styles.filterChipActive]}
-            onPress={() => setChildSafe((previous) => !previous)}
-          >
-            <Text style={[styles.filterChipText, childSafe && styles.filterChipTextActive]}>
-              {t('catalog.childSafe')}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.filterChip, isUniqueInstance && styles.filterChipActive]}
-            onPress={() => setIsUniqueInstance((previous) => !previous)}
-          >
-            <Text style={[styles.filterChipText, isUniqueInstance && styles.filterChipTextActive]}>
-              {t('catalog.uniqueInstance')}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      )}
+        {renderCollapsibleSection(
+          "fengShui",
+          t("catalog.fengShui"),
+          <View style={styles.chipWrap}>
+            {fengShuiOptions.map((option) =>
+              renderChip(option, selectedFengShuiElement === option.value, () =>
+                setSelectedFengShuiElement((previous) =>
+                  previous === option.value ? null : option.value,
+                ),
+              ),
+            )}
+          </View>,
+        )}
 
-      {renderCollapsibleSection(
-        'categories',
-        t('catalog.categories', { defaultValue: 'Categories' }),
-        <View style={styles.chipWrap}>
-          {categoryOptions.map((option) =>
-            renderChip(option, selectedCategoryIds.includes(option.value), () =>
-              toggleArrayValue(option.value, setSelectedCategoryIds)
-            )
-          )}
-        </View>
-      )}
+        {renderCollapsibleSection(
+          "combo",
+          t("catalog.comboType", { defaultValue: "Combo type" }),
+          <>
+            <View style={styles.chipWrap}>
+              {comboTypeOptions.map((option) =>
+                renderChip(option, selectedComboType === option.value, () =>
+                  setSelectedComboType((previous) =>
+                    previous === option.value ? null : option.value,
+                  ),
+                ),
+              )}
+            </View>
 
-      {renderCollapsibleSection(
-        'tags',
-        t('catalog.tags', { defaultValue: 'Tags' }),
-        <View style={styles.chipWrap}>
-          {tagOptions.map((option) =>
-            renderChip(option, selectedTagIds.includes(option.value), () =>
-              toggleArrayValue(option.value, setSelectedTagIds)
-            )
-          )}
-        </View>
-      )}
+            <Text style={[styles.sectionTitle, styles.sectionSubTitle]}>
+              {t("catalog.comboSeason", { defaultValue: "Combo season" })}
+            </Text>
+            <View style={styles.chipWrap}>
+              {comboSeasonOptions.map((option) =>
+                renderChip(option, selectedComboSeason === option.value, () =>
+                  setSelectedComboSeason((previous) =>
+                    previous === option.value ? null : option.value,
+                  ),
+                ),
+              )}
+            </View>
+          </>,
+        )}
 
-      {renderCollapsibleSection(
-        'nursery',
-        t('catalog.nursery', { defaultValue: 'Nursery' }),
-        <View style={styles.chipWrap}>
-          {nurseryFilterOptions.map((option) =>
-            renderChip(option, selectedNurseryId === option.value, () =>
-              setSelectedNurseryId((previous) =>
-                previous === option.value ? null : option.value
-              )
-            )
-          )}
-        </View>
-      )}
+        {renderCollapsibleSection(
+          "features",
+          t("catalog.features"),
+          <View style={styles.chipWrap}>
+            <TouchableOpacity
+              style={[styles.filterChip, toxicity && styles.filterChipActive]}
+              onPress={() => setToxicity((previous) => !previous)}
+            >
+              <Text
+                style={[
+                  styles.filterChipText,
+                  toxicity && styles.filterChipTextActive,
+                ]}
+              >
+                {t("catalog.toxicity")}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.filterChip,
+                airPurifying && styles.filterChipActive,
+              ]}
+              onPress={() => setAirPurifying((previous) => !previous)}
+            >
+              <Text
+                style={[
+                  styles.filterChipText,
+                  airPurifying && styles.filterChipTextActive,
+                ]}
+              >
+                {t("catalog.airPurifying")}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterChip, hasFlower && styles.filterChipActive]}
+              onPress={() => setHasFlower((previous) => !previous)}
+            >
+              <Text
+                style={[
+                  styles.filterChipText,
+                  hasFlower && styles.filterChipTextActive,
+                ]}
+              >
+                {t("catalog.hasFlower")}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterChip, petSafe && styles.filterChipActive]}
+              onPress={() => setPetSafe((previous) => !previous)}
+            >
+              <Text
+                style={[
+                  styles.filterChipText,
+                  petSafe && styles.filterChipTextActive,
+                ]}
+              >
+                {t("catalog.petSafe")}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterChip, childSafe && styles.filterChipActive]}
+              onPress={() => setChildSafe((previous) => !previous)}
+            >
+              <Text
+                style={[
+                  styles.filterChipText,
+                  childSafe && styles.filterChipTextActive,
+                ]}
+              >
+                {t("catalog.childSafe")}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.filterChip,
+                isUniqueInstance && styles.filterChipActive,
+              ]}
+              onPress={() => setIsUniqueInstance((previous) => !previous)}
+            >
+              <Text
+                style={[
+                  styles.filterChipText,
+                  isUniqueInstance && styles.filterChipTextActive,
+                ]}
+              >
+                {t("catalog.uniqueInstance")}
+              </Text>
+            </TouchableOpacity>
+          </View>,
+        )}
 
+        {renderCollapsibleSection(
+          "categories",
+          t("catalog.categories", { defaultValue: "Categories" }),
+          <View style={styles.chipWrap}>
+            {categoryOptions.map((option) =>
+              renderChip(
+                option,
+                selectedCategoryIds.includes(option.value),
+                () => toggleArrayValue(option.value, setSelectedCategoryIds),
+              ),
+            )}
+          </View>,
+        )}
+
+        {renderCollapsibleSection(
+          "tags",
+          t("catalog.tags", { defaultValue: "Tags" }),
+          <View style={styles.chipWrap}>
+            {tagOptions.map((option) =>
+              renderChip(option, selectedTagIds.includes(option.value), () =>
+                toggleArrayValue(option.value, setSelectedTagIds),
+              ),
+            )}
+          </View>,
+        )}
+
+        {renderCollapsibleSection(
+          "nursery",
+          t("catalog.nursery", { defaultValue: "Nursery" }),
+          <View style={styles.chipWrap}>
+            {nurseryFilterOptions.map((option) =>
+              renderChip(option, selectedNurseryId === option.value, () =>
+                setSelectedNurseryId((previous) =>
+                  previous === option.value ? null : option.value,
+                ),
+              ),
+            )}
+          </View>,
+        )}
       </ScrollView>
 
       <View
@@ -1691,7 +1890,9 @@ export default function CatalogScreen() {
         ]}
       >
         <TouchableOpacity style={styles.applyButton} onPress={applyFilters}>
-          <Text style={styles.applyButtonText}>{t('catalog.applyFilters')}</Text>
+          <Text style={styles.applyButtonText}>
+            {t("catalog.applyFilters")}
+          </Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -1699,26 +1900,41 @@ export default function CatalogScreen() {
 
   if (isLoading && shopItems.length === 0) {
     return (
-      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
         <View style={styles.header}>
           <View style={styles.headerSide}>
-            <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.goBack()}>
-              <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
+            <TouchableOpacity
+              style={styles.iconBtn}
+              onPress={() => navigation.goBack()}
+            >
+              <Ionicons
+                name="arrow-back"
+                size={24}
+                color={COLORS.textPrimary}
+              />
             </TouchableOpacity>
           </View>
           <BrandMark variant="logoWithText" size="majorHeader" />
           <View style={[styles.headerSide, styles.headerActions]}>
             <TouchableOpacity
               style={styles.iconBtn}
-              onPress={() => requireAuth(() => navigation.navigate('Wishlist'))}
+              onPress={() => requireAuth(() => navigation.navigate("Wishlist"))}
             >
-              <Ionicons name="heart-outline" size={22} color={COLORS.textPrimary} />
+              <Ionicons
+                name="heart-outline"
+                size={22}
+                color={COLORS.textPrimary}
+              />
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.iconBtn}
-              onPress={() => requireAuth(() => navigation.navigate('Cart'))}
+              onPress={() => requireAuth(() => navigation.navigate("Cart"))}
             >
-              <Ionicons name="cart-outline" size={22} color={COLORS.textPrimary} />
+              <Ionicons
+                name="cart-outline"
+                size={22}
+                color={COLORS.textPrimary}
+              />
               {cartItemCount > 0 && <View style={styles.cartDot} />}
             </TouchableOpacity>
           </View>
@@ -1732,26 +1948,41 @@ export default function CatalogScreen() {
 
   if (error && shopItems.length === 0) {
     return (
-      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
         <View style={styles.header}>
           <View style={styles.headerSide}>
-            <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.goBack()}>
-              <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
+            <TouchableOpacity
+              style={styles.iconBtn}
+              onPress={() => navigation.goBack()}
+            >
+              <Ionicons
+                name="arrow-back"
+                size={24}
+                color={COLORS.textPrimary}
+              />
             </TouchableOpacity>
           </View>
           <BrandMark variant="logoWithText" size="majorHeader" />
           <View style={[styles.headerSide, styles.headerActions]}>
             <TouchableOpacity
               style={styles.iconBtn}
-              onPress={() => requireAuth(() => navigation.navigate('Wishlist'))}
+              onPress={() => requireAuth(() => navigation.navigate("Wishlist"))}
             >
-              <Ionicons name="heart-outline" size={22} color={COLORS.textPrimary} />
+              <Ionicons
+                name="heart-outline"
+                size={22}
+                color={COLORS.textPrimary}
+              />
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.iconBtn}
-              onPress={() => requireAuth(() => navigation.navigate('Cart'))}
+              onPress={() => requireAuth(() => navigation.navigate("Cart"))}
             >
-              <Ionicons name="cart-outline" size={22} color={COLORS.textPrimary} />
+              <Ionicons
+                name="cart-outline"
+                size={22}
+                color={COLORS.textPrimary}
+              />
               {cartItemCount > 0 && <View style={styles.cartDot} />}
             </TouchableOpacity>
           </View>
@@ -1759,8 +1990,11 @@ export default function CatalogScreen() {
         <View style={styles.loaderContainer}>
           <Ionicons name="alert-circle" size={56} color={COLORS.error} />
           <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={() => void executeSearch(1, pageSize)}>
-            <Text style={styles.retryButtonText}>{t('common.retry')}</Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => void executeSearch(1, pageSize)}
+          >
+            <Text style={styles.retryButtonText}>{t("common.retry")}</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -1768,10 +2002,13 @@ export default function CatalogScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       <View style={styles.header}>
         <View style={styles.headerSide}>
-          <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.goBack()}>
+          <TouchableOpacity
+            style={styles.iconBtn}
+            onPress={() => navigation.goBack()}
+          >
             <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
           </TouchableOpacity>
         </View>
@@ -1779,15 +2016,23 @@ export default function CatalogScreen() {
         <View style={[styles.headerSide, styles.headerActions]}>
           <TouchableOpacity
             style={styles.iconBtn}
-            onPress={() => requireAuth(() => navigation.navigate('Wishlist'))}
+            onPress={() => requireAuth(() => navigation.navigate("Wishlist"))}
           >
-            <Ionicons name="heart-outline" size={22} color={COLORS.textPrimary} />
+            <Ionicons
+              name="heart-outline"
+              size={22}
+              color={COLORS.textPrimary}
+            />
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.iconBtn}
-            onPress={() => requireAuth(() => navigation.navigate('Cart'))}
+            onPress={() => requireAuth(() => navigation.navigate("Cart"))}
           >
-            <Ionicons name="cart-outline" size={22} color={COLORS.textPrimary} />
+            <Ionicons
+              name="cart-outline"
+              size={22}
+              color={COLORS.textPrimary}
+            />
             {cartItemCount > 0 && <View style={styles.cartDot} />}
           </TouchableOpacity>
         </View>
@@ -1798,8 +2043,8 @@ export default function CatalogScreen() {
           <Ionicons name="search" size={20} color={COLORS.primary} />
           <TextInput
             style={styles.searchInput}
-            placeholder={t('catalog.searchPlaceholder', {
-              defaultValue: 'Search products...',
+            placeholder={t("catalog.searchPlaceholder", {
+              defaultValue: "Search products...",
             })}
             placeholderTextColor="#0DA84D"
             value={keyword}
@@ -1808,7 +2053,10 @@ export default function CatalogScreen() {
           />
         </View>
 
-        <TouchableOpacity style={styles.filterToggle} onPress={() => setShowFilters((previous) => !previous)}>
+        <TouchableOpacity
+          style={styles.filterToggle}
+          onPress={() => setShowFilters((previous) => !previous)}
+        >
           <Ionicons name="options" size={20} color={COLORS.primary} />
         </TouchableOpacity>
       </View>
@@ -1824,7 +2072,7 @@ export default function CatalogScreen() {
             opacity: filterOpacity,
           },
         ]}
-        pointerEvents={showFilters ? 'auto' : 'none'}
+        pointerEvents={showFilters ? "auto" : "none"}
       >
         {renderFilterSection()}
       </Animated.View>
@@ -1833,17 +2081,20 @@ export default function CatalogScreen() {
         <View style={styles.resultsContainer}>
           <View style={styles.resultsHeader}>
             <View style={styles.resultsTopRow}>
-              <Text style={styles.resultsTitle}>{t('catalog.results', { count: totalCount })}</Text>
+              <Text style={styles.resultsTitle}>
+                {t("catalog.results", { count: totalCount })}
+              </Text>
 
               <Text style={styles.pageSizeLabel}>
-                {t('catalog.pageSize', { defaultValue: 'Page size' })}
+                {t("catalog.pageSize", { defaultValue: "Page size" })}
               </Text>
             </View>
 
             <View style={styles.resultsBottomRow}>
               <Text style={styles.resultsBreakdown} numberOfLines={1}>
-                {t('catalog.resultBreakdown', {
-                  defaultValue: 'Plant: {{plant}} | Material: {{material}} | Combo: {{combo}}',
+                {t("catalog.resultBreakdown", {
+                  defaultValue:
+                    "Plant: {{plant}} | Material: {{material}} | Combo: {{combo}}",
                   plant: plantTotalCount,
                   material: materialTotalCount,
                   combo: comboTotalCount,
@@ -1854,7 +2105,10 @@ export default function CatalogScreen() {
                 {PAGE_SIZE_OPTIONS.map((size) => (
                   <TouchableOpacity
                     key={size}
-                    style={[styles.pageSizeChip, pageSize === size && styles.pageSizeChipActive]}
+                    style={[
+                      styles.pageSizeChip,
+                      pageSize === size && styles.pageSizeChipActive,
+                    ]}
                     onPress={() => handlePageSizeChange(size)}
                   >
                     <Text
@@ -1875,8 +2129,8 @@ export default function CatalogScreen() {
             <View style={styles.filterLoadingHint}>
               <ActivityIndicator size="small" color={COLORS.primary} />
               <Text style={styles.filterLoadingHintText}>
-                {t('catalog.loadingFilters', {
-                  defaultValue: 'Loading filter options...',
+                {t("catalog.loadingFilters", {
+                  defaultValue: "Loading filter options...",
                 })}
               </Text>
             </View>
@@ -1907,10 +2161,15 @@ export default function CatalogScreen() {
             ListEmptyComponent={
               !isLoading ? (
                 <View style={styles.emptyWrap}>
-                  <Ionicons name="search-outline" size={46} color={COLORS.textLight} />
+                  <Ionicons
+                    name="search-outline"
+                    size={46}
+                    color={COLORS.textLight}
+                  />
                   <Text style={styles.emptyText}>
-                    {t('catalog.noResults', {
-                      defaultValue: 'No products found for the current filters.',
+                    {t("catalog.noResults", {
+                      defaultValue:
+                        "No products found for the current filters.",
                     })}
                   </Text>
                 </View>
@@ -1923,12 +2182,17 @@ export default function CatalogScreen() {
               <TouchableOpacity
                 style={[
                   styles.paginationButton,
-                  (pageNumber <= 1 || isLoading) && styles.paginationButtonDisabled,
+                  (pageNumber <= 1 || isLoading) &&
+                    styles.paginationButtonDisabled,
                 ]}
                 disabled={pageNumber <= 1 || isLoading}
                 onPress={handlePrevPage}
               >
-                <Ionicons name="chevron-back" size={16} color={COLORS.textPrimary} />
+                <Ionicons
+                  name="chevron-back"
+                  size={16}
+                  color={COLORS.textPrimary}
+                />
               </TouchableOpacity>
 
               <View style={styles.pageNumberCenter}>
@@ -1939,7 +2203,7 @@ export default function CatalogScreen() {
                   contentContainerStyle={styles.pageNumberList}
                 >
                   {visiblePageTokens.map((token, index) =>
-                    typeof token === 'number' ? (
+                    typeof token === "number" ? (
                       <TouchableOpacity
                         key={`page-${token}`}
                         style={[
@@ -1952,17 +2216,21 @@ export default function CatalogScreen() {
                         <Text
                           style={[
                             styles.pageNumberChipText,
-                            token === pageNumber && styles.pageNumberChipTextActive,
+                            token === pageNumber &&
+                              styles.pageNumberChipTextActive,
                           ]}
                         >
                           {token}
                         </Text>
                       </TouchableOpacity>
                     ) : (
-                      <Text key={`ellipsis-${token}-${index}`} style={styles.pageNumberEllipsis}>
+                      <Text
+                        key={`ellipsis-${token}-${index}`}
+                        style={styles.pageNumberEllipsis}
+                      >
                         ...
                       </Text>
-                    )
+                    ),
                   )}
                 </ScrollView>
               </View>
@@ -1970,12 +2238,17 @@ export default function CatalogScreen() {
               <TouchableOpacity
                 style={[
                   styles.paginationButton,
-                  (pageNumber >= totalPages || isLoading) && styles.paginationButtonDisabled,
+                  (pageNumber >= totalPages || isLoading) &&
+                    styles.paginationButtonDisabled,
                 ]}
                 disabled={pageNumber >= totalPages || isLoading}
                 onPress={handleNextPage}
               >
-                <Ionicons name="chevron-forward" size={16} color={COLORS.textPrimary} />
+                <Ionicons
+                  name="chevron-forward"
+                  size={16}
+                  color={COLORS.textPrimary}
+                />
               </TouchableOpacity>
             </View>
           </View>
@@ -1999,11 +2272,14 @@ export default function CatalogScreen() {
             <View style={styles.nurseryPickerHandle} />
             <View style={styles.nurseryPickerHeader}>
               <Text style={styles.nurseryPickerTitle}>
-                {t('catalog.selectNurseryTitle', {
-                  defaultValue: 'Select a nursery',
+                {t("catalog.selectNurseryTitle", {
+                  defaultValue: "Select a nursery",
                 })}
               </Text>
-              <TouchableOpacity style={styles.nurseryPickerCloseBtn} onPress={closeNurseryPicker}>
+              <TouchableOpacity
+                style={styles.nurseryPickerCloseBtn}
+                onPress={closeNurseryPicker}
+              >
                 <Ionicons name="close" size={20} color={COLORS.textSecondary} />
               </TouchableOpacity>
             </View>
@@ -2020,8 +2296,9 @@ export default function CatalogScreen() {
               </View>
             ) : availableNurseryOptions.length === 0 ? (
               <Text style={styles.nurseryPickerEmptyText}>
-                {t('catalog.noNurseryAvailableForItem', {
-                  defaultValue: 'No nursery is currently available for this item.',
+                {t("catalog.noNurseryAvailableForItem", {
+                  defaultValue:
+                    "No nursery is currently available for this item.",
                 })}
               </Text>
             ) : (
@@ -2030,37 +2307,45 @@ export default function CatalogScreen() {
                 showsVerticalScrollIndicator={false}
               >
                 {availableNurseryOptions.map((nursery) => {
-                  const isSelected = nursery.nurseryId === selectedCartNurseryId;
+                  const isSelected =
+                    nursery.nurseryId === selectedCartNurseryId;
 
                   return (
                     <TouchableOpacity
-                      key={`${nursery.nurseryId}-${nursery.actionId ?? 'none'}`}
+                      key={`${nursery.nurseryId}-${nursery.actionId ?? "none"}`}
                       style={[
                         styles.nurseryPickerItem,
                         isSelected && styles.nurseryPickerItemSelected,
                       ]}
-                      onPress={() => setSelectedCartNurseryId(nursery.nurseryId)}
+                      onPress={() =>
+                        setSelectedCartNurseryId(nursery.nurseryId)
+                      }
                     >
                       <View style={styles.nurseryPickerItemHeader}>
-                        <Text style={styles.nurseryPickerItemName}>{nursery.nurseryName}</Text>
+                        <Text style={styles.nurseryPickerItemName}>
+                          {nursery.nurseryName}
+                        </Text>
                         {isSelected && (
-                          <Ionicons name="checkmark-circle" size={18} color="#13EC5B" />
+                          <Ionicons
+                            name="checkmark-circle"
+                            size={18}
+                            color="#13EC5B"
+                          />
                         )}
                       </View>
 
-                      <Text style={styles.nurseryPickerItemAddress}>{nursery.address}</Text>
+                      <Text style={styles.nurseryPickerItemAddress}>
+                        {nursery.address}
+                      </Text>
                       <Text style={styles.nurseryPickerItemPhone}>
-                        {`${t('catalog.phone', { defaultValue: 'Phone' })}: ${nursery.phone || '-'}`}
+                        {`${t("catalog.phone", { defaultValue: "Phone" })}: ${nursery.phone || "-"}`}
                       </Text>
                       <View style={styles.nurseryPickerItemMetaRow}>
                         <Text style={styles.nurseryPickerItemMetaText}>
-                          {t('plantDetail.availableCount', {
-                            defaultValue: 'Available',
+                          {t("plantDetail.availableCount", {
+                            defaultValue: "Available",
                           })}
                           : {nursery.availableCount ?? 0}
-                        </Text>
-                        <Text style={styles.nurseryPickerItemPrice}>
-                          {formatNurseryPrice(nursery.minPrice, nursery.maxPrice)}
                         </Text>
                       </View>
                     </TouchableOpacity>
@@ -2072,28 +2357,39 @@ export default function CatalogScreen() {
             {!isNurseryPickerLoading && availableNurseryOptions.length > 0 && (
               <View style={styles.nurseryPickerQuantityRow}>
                 <Text style={styles.nurseryPickerQuantityLabel}>
-                  {t('cart.quantity', { defaultValue: 'Quantity' })}
+                  {t("cart.quantity", { defaultValue: "Quantity" })}
                 </Text>
                 <View style={styles.nurseryPickerQuantityControl}>
                   <TouchableOpacity
                     style={[
                       styles.nurseryPickerQuantityBtn,
-                      selectedCartQuantity <= 1 && styles.nurseryPickerQuantityBtnDisabled,
+                      selectedCartQuantity <= 1 &&
+                        styles.nurseryPickerQuantityBtnDisabled,
                     ]}
                     disabled={selectedCartQuantity <= 1}
                     onPress={() =>
-                      setSelectedCartQuantity((previous) => Math.max(1, previous - 1))
+                      setSelectedCartQuantity((previous) =>
+                        Math.max(1, previous - 1),
+                      )
                     }
                   >
-                    <Ionicons name="remove" size={16} color={COLORS.textSecondary} />
+                    <Ionicons
+                      name="remove"
+                      size={16}
+                      color={COLORS.textSecondary}
+                    />
                   </TouchableOpacity>
 
-                  <Text style={styles.nurseryPickerQuantityValue}>{selectedCartQuantity}</Text>
+                  <Text style={styles.nurseryPickerQuantityValue}>
+                    {selectedCartQuantity}
+                  </Text>
 
                   <TouchableOpacity
                     style={styles.nurseryPickerQuantityBtn}
                     onPress={() =>
-                      setSelectedCartQuantity((previous) => Math.min(99, previous + 1))
+                      setSelectedCartQuantity((previous) =>
+                        Math.min(99, previous + 1),
+                      )
                     }
                   >
                     <Ionicons name="add" size={16} color={COLORS.textPrimary} />
@@ -2106,26 +2402,28 @@ export default function CatalogScreen() {
               <TouchableOpacity
                 style={[
                   styles.nurseryPickerBuyNowBtn,
-                  isNurseryActionDisabled && styles.nurseryPickerConfirmBtnDisabled,
+                  isNurseryActionDisabled &&
+                    styles.nurseryPickerConfirmBtnDisabled,
                 ]}
                 disabled={isNurseryActionDisabled}
                 onPress={() => void handleConfirmNurseryAdd(true)}
               >
                 <Text style={styles.nurseryPickerBuyNowText}>
-                  {`${t('plantDetail.buyNow', { defaultValue: 'Buy now' })} x${selectedCartQuantity}`}
+                  {`${t("plantDetail.buyNow", { defaultValue: "Buy now" })} x${selectedCartQuantity}`}
                 </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={[
                   styles.nurseryPickerConfirmBtn,
-                  isNurseryActionDisabled && styles.nurseryPickerConfirmBtnDisabled,
+                  isNurseryActionDisabled &&
+                    styles.nurseryPickerConfirmBtnDisabled,
                 ]}
                 disabled={isNurseryActionDisabled}
                 onPress={() => void handleConfirmNurseryAdd(false)}
               >
                 <Text style={styles.nurseryPickerConfirmText}>
-                  {`${t('plantDetail.addToCart', { defaultValue: 'Add to cart' })} x${selectedCartQuantity}`}
+                  {`${t("plantDetail.addToCart", { defaultValue: "Add to cart" })} x${selectedCartQuantity}`}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -2139,32 +2437,32 @@ export default function CatalogScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F6F8F6',
+    backgroundColor: "#F6F8F6",
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
   },
   headerSide: {
     width: 84,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
   headerActions: {
-    justifyContent: 'flex-end',
+    justifyContent: "flex-end",
     gap: SPACING.xs,
   },
   iconBtn: {
     width: 36,
     height: 36,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   cartDot: {
-    position: 'absolute',
+    position: "absolute",
     top: 6,
     right: 4,
     width: 8,
@@ -2174,86 +2472,86 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: FONTS.sizes.xl,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.textPrimary,
   },
   searchContainer: {
-    flexDirection: 'row',
+    flexDirection: "row",
     paddingHorizontal: SPACING.lg,
     paddingBottom: SPACING.sm,
     gap: SPACING.sm,
   },
   searchBar: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#E7FDF0',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#E7FDF0",
     borderRadius: 24,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
     gap: SPACING.sm,
     borderWidth: 0.5,
-    borderColor: '#0DA84D',
+    borderColor: "#0DA84D",
   },
   searchInput: {
     flex: 1,
     fontSize: FONTS.sizes.md,
-    color: '#0DA84D',
+    color: "#0DA84D",
     padding: 0,
   },
   filterToggle: {
     width: 40,
     height: 40,
-    backgroundColor: '#E7FDF0',
+    backgroundColor: "#E7FDF0",
     borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     borderWidth: 0.5,
-    borderColor: '#0DA84D',
+    borderColor: "#0DA84D",
   },
   filtersWrapper: {
-    overflow: 'hidden',
-    backgroundColor: '#F6F8F6',
+    overflow: "hidden",
+    backgroundColor: "#F6F8F6",
   },
   filtersContainer: {
     flex: 1,
-    backgroundColor: '#F6F8F6',
+    backgroundColor: "#F6F8F6",
   },
   filterContent: {
-    paddingBottom: SPACING['4xl'],
+    paddingBottom: SPACING["4xl"],
   },
   filterHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
   },
   filterTitle: {
-    fontSize: FONTS.sizes['2xl'],
-    fontWeight: '700',
+    fontSize: FONTS.sizes["2xl"],
+    fontWeight: "700",
     color: COLORS.textPrimary,
   },
   resetText: {
     fontSize: FONTS.sizes.md,
-    fontWeight: '600',
-    color: '#13EC5B',
+    fontWeight: "600",
+    color: "#13EC5B",
   },
   filterSection: {
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#D7E4DB',
+    borderTopColor: "#D7E4DB",
   },
   sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   sectionHeaderTitle: {
     flex: 1,
     fontSize: FONTS.sizes.lg,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.textPrimary,
   },
   sectionBody: {
@@ -2261,7 +2559,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: FONTS.sizes.lg,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.textPrimary,
     marginBottom: SPACING.sm,
   },
@@ -2269,8 +2567,8 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
   },
   chipWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: SPACING.sm,
   },
   filterChip: {
@@ -2279,29 +2577,29 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: COLORS.white,
     borderWidth: 1,
-    borderColor: '#D7E4DB',
+    borderColor: "#D7E4DB",
   },
   filterChipActive: {
-    backgroundColor: '#13EC5B',
-    borderColor: '#13EC5B',
+    backgroundColor: "#13EC5B",
+    borderColor: "#13EC5B",
   },
   filterChipText: {
     fontSize: FONTS.sizes.sm,
     color: COLORS.textPrimary,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   filterChipTextActive: {
     color: COLORS.white,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   priceInputContainer: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: SPACING.sm,
   },
   priceInputWrapper: {
     flex: 1,
     borderWidth: 1,
-    borderColor: '#D7E4DB',
+    borderColor: "#D7E4DB",
     borderRadius: RADIUS.md,
     backgroundColor: COLORS.white,
     paddingHorizontal: SPACING.sm,
@@ -2315,37 +2613,37 @@ const styles = StyleSheet.create({
   priceInput: {
     fontSize: FONTS.sizes.md,
     color: COLORS.textPrimary,
-    fontWeight: '600',
+    fontWeight: "600",
     padding: 0,
   },
   applyButtonContainer: {
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.lg,
-    backgroundColor: '#F6F8F6',
+    backgroundColor: "#F6F8F6",
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#D7E4DB',
+    borderTopColor: "#D7E4DB",
     marginBottom: 64,
   },
   applyButton: {
-    backgroundColor: '#13EC5B',
+    backgroundColor: "#13EC5B",
     borderRadius: 24,
     paddingVertical: SPACING.md,
-    alignItems: 'center',
+    alignItems: "center",
   },
   applyButtonText: {
     fontSize: FONTS.sizes.lg,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.white,
   },
   loaderContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     gap: SPACING.lg,
     paddingHorizontal: SPACING.lg,
   },
   errorText: {
-    textAlign: 'center',
+    textAlign: "center",
     fontSize: FONTS.sizes.md,
     color: COLORS.textSecondary,
   },
@@ -2357,7 +2655,7 @@ const styles = StyleSheet.create({
   },
   retryButtonText: {
     color: COLORS.white,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   resultsContainer: {
     flex: 1,
@@ -2371,21 +2669,21 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING.xs,
   },
   resultsTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     gap: SPACING.sm,
   },
   resultsBottomRow: {
     marginTop: 2,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     gap: SPACING.sm,
   },
   resultsTitle: {
-    fontSize: FONTS.sizes['2xl'],
-    fontWeight: '700',
+    fontSize: FONTS.sizes["2xl"],
+    fontWeight: "700",
     color: COLORS.textPrimary,
     flexShrink: 1,
   },
@@ -2397,18 +2695,18 @@ const styles = StyleSheet.create({
   paginationRow: {
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.xs,
-    alignItems: 'center',
+    alignItems: "center",
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#D7E4DB',
-    backgroundColor: '#F6F8F6',
+    borderTopColor: "#D7E4DB",
+    backgroundColor: "#F6F8F6",
   },
   pageSizeLabel: {
     fontSize: FONTS.sizes.sm,
     color: COLORS.textSecondary,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   pageSizeOptions: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: SPACING.xs,
   },
   pageSizeChip: {
@@ -2416,42 +2714,42 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#D7E4DB',
+    borderColor: "#D7E4DB",
     backgroundColor: COLORS.white,
   },
   pageSizeChipActive: {
     borderColor: COLORS.primary,
-    backgroundColor: '#E7FDF0',
+    backgroundColor: "#E7FDF0",
   },
   pageSizeChipText: {
     fontSize: FONTS.sizes.sm,
     color: COLORS.textPrimary,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   pageSizeChipTextActive: {
     color: COLORS.primary,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   paginationControl: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    width: '100%',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    width: "100%",
   },
   pageNumberCenter: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: SPACING.sm,
   },
   pageNumberScroller: {
-    maxWidth: '100%',
+    maxWidth: "100%",
   },
   pageNumberList: {
     flexGrow: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     gap: SPACING.xs,
   },
   pageNumberChip: {
@@ -2459,24 +2757,24 @@ const styles = StyleSheet.create({
     height: 30,
     borderRadius: 15,
     borderWidth: 1,
-    borderColor: '#D7E4DB',
+    borderColor: "#D7E4DB",
     backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: SPACING.xs,
   },
   pageNumberChipActive: {
     borderColor: COLORS.primary,
-    backgroundColor: '#E7FDF0',
+    backgroundColor: "#E7FDF0",
   },
   pageNumberChipText: {
     fontSize: FONTS.sizes.sm,
     color: COLORS.textPrimary,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   pageNumberChipTextActive: {
     color: COLORS.primary,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   pageNumberEllipsis: {
     fontSize: FONTS.sizes.md,
@@ -2487,11 +2785,11 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: COLORS.white,
     borderWidth: 1,
-    borderColor: '#D7E4DB',
+    borderColor: "#D7E4DB",
   },
   paginationButtonDisabled: {
     opacity: 0.4,
@@ -2499,11 +2797,11 @@ const styles = StyleSheet.create({
   paginationText: {
     fontSize: FONTS.sizes.sm,
     color: COLORS.textPrimary,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   filterLoadingHint: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: SPACING.xs,
     paddingHorizontal: SPACING.lg,
     paddingBottom: SPACING.sm,
@@ -2517,7 +2815,7 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING.lg,
   },
   productRow: {
-    justifyContent: 'space-between',
+    justifyContent: "space-between",
     marginBottom: SPACING.lg,
   },
   productCard: {
@@ -2532,62 +2830,62 @@ const styles = StyleSheet.create({
     height: CARD_WIDTH,
   },
   productImageContainer: {
-    width: '100%',
+    width: "100%",
     height: CARD_WIDTH * 1.2,
     borderRadius: RADIUS.md,
-    overflow: 'hidden',
-    backgroundColor: '#E8ECEA',
+    overflow: "hidden",
+    backgroundColor: "#E8ECEA",
     marginBottom: SPACING.sm,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   materialImageContainer: {
-    backgroundColor: '#EEF7F1',
+    backgroundColor: "#EEF7F1",
   },
   comboImageContainer: {
-    backgroundColor: '#F0F5FF',
+    backgroundColor: "#F0F5FF",
   },
   productImage: {
-    width: '100%',
-    height: '100%',
+    width: "100%",
+    height: "100%",
   },
   favoriteButton: {
-    position: 'absolute',
+    position: "absolute",
     top: SPACING.sm,
     right: SPACING.sm,
     width: 30,
     height: 30,
     borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.35)",
   },
   typeBadge: {
-    position: 'absolute',
+    position: "absolute",
     left: SPACING.sm,
     bottom: SPACING.sm,
     borderRadius: 12,
     paddingHorizontal: SPACING.sm,
     paddingVertical: 4,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: "rgba(0,0,0,0.45)",
   },
   typeBadgeMaterial: {
-    backgroundColor: 'rgba(45,106,79,0.85)',
+    backgroundColor: "rgba(45,106,79,0.85)",
   },
   typeBadgeCombo: {
-    backgroundColor: 'rgba(49,81,180,0.85)',
+    backgroundColor: "rgba(49,81,180,0.85)",
   },
   typeBadgeText: {
     color: COLORS.white,
     fontSize: FONTS.sizes.xs,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   productInfo: {
     gap: 2,
   },
   productName: {
     fontSize: FONTS.sizes.md,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.textPrimary,
   },
   productMeta: {
@@ -2596,59 +2894,59 @@ const styles = StyleSheet.create({
   },
   productFooter: {
     marginTop: 4,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   productPrice: {
     fontSize: FONTS.sizes.md,
-    fontWeight: '700',
-    color: '#13A454',
+    fontWeight: "700",
+    color: "#13A454",
     flex: 1,
   },
   productActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: SPACING.xs,
   },
   addButton: {
     width: 26,
     height: 26,
     borderRadius: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#13EC5B',
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#13EC5B",
   },
   emptyWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: SPACING['4xl'],
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: SPACING["4xl"],
     gap: SPACING.sm,
   },
   emptyText: {
-    textAlign: 'center',
+    textAlign: "center",
     color: COLORS.textSecondary,
     fontSize: FONTS.sizes.md,
   },
   nurseryPickerOverlay: {
     flex: 1,
-    justifyContent: 'flex-end',
+    justifyContent: "flex-end",
   },
   nurseryPickerBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.35)',
+    backgroundColor: "rgba(0, 0, 0, 0.35)",
   },
   nurseryPickerSheet: {
-    maxHeight: '78%',
+    maxHeight: "78%",
     backgroundColor: COLORS.white,
-    borderTopLeftRadius: RADIUS['2xl'],
-    borderTopRightRadius: RADIUS['2xl'],
+    borderTopLeftRadius: RADIUS["2xl"],
+    borderTopRightRadius: RADIUS["2xl"],
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.sm,
     paddingBottom: SPACING.xl,
   },
   nurseryPickerHandle: {
-    alignSelf: 'center',
+    alignSelf: "center",
     width: 44,
     height: 4,
     borderRadius: 2,
@@ -2656,22 +2954,22 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
   },
   nurseryPickerHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     marginBottom: SPACING.xs,
   },
   nurseryPickerTitle: {
     fontSize: FONTS.sizes.xl,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.textPrimary,
   },
   nurseryPickerCloseBtn: {
     width: 30,
     height: 30,
     borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: COLORS.gray100,
   },
   nurseryPickerPlantName: {
@@ -2681,10 +2979,10 @@ const styles = StyleSheet.create({
   },
   nurseryPickerLoadingWrap: {
     paddingVertical: SPACING.lg,
-    alignItems: 'center',
+    alignItems: "center",
   },
   nurseryPickerEmptyText: {
-    textAlign: 'center',
+    textAlign: "center",
     color: COLORS.textSecondary,
     paddingVertical: SPACING.lg,
   },
@@ -2693,24 +2991,24 @@ const styles = StyleSheet.create({
   },
   nurseryPickerItem: {
     borderWidth: 1,
-    borderColor: '#D7E4DB',
+    borderColor: "#D7E4DB",
     borderRadius: RADIUS.md,
     padding: SPACING.sm,
     marginBottom: SPACING.sm,
   },
   nurseryPickerItemSelected: {
-    borderColor: '#13EC5B',
-    backgroundColor: '#EDFEF3',
+    borderColor: "#13EC5B",
+    backgroundColor: "#EDFEF3",
   },
   nurseryPickerItemHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 2,
   },
   nurseryPickerItemName: {
     fontSize: FONTS.sizes.md,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.textPrimary,
   },
   nurseryPickerItemAddress: {
@@ -2724,9 +3022,9 @@ const styles = StyleSheet.create({
   },
   nurseryPickerItemMetaRow: {
     marginTop: 6,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   nurseryPickerItemMetaText: {
     fontSize: FONTS.sizes.sm,
@@ -2734,23 +3032,23 @@ const styles = StyleSheet.create({
   },
   nurseryPickerItemPrice: {
     fontSize: FONTS.sizes.sm,
-    fontWeight: '700',
-    color: '#13A454',
+    fontWeight: "700",
+    color: "#13A454",
   },
   nurseryPickerQuantityRow: {
     marginTop: SPACING.sm,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   nurseryPickerQuantityLabel: {
     fontSize: FONTS.sizes.md,
     color: COLORS.textPrimary,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   nurseryPickerQuantityControl: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: SPACING.sm,
   },
   nurseryPickerQuantityBtn: {
@@ -2758,9 +3056,9 @@ const styles = StyleSheet.create({
     height: 30,
     borderRadius: 15,
     borderWidth: 1,
-    borderColor: '#D7E4DB',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderColor: "#D7E4DB",
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: COLORS.white,
   },
   nurseryPickerQuantityBtnDisabled: {
@@ -2768,43 +3066,43 @@ const styles = StyleSheet.create({
   },
   nurseryPickerQuantityValue: {
     minWidth: 20,
-    textAlign: 'center',
+    textAlign: "center",
     fontSize: FONTS.sizes.md,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.textPrimary,
   },
   nurseryPickerActionRow: {
     marginTop: SPACING.md,
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: SPACING.sm,
   },
   nurseryPickerBuyNowBtn: {
     flex: 1,
     borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: SPACING.sm,
     backgroundColor: COLORS.white,
     borderWidth: 1,
-    borderColor: '#13A454',
+    borderColor: "#13A454",
   },
   nurseryPickerBuyNowText: {
-    color: '#13A454',
-    fontWeight: '700',
+    color: "#13A454",
+    fontWeight: "700",
   },
   nurseryPickerConfirmBtn: {
     flex: 1,
     borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: SPACING.sm,
-    backgroundColor: '#13EC5B',
+    backgroundColor: "#13EC5B",
   },
   nurseryPickerConfirmBtnDisabled: {
     opacity: 0.4,
   },
   nurseryPickerConfirmText: {
     color: COLORS.white,
-    fontWeight: '700',
+    fontWeight: "700",
   },
 });

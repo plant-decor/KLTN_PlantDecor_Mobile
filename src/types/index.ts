@@ -24,6 +24,8 @@ export interface User {
   status?: string;
   isVerified?: boolean;
   role?: string;
+  nurseryId?: number;
+  nurseryName?: string;
 }
 
 export type UserGender = string;
@@ -1120,10 +1122,15 @@ export interface OrderLineItem {
   price: number;
   status: number;
   statusName: string;
+  itemImageUrl?: string | null;
+  itemImage?: string | null;
+  imageUrl?: string | null;
+  primaryImageUrl?: string | null;
 }
 
 export interface OrderNursery {
   id: number;
+  orderId?: number;
   nurseryId: number;
   nurseryName: string;
   shipperId: number | null;
@@ -1135,6 +1142,17 @@ export interface OrderNursery {
   deliveryNote: string | null;
   note: string | null;
   items: OrderLineItem[];
+}
+
+export interface ShipperNurseryOrderDetailPayload extends OrderNursery {
+  orderId: number;
+  shipperEmail: string | null;
+  shipperPhone: string | null;
+  customerId: number;
+  customerName: string;
+  customerEmail: string | null;
+  customerPhone: string | null;
+  customerAddress: string;
 }
 
 export interface InvoiceDetail {
@@ -1222,6 +1240,11 @@ export interface StartShippingResponse {
 
 export interface MarkDeliveredRequest {
   deliveryNote: string;
+  deliveryImage: {
+    uri: string;
+    fileName?: string;
+    mimeType?: string;
+  };
 }
 
 export interface MarkDeliveredResponse {
@@ -1247,6 +1270,13 @@ export interface GetOrderDetailResponse {
   statusCode: number;
   message: string;
   payload: OrderPayload;
+}
+
+export interface GetShipperNurseryOrderDetailResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: ShipperNurseryOrderDetailPayload;
 }
 
 export interface CancelOrderResponse {
@@ -1588,6 +1618,10 @@ export type RootStackParamList = {
   Home: undefined;
   ShipperHome: undefined;
   ShippingList: undefined;
+  ShipperOrderDetail: {
+    orderId: number;
+    nurseryOrderId?: number;
+  };
   CaretakerHome: undefined;
   CaretakerTasks: undefined;
   PlantDetail: { plantId: string };

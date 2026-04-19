@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -25,10 +26,29 @@ import {
   getOrderStatusLabel,
   isOrderCancellableStatus,
   notify,
+  resolveImageUri,
 } from '../../utils';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'OrderDetail'>;
 type ScreenRouteProp = RouteProp<RootStackParamList, 'OrderDetail'>;
+
+const resolveOrderItemImage = (lineItem: OrderPayload['items'][number]): string | null => {
+  const possibleValues: unknown[] = [
+    lineItem.itemImageUrl,
+    lineItem.itemImage,
+    lineItem.primaryImageUrl,
+    lineItem.imageUrl,
+  ];
+
+  for (const value of possibleValues) {
+    const uri = resolveImageUri(value);
+    if (uri) {
+      return uri;
+    }
+  }
+
+  return null;
+};
 
 export default function OrderDetailScreen() {
   const { t, i18n } = useTranslation();
@@ -349,15 +369,40 @@ export default function OrderDetailScreen() {
           <Text style={styles.sectionTitle}>
             {t('orderDetail.items', { defaultValue: 'Items' })}
           </Text>
-          {order.items.map((item) => (
-            <View key={item.id} style={styles.lineItemRow}>
-              <Text style={styles.lineItemName} numberOfLines={2}>
-                {item.itemName}
-              </Text>
-              <Text style={styles.lineItemQty}>x{item.quantity}</Text>
-              <Text style={styles.lineItemPrice}>{formatCurrency(item.price)}</Text>
-            </View>
-          ))}
+          {order.items.map((item) => {
+            const imageUri = resolveOrderItemImage(item);
+
+            return (
+              <View key={item.id} style={styles.lineItemRow}>
+                {imageUri ? (
+                  <Image source={{ uri: imageUri }} style={styles.lineItemImage} resizeMode="cover" />
+                ) : (
+                  <View style={styles.lineItemImagePlaceholder}>
+                    <Ionicons name="image-outline" size={16} color={COLORS.gray500} />
+                  </View>
+                )}
+
+                <View style={styles.lineItemBody}>
+                  <Text style={styles.lineItemName} numberOfLines={2}>
+                    {item.itemName}
+                  </Text>
+
+                  <View style={styles.lineItemMetaRow}>
+                    <View style={styles.lineItemQtyBadge}>
+                      <Text style={styles.lineItemQtyBadgeText}>
+                        {t('orderDetail.qtyLabel', {
+                          defaultValue: 'Qty {{count}}',
+                          count: item.quantity,
+                        })}
+                      </Text>
+                    </View>
+
+                    <Text style={styles.lineItemPrice}>{formatCurrency(item.price)}</Text>
+                  </View>
+                </View>
+              </View>
+            );
+          })}
         </View>
 
         {order.nurseryOrders.length > 0 ? (
@@ -543,21 +588,50 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
-    marginBottom: SPACING.xs,
+    marginBottom: SPACING.sm,
+  },
+  lineItemImage: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.gray100,
+  },
+  lineItemImagePlaceholder: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.gray100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lineItemBody: {
+    flex: 1,
+    gap: 4,
   },
   lineItemName: {
-    flex: 1,
     fontSize: FONTS.sizes.md,
     color: COLORS.textPrimary,
+    fontWeight: '600',
   },
-  lineItemQty: {
-    minWidth: 28,
-    textAlign: 'right',
+  lineItemMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SPACING.sm,
+  },
+  lineItemQtyBadge: {
+    borderRadius: RADIUS.full,
+    backgroundColor: '#E8F7EF',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 3,
+  },
+  lineItemQtyBadgeText: {
     fontSize: FONTS.sizes.sm,
-    color: COLORS.textSecondary,
+    color: '#166534',
+    fontWeight: '700',
   },
   lineItemPrice: {
-    minWidth: 84,
+    minWidth: 92,
     textAlign: 'right',
     fontSize: FONTS.sizes.md,
     fontWeight: '600',

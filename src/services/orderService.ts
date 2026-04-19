@@ -6,6 +6,7 @@ import {
   GetNurseryOrdersPayload,
   GetNurseryOrdersRequest,
   GetNurseryOrdersResponse,
+  GetShipperNurseryOrderDetailResponse,
   MarkDeliveryFailedRequest,
   MarkDeliveryFailedResponse,
   GetOrderDetailResponse,
@@ -15,6 +16,7 @@ import {
   OrderNursery,
   OrderPayload,
   OrderStatusFilter,
+  ShipperNurseryOrderDetailPayload,
   StartShippingRequest,
   StartShippingResponse,
 } from '../types';
@@ -122,10 +124,40 @@ export const orderService = {
     orderId: number,
     request: MarkDeliveredRequest
   ): Promise<OrderNursery> => {
+    const normalizedUri = request.deliveryImage?.uri?.trim();
+    if (!normalizedUri) {
+      throw new Error('Invalid delivery image uri');
+    }
+
+    const inferredFileName = normalizedUri.split('/').pop() || `delivery-${Date.now()}.jpg`;
+    const fileName = request.deliveryImage.fileName?.trim() || inferredFileName;
+    const mimeType = request.deliveryImage.mimeType?.trim() || 'image/jpeg';
+
+    const formData = new FormData();
+    const deliveryNote = typeof request.deliveryNote === 'string' ? request.deliveryNote.trim() : '';
+
+    if (deliveryNote.length > 0) {
+      formData.append('DeliveryNote', deliveryNote);
+    }
+
+    formData.append(
+      'DeliveryImage',
+      {
+        uri: normalizedUri,
+        name: fileName,
+        type: mimeType,
+      } as any
+    );
+
     try {
       const response = await api.put<MarkDeliveredResponse>(
         API.ENDPOINTS.MARK_DELIVERED(orderId),
-        request
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
       );
       return response.data.payload;
     } catch (error: any) {
@@ -158,6 +190,23 @@ export const orderService = {
       return response.data.payload;
     } catch (error: any) {
       console.error('getOrderDetail error:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  getShipperNurseryOrderDetail: async (
+    nurseryOrderId: number
+  ): Promise<ShipperNurseryOrderDetailPayload> => {
+    try {
+      const response = await api.get<GetShipperNurseryOrderDetailResponse>(
+        API.ENDPOINTS.SHIPPER_NURSERY_ORDER_DETAIL(nurseryOrderId)
+      );
+      return response.data.payload;
+    } catch (error: any) {
+      console.error(
+        'getShipperNurseryOrderDetail error:',
+        error.response?.data || error.message
+      );
       throw error;
     }
   },

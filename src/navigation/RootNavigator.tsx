@@ -26,6 +26,7 @@ import {
   CareServicePackageDetailScreen,
   ShipperHomeScreen,
   ShippingListScreen,
+  ShipperOrderDetailScreen,
   CaretakerHomeScreen,
   CaretakerTasksScreen,
   HomeScreen,
@@ -115,6 +116,7 @@ export default function RootNavigator() {
     <>
       <Stack.Screen name="ShipperHome" component={ShipperHomeScreen} />
       <Stack.Screen name="ShippingList" component={ShippingListScreen} />
+      <Stack.Screen name="ShipperOrderDetail" component={ShipperOrderDetailScreen} />
       <Stack.Screen name="CaretakerHome" component={CaretakerHomeScreen} />
       <Stack.Screen name="CaretakerTasks" component={CaretakerTasksScreen} />
     </>
