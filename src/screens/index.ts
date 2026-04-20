@@ -26,3 +26,6 @@ export { default as ShippingListScreen } from './ShippingList/ShippingListScreen
 export { default as ShipperOrderDetailScreen } from './ShipperOrderDetail/ShipperOrderDetailScreen';
 export { default as CaretakerHomeScreen } from './CaretakerHome/CaretakerHomeScreen';
 export { default as CaretakerTasksScreen } from './CaretakerTasks/CaretakerTasksScreen';
+export { default as CaretakerTaskDetailScreen } from './CaretakerTaskDetail/CaretakerTaskDetailScreen';
+export { default as CaretakerRegistrationDetailScreen } from './CaretakerRegistrationDetail/CaretakerRegistrationDetailScreen';
+export { default as CustomerServiceProgressDetailScreen } from './CustomerServiceProgressDetail/CustomerServiceProgressDetailScreen';

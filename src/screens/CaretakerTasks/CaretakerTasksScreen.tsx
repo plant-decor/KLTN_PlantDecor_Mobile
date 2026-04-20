@@ -24,16 +24,30 @@ import { careService } from '../../services';
 import { useAuthStore } from '../../stores';
 import { RootStackParamList, ServiceProgress, ServiceRegistration } from '../../types';
 import {
+  addMonthsToMonthKey,
   addDaysToIsoDateKey,
+  canCheckInCaretakerProgress,
+  canCheckOutCaretakerProgress,
   formatVietnamDate,
   formatVietnamDateTime,
+  getFirstDayOfMonthIsoDateKey,
+  getCaretakerStatusPalette,
+  getLastDayOfMonthIsoDateKey,
+  getMonthCalendarGridIsoWeeks,
+  getMonthKeyFromIsoDateKey,
   getVietnamDateKey,
+  getWeekDayIsoKeys,
+  getWeekStartMondayIsoDateKey,
+  isCaretakerCompletedStatus,
+  isLateCheckInCaretakerProgress,
   notify,
-  sanitizeIsoDateKey,
+  sanitizeCaretakerTaskDateKey,
+  sortCaretakerProgressesByTaskDate,
 } from '../../utils';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'CaretakerTasks'>;
 type CaretakerSegment = 'today' | 'schedule' | 'assigned';
+type ScheduleCalendarMode = 'week' | 'month';
 type PageToken = number | 'left-ellipsis' | 'right-ellipsis';
 
 type SelectedEvidenceImage = {
@@ -46,82 +60,30 @@ const PAGE_SIZE = 10;
 const SCREEN_BG = '#F6F8F6';
 const TEXT_DARK = '#0D1B12';
 const ACTION_GREEN = '#13EC5B';
-const SCHEDULE_WINDOW_DAYS = 7;
+const WEEK_DAY_COUNT = 7;
 
-const normalizeToken = (value: string): string =>
-  value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, '');
+const resolveImageMimeType = (fileName: string): string => {
+  const normalizedName = fileName.toLowerCase();
 
-const isAssignedStatus = (statusName: string): boolean => {
-  const token = normalizeToken(statusName);
-  return token.includes('assigned') || token.includes('pending');
-};
+  if (normalizedName.endsWith('.png')) {
+    return 'image/png';
+  }
 
-const isInProgressStatus = (statusName: string): boolean => {
-  const token = normalizeToken(statusName);
-  return token.includes('inprogress') || token.includes('processing');
-};
+  if (normalizedName.endsWith('.webp')) {
+    return 'image/webp';
+  }
 
-const isCompletedStatus = (statusName: string): boolean => {
-  const token = normalizeToken(statusName);
-  return token.includes('completed') || token.includes('done') || token.includes('finished');
-};
+  if (normalizedName.endsWith('.heic') || normalizedName.endsWith('.heif')) {
+    return 'image/heic';
+  }
 
-const sanitizeDateKey = (value?: string | null): string => {
-  return sanitizeIsoDateKey(value);
+  return 'image/jpeg';
 };
 
 const buildRegistrationCode = (id: number): string => `DV-${String(id).padStart(4, '0')}`;
 
-const getStatusPalette = (statusName: string) => {
-  if (isCompletedStatus(statusName)) {
-    return {
-      backgroundColor: '#E8FAEF',
-      borderColor: '#BCEBCB',
-      textColor: '#1E7040',
-    };
-  }
-
-  if (isInProgressStatus(statusName)) {
-    return {
-      backgroundColor: '#FFF8E5',
-      borderColor: '#FFE6A5',
-      textColor: '#9A6A00',
-    };
-  }
-
-  if (isAssignedStatus(statusName)) {
-    return {
-      backgroundColor: '#E8F4FF',
-      borderColor: '#B8DAFF',
-      textColor: '#1D5FA7',
-    };
-  }
-
-  return {
-    backgroundColor: '#EEF1F4',
-    borderColor: '#D8E0E8',
-    textColor: '#4D6173',
-  };
-};
-
-const sortProgresses = (items: ServiceProgress[]): ServiceProgress[] => {
-  return [...items].sort((left, right) => {
-    const leftDate = sanitizeDateKey(left.taskDate);
-    const rightDate = sanitizeDateKey(right.taskDate);
-
-    if (leftDate === rightDate) {
-      return left.id - right.id;
-    }
-
-    return leftDate.localeCompare(rightDate);
-  });
-};
-
 const formatDateLabel = (dateText: string, locale: string): string => {
-  const dateKey = sanitizeDateKey(dateText);
+  const dateKey = sanitizeCaretakerTaskDateKey(dateText);
   if (!dateKey) {
     return '--';
   }
@@ -136,13 +98,21 @@ const formatDateTimeLabel = (value: string | null | undefined, locale: string): 
   });
 };
 
-const buildScheduleRange = () => {
-  const fromDateKey = getVietnamDateKey(new Date());
+const buildMonthLabel = (monthKey: string, locale: string): string => {
+  const firstDate = `${monthKey}-01`;
+  const parsed = new Date(firstDate);
+  if (Number.isNaN(parsed.getTime())) {
+    return monthKey;
+  }
 
-  return {
-    from: fromDateKey,
-    to: addDaysToIsoDateKey(fromDateKey, SCHEDULE_WINDOW_DAYS - 1),
-  };
+  return parsed.toLocaleDateString(locale, {
+    month: 'long',
+    year: 'numeric',
+  });
+};
+
+const getDateDayNumber = (dateKey: string): string => {
+  return dateKey.slice(8, 10);
 };
 
 export default function CaretakerTasksScreen() {
@@ -152,9 +122,19 @@ export default function CaretakerTasksScreen() {
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
 
   const [activeSegment, setActiveSegment] = useState<CaretakerSegment>('today');
+  const [scheduleMode, setScheduleMode] = useState<ScheduleCalendarMode>('week');
   const [todayProgresses, setTodayProgresses] = useState<ServiceProgress[]>([]);
   const [scheduleProgresses, setScheduleProgresses] = useState<ServiceProgress[]>([]);
   const [assignedRegistrations, setAssignedRegistrations] = useState<ServiceRegistration[]>([]);
+
+  const todayDateKey = useMemo(() => getVietnamDateKey(new Date()), []);
+  const [selectedScheduleDate, setSelectedScheduleDate] = useState<string>(todayDateKey);
+  const [selectedWeekStartDate, setSelectedWeekStartDate] = useState<string>(() =>
+    getWeekStartMondayIsoDateKey(todayDateKey)
+  );
+  const [selectedMonthKey, setSelectedMonthKey] = useState<string>(() =>
+    getMonthKeyFromIsoDateKey(todayDateKey)
+  );
 
   const [totalCount, setTotalCount] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
@@ -174,8 +154,56 @@ export default function CaretakerTasksScreen() {
   const [checkoutProgress, setCheckoutProgress] = useState<ServiceProgress | null>(null);
   const [checkoutDescription, setCheckoutDescription] = useState('');
   const [selectedEvidenceImage, setSelectedEvidenceImage] = useState<SelectedEvidenceImage | null>(null);
+  const [incidentModalVisible, setIncidentModalVisible] = useState(false);
+  const [incidentProgress, setIncidentProgress] = useState<ServiceProgress | null>(null);
+  const [incidentReason, setIncidentReason] = useState('');
+  const [selectedIncidentImage, setSelectedIncidentImage] = useState<SelectedEvidenceImage | null>(null);
+  const [previewImageUri, setPreviewImageUri] = useState<string | null>(null);
 
-  const scheduleRange = useMemo(() => buildScheduleRange(), []);
+  const weekDateKeys = useMemo(
+    () => getWeekDayIsoKeys(selectedWeekStartDate),
+    [selectedWeekStartDate]
+  );
+
+  const monthGridWeeks = useMemo(
+    () => getMonthCalendarGridIsoWeeks(selectedMonthKey),
+    [selectedMonthKey]
+  );
+
+  const scheduleRange = useMemo(() => {
+    if (scheduleMode === 'month') {
+      return {
+        from: getFirstDayOfMonthIsoDateKey(selectedMonthKey),
+        to: getLastDayOfMonthIsoDateKey(selectedMonthKey),
+      };
+    }
+
+    return {
+      from: selectedWeekStartDate,
+      to: addDaysToIsoDateKey(selectedWeekStartDate, WEEK_DAY_COUNT - 1),
+    };
+  }, [scheduleMode, selectedMonthKey, selectedWeekStartDate]);
+
+  const scheduleProgressCountByDate = useMemo(() => {
+    const counter = new Map<string, number>();
+
+    for (const progress of scheduleProgresses) {
+      const dateKey = sanitizeCaretakerTaskDateKey(progress.taskDate);
+      if (!dateKey) {
+        continue;
+      }
+
+      counter.set(dateKey, (counter.get(dateKey) ?? 0) + 1);
+    }
+
+    return counter;
+  }, [scheduleProgresses]);
+
+  const filteredScheduleProgresses = useMemo(() => {
+    return scheduleProgresses.filter(
+      (item) => sanitizeCaretakerTaskDateKey(item.taskDate) === selectedScheduleDate
+    );
+  }, [scheduleProgresses, selectedScheduleDate]);
 
   const visiblePageTokens = useMemo<PageToken[]>(() => {
     if (totalPages <= 7) {
@@ -209,7 +237,7 @@ export default function CaretakerTasksScreen() {
       }
 
       if (segment === 'schedule') {
-        return t('caretaker.segmentSchedule', { defaultValue: '7-day schedule' });
+        return t('caretaker.segmentSchedule', { defaultValue: 'Schedule' });
       }
 
       return t('caretaker.segmentAssigned', { defaultValue: 'Assigned registrations' });
@@ -245,13 +273,18 @@ export default function CaretakerTasksScreen() {
 
         if (segment === 'today') {
           const payload = await careService.getServiceProgressToday();
-          setTodayProgresses(sortProgresses(payload ?? []));
+          setTodayProgresses(sortCaretakerProgressesByTaskDate(payload ?? []));
           return;
         }
 
         if (segment === 'schedule') {
+          if (!scheduleRange.from || !scheduleRange.to) {
+            setScheduleProgresses([]);
+            return;
+          }
+
           const payload = await careService.getServiceProgressMySchedule(scheduleRange);
-          setScheduleProgresses(sortProgresses(payload ?? []));
+          setScheduleProgresses(sortCaretakerProgressesByTaskDate(payload ?? []));
           return;
         }
 
@@ -313,28 +346,118 @@ export default function CaretakerTasksScreen() {
 
   const canCheckIn = useCallback((progress: ServiceProgress): boolean => {
     const todayDate = getVietnamDateKey(new Date());
-    const taskDate = sanitizeDateKey(progress.taskDate);
-
-    return isAssignedStatus(progress.statusName) && taskDate === todayDate && !progress.actualStartTime;
+    return canCheckInCaretakerProgress(progress, todayDate);
   }, []);
 
   const canCheckOut = useCallback((progress: ServiceProgress): boolean => {
-    return (
-      isInProgressStatus(progress.statusName) &&
-      Boolean(progress.actualStartTime) &&
-      !progress.actualEndTime
-    );
+    return canCheckOutCaretakerProgress(progress);
   }, []);
+
+  const handleSelectScheduleMode = useCallback((mode: ScheduleCalendarMode) => {
+    setScheduleMode(mode);
+
+    if (mode === 'week') {
+      const weekStart = getWeekStartMondayIsoDateKey(selectedScheduleDate) || selectedWeekStartDate;
+      setSelectedWeekStartDate(weekStart);
+      return;
+    }
+
+    const monthKey = getMonthKeyFromIsoDateKey(selectedScheduleDate) || selectedMonthKey;
+    setSelectedMonthKey(monthKey);
+  }, [selectedMonthKey, selectedScheduleDate, selectedWeekStartDate]);
+
+  const handleSelectScheduleDate = useCallback((dateKey: string) => {
+    setSelectedScheduleDate(dateKey);
+  }, []);
+
+  const handleNavigateWeek = useCallback((direction: -1 | 1) => {
+    const nextWeekStart = addDaysToIsoDateKey(selectedWeekStartDate, direction * WEEK_DAY_COUNT);
+    if (!nextWeekStart) {
+      return;
+    }
+
+    setSelectedWeekStartDate(nextWeekStart);
+    setSelectedScheduleDate((currentSelectedDate) => {
+      const currentWeekStart = getWeekStartMondayIsoDateKey(currentSelectedDate);
+      if (currentWeekStart !== selectedWeekStartDate) {
+        return nextWeekStart;
+      }
+
+      const dayOffset = weekDateKeys.findIndex((dateKey) => dateKey === currentSelectedDate);
+      if (dayOffset < 0) {
+        return nextWeekStart;
+      }
+
+      return addDaysToIsoDateKey(nextWeekStart, dayOffset);
+    });
+  }, [selectedWeekStartDate, weekDateKeys]);
+
+  const handleNavigateMonth = useCallback((direction: -1 | 1) => {
+    const nextMonthKey = addMonthsToMonthKey(selectedMonthKey, direction);
+    if (!nextMonthKey) {
+      return;
+    }
+
+    const currentDay = getDateDayNumber(selectedScheduleDate);
+    const monthLastDateKey = getLastDayOfMonthIsoDateKey(nextMonthKey);
+    if (!monthLastDateKey) {
+      return;
+    }
+
+    const monthLastDay = Number(getDateDayNumber(monthLastDateKey));
+    const nextDay = String(Math.min(Number(currentDay), monthLastDay)).padStart(2, '0');
+
+    setSelectedMonthKey(nextMonthKey);
+    setSelectedScheduleDate(`${nextMonthKey}-${nextDay}`);
+  }, [selectedMonthKey, selectedScheduleDate]);
+
+  const scheduleWeekTitle = useMemo(() => {
+    const start = scheduleRange.from;
+    const end = scheduleRange.to;
+    if (!start || !end) {
+      return '--';
+    }
+
+    return `${formatVietnamDate(start, locale, { empty: start })} - ${formatVietnamDate(end, locale, { empty: end })}`;
+  }, [locale, scheduleRange.from, scheduleRange.to]);
+
+  const scheduleMonthTitle = useMemo(
+    () => buildMonthLabel(selectedMonthKey, locale),
+    [locale, selectedMonthKey]
+  );
+
+  const dayShortLabels = useMemo(
+    () => [
+      t('caretaker.dayMonShort', { defaultValue: 'Mon' }),
+      t('caretaker.dayTueShort', { defaultValue: 'Tue' }),
+      t('caretaker.dayWedShort', { defaultValue: 'Wed' }),
+      t('caretaker.dayThuShort', { defaultValue: 'Thu' }),
+      t('caretaker.dayFriShort', { defaultValue: 'Fri' }),
+      t('caretaker.daySatShort', { defaultValue: 'Sat' }),
+      t('caretaker.daySunShort', { defaultValue: 'Sun' }),
+    ],
+    [t]
+  );
 
   const handleCheckIn = useCallback(
     async (progress: ServiceProgress) => {
+      const todayDate = getVietnamDateKey(new Date());
+
       if (!canCheckIn(progress)) {
         notify({
           title: t('common.error', { defaultValue: 'Error' }),
-          message: t('caretaker.todayOnlyHint', {
-            defaultValue: 'Check-in is available only for today assigned tasks.',
+          message: t('caretaker.checkInWindowHint', {
+            defaultValue: 'Check-in is available from 30 minutes before your shift starts.',
           }),
         });
+        return;
+      }
+
+      if (isLateCheckInCaretakerProgress(progress, todayDate)) {
+        setIncidentProgress(progress);
+        setIncidentReason('');
+        setSelectedIncidentImage(null);
+        setIncidentModalVisible(true);
         return;
       }
 
@@ -370,6 +493,170 @@ export default function CaretakerTasksScreen() {
     [canCheckIn, refreshAfterTaskAction, t]
   );
 
+  const closeIncidentModal = useCallback(() => {
+    if (isSubmittingAction) {
+      return;
+    }
+
+    setIncidentModalVisible(false);
+    setIncidentProgress(null);
+    setIncidentReason('');
+    setSelectedIncidentImage(null);
+  }, [isSubmittingAction]);
+
+  const handleIncidentImageAsset = useCallback(
+    (asset?: ImagePicker.ImagePickerAsset) => {
+      const selectedUri = asset?.uri?.trim();
+
+      if (!selectedUri) {
+        notify({
+          title: t('common.error', { defaultValue: 'Error' }),
+          message: t('caretaker.imageMissing', {
+            defaultValue: 'Please choose an image.',
+          }),
+        });
+        return;
+      }
+
+      const fallbackFileName = selectedUri.split('/').pop() || `incident-${Date.now()}.jpg`;
+      const fileName = asset?.fileName?.trim() || fallbackFileName;
+      const mimeType = asset?.mimeType?.trim() || resolveImageMimeType(fileName);
+
+      setSelectedIncidentImage({
+        uri: selectedUri,
+        fileName,
+        mimeType,
+      });
+    },
+    [t]
+  );
+
+  const handlePickIncidentImage = useCallback(async () => {
+    if (isSubmittingAction) {
+      return;
+    }
+
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      notify({
+        title: t('common.error', { defaultValue: 'Error' }),
+        message: t('caretaker.imagePermissionDenied', {
+          defaultValue: 'Please grant photo library access to upload evidence.',
+        }),
+      });
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      allowsEditing: false,
+      quality: 0.8,
+    });
+
+    if (result.canceled) {
+      return;
+    }
+
+    handleIncidentImageAsset(result.assets?.[0]);
+  }, [handleIncidentImageAsset, isSubmittingAction, t]);
+
+  const handleCaptureIncidentImage = useCallback(async () => {
+    if (isSubmittingAction) {
+      return;
+    }
+
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      notify({
+        title: t('common.error', { defaultValue: 'Error' }),
+        message: t('caretaker.cameraPermissionDenied', {
+          defaultValue: 'Please grant camera access to take evidence image.',
+        }),
+      });
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: false,
+      quality: 0.8,
+    });
+
+    if (result.canceled) {
+      return;
+    }
+
+    handleIncidentImageAsset(result.assets?.[0]);
+  }, [handleIncidentImageAsset, isSubmittingAction, t]);
+
+  const submitIncidentAndCheckIn = useCallback(async () => {
+    if (!incidentProgress) {
+      return;
+    }
+
+    const trimmedReason = incidentReason.trim();
+    if (trimmedReason.length === 0) {
+      notify({
+        title: t('common.error', { defaultValue: 'Error' }),
+        message: t('caretaker.incidentReportReasonRequired', {
+          defaultValue: 'Please provide a reason for this incident.',
+        }),
+      });
+      return;
+    }
+
+    if (!selectedIncidentImage) {
+      notify({
+        title: t('common.error', { defaultValue: 'Error' }),
+        message: t('caretaker.incidentReportImageRequired', {
+          defaultValue: 'Please attach an image for this incident.',
+        }),
+      });
+      return;
+    }
+
+    setIsSubmittingAction(true);
+    setProcessingProgressId(incidentProgress.id);
+
+    try {
+      await careService.reportServiceProgressIncident(incidentProgress.id, {
+        IncidentReason: trimmedReason,
+        incidentImage: selectedIncidentImage,
+      });
+
+      await careService.checkInServiceProgress(incidentProgress.id);
+
+      notify({
+        title: t('common.success', { defaultValue: 'Success' }),
+        message: t('caretaker.checkInSuccess', {
+          defaultValue: 'Check-in successful.',
+        }),
+      });
+
+      closeIncidentModal();
+      await refreshAfterTaskAction();
+    } catch (error: any) {
+      const apiMessage = error?.response?.data?.message;
+      notify({
+        title: t('common.error', { defaultValue: 'Error' }),
+        message:
+          typeof apiMessage === 'string' && apiMessage.trim().length > 0
+            ? apiMessage
+            : t('caretaker.incidentReportFailed', {
+                defaultValue: 'Unable to submit incident report. Please try again.',
+              }),
+      });
+    } finally {
+      setIsSubmittingAction(false);
+      setProcessingProgressId(null);
+    }
+  }, [
+    closeIncidentModal,
+    incidentProgress,
+    incidentReason,
+    refreshAfterTaskAction,
+    selectedIncidentImage,
+    t,
+  ]);
+
   const closeCheckoutModal = useCallback(() => {
     if (isSubmittingAction) {
       return;
@@ -393,6 +680,33 @@ export default function CaretakerTasksScreen() {
       setCheckoutModalVisible(true);
     },
     [canCheckOut]
+  );
+
+  const handleEvidenceImageAsset = useCallback(
+    (asset?: ImagePicker.ImagePickerAsset) => {
+      const selectedUri = asset?.uri?.trim();
+
+      if (!selectedUri) {
+        notify({
+          title: t('common.error', { defaultValue: 'Error' }),
+          message: t('caretaker.imageMissing', {
+            defaultValue: 'Please choose an image.',
+          }),
+        });
+        return;
+      }
+
+      const fallbackFileName = selectedUri.split('/').pop() || `evidence-${Date.now()}.jpg`;
+      const fileName = asset?.fileName?.trim() || fallbackFileName;
+      const mimeType = asset?.mimeType?.trim() || resolveImageMimeType(fileName);
+
+      setSelectedEvidenceImage({
+        uri: selectedUri,
+        fileName,
+        mimeType,
+      });
+    },
+    [t]
   );
 
   const handlePickEvidenceImage = useCallback(async () => {
@@ -420,31 +734,36 @@ export default function CaretakerTasksScreen() {
       return;
     }
 
-    const selectedAsset = result.assets?.[0];
-    const selectedUri = selectedAsset?.uri?.trim();
+    handleEvidenceImageAsset(result.assets?.[0]);
+  }, [handleEvidenceImageAsset, isSubmittingAction, t]);
 
-    if (!selectedUri) {
+  const handleCaptureEvidenceImage = useCallback(async () => {
+    if (isSubmittingAction) {
+      return;
+    }
+
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
       notify({
         title: t('common.error', { defaultValue: 'Error' }),
-        message: t('caretaker.imageMissing', {
-          defaultValue: 'Please choose an image.',
+        message: t('caretaker.cameraPermissionDenied', {
+          defaultValue: 'Please grant camera access to take evidence image.',
         }),
       });
       return;
     }
 
-    const fallbackFileName = selectedUri.split('/').pop() || `evidence-${Date.now()}.jpg`;
-    const fileName = selectedAsset?.fileName?.trim() || fallbackFileName;
-    const mimeType =
-      selectedAsset?.mimeType?.trim() ||
-      (fileName.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg');
-
-    setSelectedEvidenceImage({
-      uri: selectedUri,
-      fileName,
-      mimeType,
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: false,
+      quality: 0.8,
     });
-  }, [isSubmittingAction, t]);
+
+    if (result.canceled) {
+      return;
+    }
+
+    handleEvidenceImageAsset(result.assets?.[0]);
+  }, [handleEvidenceImageAsset, isSubmittingAction, t]);
 
   const submitCheckout = useCallback(async () => {
     if (!checkoutProgress) {
@@ -559,7 +878,7 @@ export default function CaretakerTasksScreen() {
   );
 
   const renderProgressCard = ({ item }: { item: ServiceProgress }) => {
-    const statusPalette = getStatusPalette(item.statusName);
+    const statusPalette = getCaretakerStatusPalette(item.statusName);
     const isActionLoading = isSubmittingAction && processingProgressId === item.id;
     const canPressCheckIn = canCheckIn(item);
     const canPressCheckOut = canCheckOut(item);
@@ -645,8 +964,34 @@ export default function CaretakerTasksScreen() {
         ) : null}
 
         {typeof item.evidenceImageUrl === 'string' && item.evidenceImageUrl.trim().length > 0 ? (
-          <Image source={{ uri: item.evidenceImageUrl.trim() }} style={styles.evidencePreviewImage} />
+          <View style={styles.evidenceWrap}>
+            <Text style={styles.evidenceLabel}>
+              {t('caretaker.checkOutImageLabel', { defaultValue: 'Evidence image' })}
+            </Text>
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => setPreviewImageUri(item.evidenceImageUrl?.trim() || null)}
+            >
+              <Image source={{ uri: item.evidenceImageUrl.trim() }} style={styles.evidencePreviewImage} />
+            </TouchableOpacity>
+          </View>
         ) : null}
+
+        <TouchableOpacity
+          style={styles.taskDetailButton}
+          onPress={() =>
+            navigation.navigate('CaretakerTaskDetail', {
+              progressId: item.id,
+              serviceRegistrationId: item.serviceRegistrationId,
+            })
+          }
+        >
+          <Ionicons name="document-text-outline" size={16} color={COLORS.primary} />
+          <Text style={styles.taskDetailButtonText}>
+            {t('caretaker.openTaskDetail', { defaultValue: 'Task detail' })}
+          </Text>
+          <Ionicons name="chevron-forward" size={16} color={COLORS.primary} />
+        </TouchableOpacity>
 
         <View style={styles.actionRow}>
           {canPressCheckIn ? (
@@ -687,7 +1032,7 @@ export default function CaretakerTasksScreen() {
             </TouchableOpacity>
           ) : null}
 
-          {isCompletedStatus(item.statusName) ? (
+          {isCaretakerCompletedStatus(item.statusName) ? (
             <View style={styles.completedPill}>
               <Ionicons name="checkmark-circle-outline" size={16} color={'#1E7040'} />
               <Text style={styles.completedPillText}>
@@ -701,7 +1046,7 @@ export default function CaretakerTasksScreen() {
   };
 
   const renderAssignedCard = ({ item }: { item: ServiceRegistration }) => {
-    const statusPalette = getStatusPalette(item.statusName);
+    const statusPalette = getCaretakerStatusPalette(item.statusName);
 
     return (
       <View style={styles.taskCard}>
@@ -758,7 +1103,11 @@ export default function CaretakerTasksScreen() {
 
         <TouchableOpacity
           style={styles.detailButton}
-          onPress={() => navigation.navigate('ServiceRegistrationDetail', { registrationId: item.id })}
+          onPress={() =>
+            navigation.navigate('CaretakerRegistrationDetail', {
+              registrationId: item.id,
+            })
+          }
         >
           <Ionicons name="eye-outline" size={16} color={COLORS.white} />
           <Text style={styles.detailButtonText}>
@@ -771,7 +1120,12 @@ export default function CaretakerTasksScreen() {
     );
   };
 
-  const progressItems = activeSegment === 'today' ? todayProgresses : scheduleProgresses;
+  const progressItems =
+    activeSegment === 'today'
+      ? todayProgresses
+      : activeSegment === 'schedule'
+      ? filteredScheduleProgresses
+      : scheduleProgresses;
   const activeCount = activeSegment === 'assigned' ? assignedRegistrations.length : progressItems.length;
 
   const getEmptyTitle = () => {
@@ -780,7 +1134,7 @@ export default function CaretakerTasksScreen() {
     }
 
     if (activeSegment === 'schedule') {
-      return t('caretaker.emptyScheduleTitle', { defaultValue: 'No tasks in this range' });
+      return t('caretaker.emptyScheduleDateTitle', { defaultValue: 'No tasks on selected day' });
     }
 
     return t('caretaker.emptyAssignedTitle', { defaultValue: 'No assigned registrations' });
@@ -798,8 +1152,8 @@ export default function CaretakerTasksScreen() {
     }
 
     if (activeSegment === 'schedule') {
-      return t('caretaker.emptyScheduleSubtitle', {
-        defaultValue: 'Try refreshing or waiting for new assignments.',
+      return t('caretaker.emptyScheduleDateSubtitle', {
+        defaultValue: 'Try another day or keep waiting for new assignments.',
       });
     }
 
@@ -873,6 +1227,169 @@ export default function CaretakerTasksScreen() {
           })}
         </ScrollView>
       </View>
+
+      {activeSegment === 'schedule' ? (
+        <View style={styles.calendarWrap}>
+          <View style={styles.calendarModeToggleRow}>
+            <TouchableOpacity
+              style={[
+                styles.calendarModeButton,
+                scheduleMode === 'week' && styles.calendarModeButtonActive,
+              ]}
+              onPress={() => handleSelectScheduleMode('week')}
+            >
+              <Text
+                style={[
+                  styles.calendarModeButtonText,
+                  scheduleMode === 'week' && styles.calendarModeButtonTextActive,
+                ]}
+              >
+                {t('caretaker.calendarModeWeek', { defaultValue: 'Week' })}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.calendarModeButton,
+                scheduleMode === 'month' && styles.calendarModeButtonActive,
+              ]}
+              onPress={() => handleSelectScheduleMode('month')}
+            >
+              <Text
+                style={[
+                  styles.calendarModeButtonText,
+                  scheduleMode === 'month' && styles.calendarModeButtonTextActive,
+                ]}
+              >
+                {t('caretaker.calendarModeMonth', { defaultValue: 'Month' })}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.calendarPeriodNavRow}>
+            <TouchableOpacity
+              style={styles.calendarArrowButton}
+              onPress={() => {
+                if (scheduleMode === 'week') {
+                  handleNavigateWeek(-1);
+                  return;
+                }
+
+                handleNavigateMonth(-1);
+              }}
+            >
+              <Ionicons name="chevron-back" size={18} color={TEXT_DARK} />
+            </TouchableOpacity>
+
+            <Text style={styles.calendarPeriodTitle}>
+              {scheduleMode === 'week'
+                ? t('caretaker.calendarWeekOf', {
+                    defaultValue: 'Week of {{value}}',
+                    value: scheduleWeekTitle,
+                  })
+                : t('caretaker.calendarMonthOf', {
+                    defaultValue: 'Month of {{value}}',
+                    value: scheduleMonthTitle,
+                  })}
+            </Text>
+
+            <TouchableOpacity
+              style={styles.calendarArrowButton}
+              onPress={() => {
+                if (scheduleMode === 'week') {
+                  handleNavigateWeek(1);
+                  return;
+                }
+
+                handleNavigateMonth(1);
+              }}
+            >
+              <Ionicons name="chevron-forward" size={18} color={TEXT_DARK} />
+            </TouchableOpacity>
+          </View>
+
+          {scheduleMode === 'week' ? (
+            <View style={styles.weekStripRow}>
+              {weekDateKeys.map((dateKey, index) => {
+                const isSelected = selectedScheduleDate === dateKey;
+                const isToday = dateKey === todayDateKey;
+                const taskCount = scheduleProgressCountByDate.get(dateKey) ?? 0;
+
+                return (
+                  <TouchableOpacity
+                    key={dateKey}
+                    style={[
+                      styles.weekDayCell,
+                      isSelected && styles.weekDayCellSelected,
+                      isToday && styles.weekDayCellToday,
+                    ]}
+                    onPress={() => handleSelectScheduleDate(dateKey)}
+                  >
+                    <Text style={[styles.weekDayLabel, isSelected && styles.weekDayLabelSelected]}>
+                      {dayShortLabels[index]}
+                    </Text>
+                    <Text style={[styles.weekDayNumber, isSelected && styles.weekDayNumberSelected]}>
+                      {Number(getDateDayNumber(dateKey))}
+                    </Text>
+                    <View style={styles.weekTaskMetaWrap}>
+                      {taskCount > 0 ? (
+                        <View style={styles.taskDot} />
+                      ) : (
+                        <View style={styles.taskDotPlaceholder} />
+                      )}
+                      <Text style={styles.weekTaskCountText}>{taskCount}</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          ) : (
+            <View style={styles.monthGridWrap}>
+              <View style={styles.monthGridHeaderRow}>
+                {dayShortLabels.map((dayLabel) => (
+                  <View key={dayLabel} style={styles.monthGridHeaderCell}>
+                    <Text style={styles.monthGridHeaderText}>{dayLabel}</Text>
+                  </View>
+                ))}
+              </View>
+
+              {monthGridWeeks.map((week, rowIndex) => (
+                <View key={`week-${rowIndex}`} style={styles.monthGridWeekRow}>
+                  {week.map((dateKey) => {
+                    const isCurrentMonth = dateKey.startsWith(selectedMonthKey);
+                    const isSelected = selectedScheduleDate === dateKey;
+                    const isToday = dateKey === todayDateKey;
+                    const taskCount = scheduleProgressCountByDate.get(dateKey) ?? 0;
+
+                    return (
+                      <TouchableOpacity
+                        key={dateKey}
+                        style={[
+                          styles.monthGridDayCell,
+                          isSelected && styles.monthGridDayCellSelected,
+                          isToday && styles.monthGridDayCellToday,
+                        ]}
+                        onPress={() => handleSelectScheduleDate(dateKey)}
+                      >
+                        <Text
+                          style={[
+                            styles.monthGridDayNumber,
+                            !isCurrentMonth && styles.monthGridDayNumberMuted,
+                            isSelected && styles.monthGridDayNumberSelected,
+                          ]}
+                        >
+                          {Number(getDateDayNumber(dateKey))}
+                        </Text>
+                        {taskCount > 0 ? <View style={styles.taskDot} /> : null}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      ) : null}
 
       {isLoading && activeCount === 0 ? (
         <View style={styles.loaderWrap}>
@@ -1004,6 +1521,133 @@ export default function CaretakerTasksScreen() {
       )}
 
       <Modal
+        visible={Boolean(previewImageUri)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPreviewImageUri(null)}
+      >
+        <View style={styles.fullImageModalOverlay}>
+          <TouchableOpacity
+            style={styles.fullImageCloseButton}
+            onPress={() => setPreviewImageUri(null)}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="close" size={24} color={COLORS.white} />
+          </TouchableOpacity>
+
+          {previewImageUri ? (
+            <Image source={{ uri: previewImageUri }} style={styles.fullImagePreview} resizeMode="contain" />
+          ) : null}
+        </View>
+      </Modal>
+
+      <Modal
+        visible={incidentModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeIncidentModal}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>
+              {t('caretaker.incidentReportTitle', {
+                defaultValue: 'Late check-in incident report',
+              })}
+            </Text>
+
+            <Text style={styles.modalSubTitle}>
+              {t('caretaker.incidentReportDescriptionLabel', {
+                defaultValue: 'Incident detail',
+              })}
+            </Text>
+
+            <TextInput
+              style={styles.modalInput}
+              value={incidentReason}
+              onChangeText={setIncidentReason}
+              placeholder={t('caretaker.incidentReportReasonPlaceholder', {
+                defaultValue: 'Describe the reason for late check-in',
+              })}
+              placeholderTextColor={COLORS.gray500}
+              multiline
+              numberOfLines={4}
+              textAlignVertical="top"
+            />
+
+            <Text style={styles.modalSubTitle}>
+              {t('caretaker.incidentReportImageLabel', { defaultValue: 'Incident image' })}
+            </Text>
+
+            <View style={styles.uploadActionsRow}>
+              <TouchableOpacity
+                style={[styles.uploadButton, styles.uploadButtonHalf]}
+                onPress={() => void handlePickIncidentImage()}
+                disabled={isSubmittingAction}
+              >
+                <Ionicons name="images-outline" size={18} color={TEXT_DARK} />
+                <Text style={styles.uploadButtonText}>
+                  {t('caretaker.chooseImage', { defaultValue: 'Choose image' })}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.uploadButton, styles.uploadButtonHalf]}
+                onPress={() => void handleCaptureIncidentImage()}
+                disabled={isSubmittingAction}
+              >
+                <Ionicons name="camera-outline" size={18} color={TEXT_DARK} />
+                <Text style={styles.uploadButtonText}>
+                  {t('caretaker.takePhoto', { defaultValue: 'Take photo' })}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {selectedIncidentImage ? (
+              <View style={styles.selectedImageRow}>
+                <Image
+                  source={{ uri: selectedIncidentImage.uri }}
+                  style={styles.selectedImagePreview}
+                  resizeMode="cover"
+                />
+                <Text style={styles.selectedImageText} numberOfLines={2}>
+                  {t('caretaker.selectedImage', {
+                    defaultValue: 'Selected: {{name}}',
+                    name: selectedIncidentImage.fileName,
+                  })}
+                </Text>
+              </View>
+            ) : null}
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalActionButton, styles.modalCancelButton]}
+                onPress={closeIncidentModal}
+                disabled={isSubmittingAction}
+              >
+                <Text style={styles.modalCancelButtonText}>
+                  {t('common.cancel', { defaultValue: 'Cancel' })}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalActionButton, styles.modalConfirmButton]}
+                onPress={() => void submitIncidentAndCheckIn()}
+                disabled={isSubmittingAction}
+              >
+                {isSubmittingAction ? (
+                  <ActivityIndicator size="small" color={COLORS.white} />
+                ) : (
+                  <Text style={styles.modalConfirmButtonText}>
+                    {t('caretaker.submitIncidentAction', { defaultValue: 'Submit report' })}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
         visible={checkoutModalVisible}
         transparent
         animationType="fade"
@@ -1038,24 +1682,44 @@ export default function CaretakerTasksScreen() {
               {t('caretaker.checkOutImageLabel', { defaultValue: 'Evidence image' })}
             </Text>
 
-            <TouchableOpacity
-              style={styles.uploadButton}
-              onPress={() => void handlePickEvidenceImage()}
-              disabled={isSubmittingAction}
-            >
-              <Ionicons name="images-outline" size={18} color={TEXT_DARK} />
-              <Text style={styles.uploadButtonText}>
-                {t('caretaker.chooseImage', { defaultValue: 'Choose image' })}
-              </Text>
-            </TouchableOpacity>
+            <View style={styles.uploadActionsRow}>
+              <TouchableOpacity
+                style={[styles.uploadButton, styles.uploadButtonHalf]}
+                onPress={() => void handlePickEvidenceImage()}
+                disabled={isSubmittingAction}
+              >
+                <Ionicons name="images-outline" size={18} color={TEXT_DARK} />
+                <Text style={styles.uploadButtonText}>
+                  {t('caretaker.chooseImage', { defaultValue: 'Choose image' })}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.uploadButton, styles.uploadButtonHalf]}
+                onPress={() => void handleCaptureEvidenceImage()}
+                disabled={isSubmittingAction}
+              >
+                <Ionicons name="camera-outline" size={18} color={TEXT_DARK} />
+                <Text style={styles.uploadButtonText}>
+                  {t('caretaker.takePhoto', { defaultValue: 'Take photo' })}
+                </Text>
+              </TouchableOpacity>
+            </View>
 
             {selectedEvidenceImage ? (
-              <Text style={styles.selectedImageText} numberOfLines={2}>
-                {t('caretaker.selectedImage', {
-                  defaultValue: 'Selected: {{name}}',
-                  name: selectedEvidenceImage.fileName,
-                })}
-              </Text>
+              <View style={styles.selectedImageRow}>
+                <Image
+                  source={{ uri: selectedEvidenceImage.uri }}
+                  style={styles.selectedImagePreview}
+                  resizeMode="cover"
+                />
+                <Text style={styles.selectedImageText} numberOfLines={2}>
+                  {t('caretaker.selectedImage', {
+                    defaultValue: 'Selected: {{name}}',
+                    name: selectedEvidenceImage.fileName,
+                  })}
+                </Text>
+              </View>
             ) : null}
 
             <View style={styles.modalActions}>
@@ -1126,6 +1790,183 @@ const styles = StyleSheet.create({
   segmentWrap: {
     paddingHorizontal: SPACING.lg,
     marginBottom: SPACING.sm,
+  },
+  calendarWrap: {
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.sm,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: '#DFE6E0',
+    backgroundColor: COLORS.white,
+    padding: SPACING.sm,
+  },
+  calendarModeToggleRow: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  calendarModeButton: {
+    flex: 1,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: '#D5DED7',
+    backgroundColor: '#F6F8F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+  },
+  calendarModeButtonActive: {
+    borderColor: ACTION_GREEN,
+    backgroundColor: '#E6FBEF',
+  },
+  calendarModeButtonText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  calendarModeButtonTextActive: {
+    color: '#0A7A36',
+    fontWeight: '700',
+  },
+  calendarPeriodNavRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.sm,
+  },
+  calendarArrowButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: '#D4DED6',
+    backgroundColor: '#F7F9F7',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  calendarPeriodTitle: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textPrimary,
+    fontWeight: '700',
+    marginHorizontal: SPACING.sm,
+  },
+  weekStripRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 6,
+  },
+  weekDayCell: {
+    flex: 1,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: '#DCE5DE',
+    backgroundColor: '#F8FBF9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    minHeight: 74,
+  },
+  weekDayCellSelected: {
+    borderColor: ACTION_GREEN,
+    backgroundColor: '#E9FBEF',
+  },
+  weekDayCellToday: {
+    borderColor: '#8CCDA3',
+  },
+  weekDayLabel: {
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  weekDayLabelSelected: {
+    color: '#0A7A36',
+  },
+  weekDayNumber: {
+    fontSize: FONTS.sizes.md,
+    color: COLORS.textPrimary,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  weekDayNumberSelected: {
+    color: '#0A7A36',
+  },
+  weekTaskMetaWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+    gap: 4,
+  },
+  weekTaskCountText: {
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  taskDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#1B9B53',
+  },
+  taskDotPlaceholder: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#D5DED7',
+  },
+  monthGridWrap: {
+    borderWidth: 1,
+    borderColor: '#E1E9E3',
+    borderRadius: RADIUS.md,
+    overflow: 'hidden',
+  },
+  monthGridHeaderRow: {
+    flexDirection: 'row',
+    backgroundColor: '#F4F8F5',
+  },
+  monthGridHeaderCell: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 6,
+  },
+  monthGridHeaderText: {
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.textSecondary,
+    fontWeight: '700',
+  },
+  monthGridWeekRow: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderTopColor: '#EAF0EB',
+  },
+  monthGridDayCell: {
+    flex: 1,
+    minHeight: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRightWidth: 1,
+    borderRightColor: '#EAF0EB',
+    backgroundColor: COLORS.white,
+  },
+  monthGridDayCellSelected: {
+    backgroundColor: '#E9FBEF',
+  },
+  monthGridDayCellToday: {
+    backgroundColor: '#F1FBF4',
+  },
+  monthGridDayNumber: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textPrimary,
+    fontWeight: '600',
+  },
+  monthGridDayNumberMuted: {
+    color: COLORS.gray400,
+  },
+  monthGridDayNumberSelected: {
+    color: '#0A7A36',
+    fontWeight: '700',
   },
   segmentContent: {
     paddingVertical: SPACING.xs,
@@ -1241,12 +2082,40 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     marginLeft: SPACING.xs,
   },
+  evidenceWrap: {
+    marginBottom: SPACING.sm,
+  },
+  evidenceLabel: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+    fontWeight: '700',
+    marginBottom: SPACING.xs,
+  },
   evidencePreviewImage: {
     width: '100%',
     height: 144,
     borderRadius: RADIUS.md,
     marginBottom: SPACING.sm,
     backgroundColor: '#DFE7E1',
+  },
+  taskDetailButton: {
+    marginBottom: SPACING.xs,
+    height: 36,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.gray50,
+    paddingHorizontal: SPACING.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SPACING.xs,
+  },
+  taskDetailButtonText: {
+    flex: 1,
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.primary,
+    fontWeight: '700',
   },
   actionRow: {
     flexDirection: 'row',
@@ -1418,6 +2287,30 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontWeight: '700',
   },
+  fullImageModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.lg,
+  },
+  fullImageCloseButton: {
+    position: 'absolute',
+    top: SPACING['3xl'],
+    right: SPACING.lg,
+    width: 36,
+    height: 36,
+    borderRadius: RADIUS.full,
+    backgroundColor: 'rgba(17, 24, 39, 0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+  fullImagePreview: {
+    width: '100%',
+    height: '82%',
+  },
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.35)',
@@ -1453,6 +2346,10 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
     backgroundColor: '#FAFCFA',
   },
+  uploadActionsRow: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+  },
   uploadButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1463,15 +2360,36 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     backgroundColor: '#FAFCFA',
   },
+  uploadButtonHalf: {
+    flex: 1,
+    justifyContent: 'center',
+  },
   uploadButtonText: {
     marginLeft: 8,
     color: COLORS.textPrimary,
     fontWeight: '600',
     fontSize: FONTS.sizes.sm,
   },
-  selectedImageText: {
-    marginTop: SPACING.xs,
+  selectedImageRow: {
+    marginTop: SPACING.sm,
     marginBottom: SPACING.md,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: '#D7E0D8',
+    backgroundColor: '#FAFCFA',
+    padding: SPACING.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  selectedImagePreview: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.sm,
+    backgroundColor: '#DFE7E1',
+  },
+  selectedImageText: {
+    flex: 1,
     color: COLORS.textSecondary,
     fontSize: FONTS.sizes.xs,
   },

@@ -24,10 +24,13 @@ import {
   OrderDetailScreen,
   ServiceRegistrationDetailScreen,
   CareServicePackageDetailScreen,
+  CustomerServiceProgressDetailScreen,
   ShipperHomeScreen,
   ShippingListScreen,
   ShipperOrderDetailScreen,
   CaretakerHomeScreen,
+  CaretakerRegistrationDetailScreen,
+  CaretakerTaskDetailScreen,
   CaretakerTasksScreen,
   HomeScreen,
 } from '../screens';
@@ -89,6 +92,10 @@ export default function RootNavigator() {
         component={ServiceRegistrationDetailScreen}
       />
       <Stack.Screen
+        name="CustomerServiceProgressDetail"
+        component={CustomerServiceProgressDetailScreen}
+      />
+      <Stack.Screen
         name="CareServicePackageDetail"
         component={CareServicePackageDetailScreen}
       />
@@ -119,6 +126,8 @@ export default function RootNavigator() {
       <Stack.Screen name="ShipperOrderDetail" component={ShipperOrderDetailScreen} />
       <Stack.Screen name="CaretakerHome" component={CaretakerHomeScreen} />
       <Stack.Screen name="CaretakerTasks" component={CaretakerTasksScreen} />
+      <Stack.Screen name="CaretakerTaskDetail" component={CaretakerTaskDetailScreen} />
+      <Stack.Screen name="CaretakerRegistrationDetail" component={CaretakerRegistrationDetailScreen} />
     </>
   );
 

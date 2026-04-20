@@ -8,3 +8,4 @@ export { orderService } from './orderService';
 export { paymentService } from './paymentService';
 export { careService } from './careService';
 export { googleSignInService } from './googleSignInService';
+export { roomDesignService } from './roomDesignService';

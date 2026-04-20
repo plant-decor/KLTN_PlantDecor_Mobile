@@ -35,7 +35,7 @@ import {
 import {
   CareServicePackage,
   CreateServiceRegistrationRequest,
-  NurseryCareService,
+  Nursery,
   NurseryNearby,
   RootStackParamList,
   ServiceRegistration,
@@ -85,6 +85,14 @@ type AddressSuggestion = {
   label: string;
   lat: number;
   lng: number;
+};
+
+type CareRegistrationNursery = {
+  id: number;
+  name: string;
+  address: string;
+  phone: string | null;
+  distanceKm: number | null;
 };
 
 type NominatimSearchItem = {
@@ -146,6 +154,31 @@ const formatCurrency = (amount: number): string => {
 
 const formatDistance = (distanceKm: number): string => {
   return `${distanceKm.toFixed(2)} km`;
+};
+
+const mapShopNurseryToCareRegistrationNursery = (nursery: Nursery): CareRegistrationNursery => {
+  return {
+    id: nursery.id,
+    name: nursery.name,
+    address: nursery.address,
+    phone: typeof nursery.phone === 'string' ? nursery.phone : null,
+    distanceKm: null,
+  };
+};
+
+const mapNearbyNurseryToCareRegistrationNursery = (
+  nursery: NurseryNearby
+): CareRegistrationNursery => {
+  return {
+    id: nursery.id,
+    name: nursery.name,
+    address: nursery.address,
+    phone: nursery.phone,
+    distanceKm:
+      typeof nursery.distanceKm === 'number' && Number.isFinite(nursery.distanceKm)
+        ? nursery.distanceKm
+        : null,
+  };
 };
 
 const formatCoordinate = (coordinate: number | null): string => {
@@ -230,12 +263,10 @@ export default function CareServiceRegistrationScreen() {
   const [hasAddressSuggestionQueryFinished, setHasAddressSuggestionQueryFinished] =
     useState(false);
 
-  const [nurseries, setNurseries] = useState<NurseryNearby[]>([]);
+  const [nurseries, setNurseries] = useState<CareRegistrationNursery[]>([]);
   const [selectedNurseryId, setSelectedNurseryId] = useState<number | null>(null);
-  const [selectedNurseryCareServiceId, setSelectedNurseryCareServiceId] = useState<number | null>(
-    null
-  );
   const [isLoadingNurseries, setIsLoadingNurseries] = useState(false);
+  const [nurseryListMode, setNurseryListMode] = useState<'all' | 'nearby'>('all');
 
   const [serviceDate, setServiceDate] = useState(() =>
     formatLocalIsoDate(getMinimumDateForLeadHours(PERIOD_MIN_LEAD_HOURS))
@@ -1170,6 +1201,46 @@ export default function CareServiceRegistrationScreen() {
     t,
   ]);
 
+  const handleLoadAllNurseries = useCallback(async () => {
+    if (!selectedPackageId) {
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        t('careService.selectPackageRequired', {
+          defaultValue: 'Please select a care service package first.',
+        })
+      );
+      return;
+    }
+
+    try {
+      setIsLoadingNurseries(true);
+
+      const allNurseries = await careService.getAllNurseries({
+        pagination: {
+          pageNumber: 0,
+          pageSize: 0,
+        },
+        isActive: true,
+      });
+
+      setNurseries(allNurseries.map(mapShopNurseryToCareRegistrationNursery));
+      setSelectedNurseryId(null);
+      setNurseryListMode('all');
+    } catch (error: any) {
+      const apiMessage = error?.response?.data?.message;
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        typeof apiMessage === 'string' && apiMessage.trim().length > 0
+          ? apiMessage
+          : t('careService.allNurseriesLoadFailed', {
+              defaultValue: 'Unable to load nursery list. Please try again.',
+            })
+      );
+    } finally {
+      setIsLoadingNurseries(false);
+    }
+  }, [selectedPackageId, t]);
+
   const handleLoadNearbyNurseries = useCallback(async () => {
     if (isGeocodingAddress) {
       return;
@@ -1204,12 +1275,11 @@ export default function CareServiceRegistrationScreen() {
         lat: coordinates.lat,
         lng: coordinates.lng,
         radiusKm: DEFAULT_RADIUS_KM,
-        packageId: selectedPackageId,
       });
 
-      setNurseries(nearbyNurseries);
+      setNurseries(nearbyNurseries.map(mapNearbyNurseryToCareRegistrationNursery));
       setSelectedNurseryId(null);
-      setSelectedNurseryCareServiceId(null);
+      setNurseryListMode('nearby');
     } catch (error: any) {
       const apiMessage = error?.response?.data?.message;
       Alert.alert(
@@ -1225,39 +1295,9 @@ export default function CareServiceRegistrationScreen() {
     }
   }, [isGeocodingAddress, resolveCoordinatesForNurserySearch, selectedPackageId, t]);
 
-  const getMatchedService = useCallback(
-    (nursery: NurseryNearby): NurseryCareService | null => {
-      if (!selectedPackageId) {
-        return null;
-      }
-
-      return (
-        nursery.availableServices.find(
-          (service) => service.careServicePackage.id === selectedPackageId
-        ) ?? null
-      );
-    },
-    [selectedPackageId]
-  );
-
-  const handleSelectNursery = useCallback(
-    (nursery: NurseryNearby) => {
-      const matchedService = getMatchedService(nursery);
-      if (!matchedService) {
-        Alert.alert(
-          t('common.error', { defaultValue: 'Error' }),
-          t('careService.noMatchedService', {
-            defaultValue: 'This nursery does not provide the selected package.',
-          })
-        );
-        return;
-      }
-
-      setSelectedNurseryId(nursery.id);
-      setSelectedNurseryCareServiceId(matchedService.id);
-    },
-    [getMatchedService, t]
-  );
+  const handleSelectNursery = useCallback((nursery: CareRegistrationNursery) => {
+    setSelectedNurseryId(nursery.id);
+  }, []);
 
   const handleToggleScheduleDay = useCallback((dayValue: number) => {
     setSelectedScheduleDays((previousDays) => {
@@ -1326,32 +1366,27 @@ export default function CareServiceRegistrationScreen() {
     }
 
     setStep(2);
-    void handleLoadNearbyNurseries();
-  }, [handleLoadNearbyNurseries, selectedPackageId, t]);
+    void handleLoadAllNurseries();
+  }, [handleLoadAllNurseries, selectedPackageId, t]);
 
   const handleContinueFromNurseries = useCallback(() => {
-    if (!selectedNurseryCareServiceId) {
-      Alert.alert(
-        t('common.error', { defaultValue: 'Error' }),
-        t('careService.selectNurseryRequired', {
-          defaultValue: 'Please select a nursery before continuing.',
-        })
-      );
-      return;
-    }
-
     setStep(3);
-  }, [selectedNurseryCareServiceId, t]);
+  }, []);
+
+  const handleSkipNurseryPreference = useCallback(() => {
+    setSelectedNurseryId(null);
+    setStep(3);
+  }, []);
 
   const handleSubmitRegistration = useCallback(async () => {
-    if (!selectedNurseryCareServiceId) {
+    if (!selectedPackageId) {
       Alert.alert(
         t('common.error', { defaultValue: 'Error' }),
-        t('careService.selectNurseryRequired', {
-          defaultValue: 'Please select a nursery before continuing.',
+        t('careService.selectPackageRequired', {
+          defaultValue: 'Please select a care service package first.',
         })
       );
-      setStep(2);
+      setStep(1);
       return;
     }
 
@@ -1436,7 +1471,8 @@ export default function CareServiceRegistrationScreen() {
     }
 
     const requestPayload: CreateServiceRegistrationRequest = {
-      nurseryCareServiceId: selectedNurseryCareServiceId,
+      careServicePackageId: selectedPackageId,
+      preferredNurseryId: selectedNurseryId,
       serviceDate,
       scheduleDaysOfWeek: isOneTimeSelectedPackage ? [] : [...selectedScheduleDays],
       preferredShiftId,
@@ -1464,7 +1500,6 @@ export default function CareServiceRegistrationScreen() {
               setSelectedPackageId(null);
               setNurseries([]);
               setSelectedNurseryId(null);
-              setSelectedNurseryCareServiceId(null);
               setSelectedScheduleDays([]);
               setNote('');
               setActiveRegistrationStatus(null);
@@ -1488,12 +1523,12 @@ export default function CareServiceRegistrationScreen() {
     }
   }, [
     address,
-    navigation,
     note,
     phone,
     preferredShiftId,
     resolveCoordinatesForNurserySearch,
-    selectedNurseryCareServiceId,
+    selectedNurseryId,
+    selectedPackageId,
     selectedScheduleDays,
     serviceDate,
     serviceDateLeadHours,
@@ -1512,7 +1547,7 @@ export default function CareServiceRegistrationScreen() {
 
     if (step === 2) {
       return t('careService.stepNurseriesTitle', {
-        defaultValue: 'Step 2: Choose a nearby nursery',
+        defaultValue: 'Step 2: Choose a nearby nursery (optional)',
       });
     }
 
@@ -1709,7 +1744,6 @@ export default function CareServiceRegistrationScreen() {
                           onPress={() => {
                             setSelectedPackageId(item.id);
                             setSelectedNurseryId(null);
-                            setSelectedNurseryCareServiceId(null);
                             setNurseries([]);
                           }}
                           activeOpacity={0.9}
@@ -1775,6 +1809,26 @@ export default function CareServiceRegistrationScreen() {
                 <Text style={styles.selectedInfoValue}>{selectedPackage.name}</Text>
               </View>
             ) : null}
+
+            <Text style={styles.nurseryOptionalHint}>
+              {t('careService.nurseryOptionalHint', {
+                defaultValue:
+                  'Selecting a preferred nursery is optional. If skipped, the system will auto-select a suitable nursery.',
+              })}
+            </Text>
+
+            <TouchableOpacity
+              style={styles.stepTwoSkipButton}
+              onPress={handleSkipNurseryPreference}
+              disabled={isLoadingNurseries || isGeocodingAddress}
+            >
+              <Ionicons name="play-skip-forward-outline" size={16} color={COLORS.primary} />
+              <Text style={styles.stepTwoSkipButtonText}>
+                {t('careService.skipNurseryButton', {
+                  defaultValue: 'Skip nursery preference',
+                })}
+              </Text>
+            </TouchableOpacity>
 
             <Text style={styles.inputLabel}>
               {t('careService.addressLabel', { defaultValue: 'Service address' })}
@@ -1908,20 +1962,41 @@ export default function CareServiceRegistrationScreen() {
               </TouchableOpacity>
             </View>
 
+            {nurseryListMode === 'nearby' ? (
+              <TouchableOpacity
+                style={[
+                  styles.resetNurseriesButton,
+                  (isLoadingNurseries || isGeocodingAddress) && styles.disabledActionButton,
+                ]}
+                onPress={() => void handleLoadAllNurseries()}
+                disabled={isLoadingNurseries || isGeocodingAddress}
+              >
+                <Ionicons name="list-outline" size={16} color={COLORS.primary} />
+                <Text style={styles.resetNurseriesButtonText}>
+                  {t('careService.showAllNurseriesButton', {
+                    defaultValue: 'Show all nurseries',
+                  })}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+
             {isLoadingNurseries ? (
               <View style={styles.loaderWrap}>
                 <ActivityIndicator size="large" color={COLORS.primary} />
               </View>
             ) : nurseries.length === 0 ? (
               <Text style={styles.helperText}>
-                {t('careService.noNurseries', {
-                  defaultValue: 'No nearby nursery found for this package.',
-                })}
+                {nurseryListMode === 'nearby'
+                  ? t('careService.noNearbyNurseries', {
+                      defaultValue: 'No nearby nurseries found for your current location.',
+                    })
+                  : t('careService.noNurseries', {
+                      defaultValue: 'No nurseries found.',
+                    })}
               </Text>
             ) : (
               <View style={styles.optionList}>
                 {nurseries.map((nursery) => {
-                  const matchedService = getMatchedService(nursery);
                   const isSelected = selectedNurseryId === nursery.id;
 
                   return (
@@ -1930,10 +2005,8 @@ export default function CareServiceRegistrationScreen() {
                       style={[
                         styles.optionCard,
                         isSelected && styles.optionCardSelected,
-                        !matchedService && styles.optionCardDisabled,
                       ]}
                       onPress={() => handleSelectNursery(nursery)}
-                      disabled={!matchedService}
                       activeOpacity={0.9}
                     >
                       <View style={styles.optionHeaderRow}>
@@ -1946,31 +2019,19 @@ export default function CareServiceRegistrationScreen() {
                       </View>
                       <Text style={styles.optionDescription}>{nursery.address}</Text>
                       <Text style={styles.optionMeta}>
-                        {t('careService.nurseryDistance', {
-                          defaultValue: 'Distance: {{distance}}',
-                          distance: formatDistance(nursery.distanceKm),
-                        })}
-                      </Text>
-                      <Text style={styles.optionMeta}>
                         {t('careService.nurseryPhone', {
                           defaultValue: 'Phone: {{phone}}',
-                          phone: nursery.phone,
+                          phone: nursery.phone ?? '--',
                         })}
                       </Text>
-                      {matchedService ? (
+                      {typeof nursery.distanceKm === 'number' ? (
                         <Text style={styles.optionMeta}>
-                          {t('careService.nurseryServiceMatched', {
-                            defaultValue: 'Service ID: {{id}}',
-                            id: matchedService.id,
+                          {t('careService.nurseryDistance', {
+                            defaultValue: 'Distance: {{distance}}',
+                            distance: formatDistance(nursery.distanceKm),
                           })}
                         </Text>
-                      ) : (
-                        <Text style={styles.warningMeta}>
-                          {t('careService.noMatchedService', {
-                            defaultValue: 'This nursery does not provide the selected package.',
-                          })}
-                        </Text>
-                      )}
+                      ) : null}
                     </TouchableOpacity>
                   );
                 })}
@@ -1981,6 +2042,26 @@ export default function CareServiceRegistrationScreen() {
 
         {step === 3 ? (
           <View style={styles.sectionCard}>
+            {selectedPackage ? (
+              <View style={styles.selectedInfoWrap}>
+                <Text style={styles.selectedInfoLabel}>
+                  {t('careService.selectedPackage', {
+                    defaultValue: 'Selected package',
+                  })}
+                </Text>
+                <Text style={styles.selectedInfoValue}>{selectedPackage.name}</Text>
+                <Text style={styles.optionMeta}>
+                  {`${t('careService.packageVisitPerWeek', {
+                    defaultValue: 'Visits/week',
+                  })}: ${
+                    typeof selectedPackage.visitPerWeek === 'number'
+                      ? selectedPackage.visitPerWeek
+                      : '-'
+                  }`}
+                </Text>
+              </View>
+            ) : null}
+
             <Text style={styles.inputLabel}>
               {t('careService.serviceDateLabel', { defaultValue: 'Service date' })}
             </Text>
@@ -2221,12 +2302,10 @@ export default function CareServiceRegistrationScreen() {
                     styles.primaryActionButton,
                     step === 1 && styles.fullWidthAction,
                     step === 2 && styles.stepTwoContinueAction,
-                    ((step === 1 && !selectedPackageId) ||
-                      (step === 2 && !selectedNurseryCareServiceId)) &&
-                      styles.disabledActionButton,
+                    step === 1 && !selectedPackageId && styles.disabledActionButton,
                   ]}
                   onPress={step === 1 ? handleContinueFromPackages : handleContinueFromNurseries}
-                  disabled={step === 1 ? !selectedPackageId : !selectedNurseryCareServiceId}
+                  disabled={step === 1 ? !selectedPackageId : false}
                 >
                   <Text style={styles.primaryActionText}>
                     {t('careService.continueButton', { defaultValue: 'Continue' })}
@@ -2876,6 +2955,50 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.md,
     color: COLORS.textPrimary,
     fontWeight: '700',
+  },
+  nurseryOptionalHint: {
+    marginBottom: SPACING.sm,
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+    lineHeight: 19,
+  },
+  stepTwoSkipButton: {
+    minHeight: 40,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.secondaryLight,
+    paddingHorizontal: SPACING.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    marginBottom: SPACING.md,
+  },
+  stepTwoSkipButtonText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.primary,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  resetNurseriesButton: {
+    marginBottom: SPACING.md,
+    minHeight: 40,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.secondaryLight,
+    paddingHorizontal: SPACING.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+  },
+  resetNurseriesButtonText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.primary,
+    fontWeight: '700',
+    textAlign: 'center',
   },
   inputLabel: {
     fontSize: FONTS.sizes.sm,

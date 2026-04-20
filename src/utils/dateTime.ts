@@ -118,6 +118,101 @@ export const addDaysToIsoDateKey = (value: string, days: number): string => {
   );
 };
 
+export const getWeekStartMondayIsoDateKey = (value: string): string => {
+  const dateKey = sanitizeIsoDateKey(value);
+  if (!dateKey) {
+    return '';
+  }
+
+  const [year, month, day] = dateKey.split('-').map((item) => Number(item));
+  const utcDate = new Date(Date.UTC(year, month - 1, day));
+  const dayOfWeek = utcDate.getUTCDay();
+  const offset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  utcDate.setUTCDate(utcDate.getUTCDate() + offset);
+
+  return buildIsoDateKey(
+    utcDate.getUTCFullYear(),
+    utcDate.getUTCMonth() + 1,
+    utcDate.getUTCDate()
+  );
+};
+
+export const getWeekDayIsoKeys = (weekStartMondayDateKey: string): string[] => {
+  const startKey = sanitizeIsoDateKey(weekStartMondayDateKey);
+  if (!startKey) {
+    return [];
+  }
+
+  return Array.from({ length: 7 }, (_, index) => addDaysToIsoDateKey(startKey, index));
+};
+
+export const getMonthKeyFromIsoDateKey = (value: string): string => {
+  const dateKey = sanitizeIsoDateKey(value);
+  if (!dateKey) {
+    return '';
+  }
+
+  return dateKey.slice(0, 7);
+};
+
+export const getFirstDayOfMonthIsoDateKey = (monthKey: string): string => {
+  const normalized = monthKey.trim();
+  if (!/^\d{4}-\d{2}$/.test(normalized)) {
+    return '';
+  }
+
+  return `${normalized}-01`;
+};
+
+export const getLastDayOfMonthIsoDateKey = (monthKey: string): string => {
+  const normalized = monthKey.trim();
+  if (!/^\d{4}-\d{2}$/.test(normalized)) {
+    return '';
+  }
+
+  const [year, month] = normalized.split('-').map((item) => Number(item));
+  const utcDate = new Date(Date.UTC(year, month, 0));
+
+  return buildIsoDateKey(
+    utcDate.getUTCFullYear(),
+    utcDate.getUTCMonth() + 1,
+    utcDate.getUTCDate()
+  );
+};
+
+export const addMonthsToMonthKey = (monthKey: string, monthOffset: number): string => {
+  const normalized = monthKey.trim();
+  if (!/^\d{4}-\d{2}$/.test(normalized)) {
+    return '';
+  }
+
+  const [year, month] = normalized.split('-').map((item) => Number(item));
+  const utcDate = new Date(Date.UTC(year, month - 1, 1));
+  utcDate.setUTCDate(1);
+  utcDate.setUTCMonth(utcDate.getUTCMonth() + monthOffset);
+
+  return `${String(utcDate.getUTCFullYear()).padStart(4, '0')}-${String(
+    utcDate.getUTCMonth() + 1
+  ).padStart(2, '0')}`;
+};
+
+export const getMonthCalendarGridIsoWeeks = (monthKey: string): string[][] => {
+  const firstDay = getFirstDayOfMonthIsoDateKey(monthKey);
+  if (!firstDay) {
+    return [];
+  }
+
+  const gridStart = getWeekStartMondayIsoDateKey(firstDay);
+  if (!gridStart) {
+    return [];
+  }
+
+  return Array.from({ length: 6 }, (_, weekIndex) => {
+    const weekStart = addDaysToIsoDateKey(gridStart, weekIndex * 7);
+    return getWeekDayIsoKeys(weekStart);
+  });
+};
+
 export const getVietnamDateKey = (value: Date | string | number = new Date()): string => {
   if (typeof value === 'string') {
     const dateKey = sanitizeIsoDateKey(value);

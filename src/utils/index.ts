@@ -48,13 +48,20 @@ export function isValidPhone(phone: string): boolean {
 export { notify } from './notify';
 export { getWishlistKey, resolveWishlistTarget } from './wishlist';
 export {
+  addMonthsToMonthKey,
   addDaysToIsoDateKey,
   formatDateToIsoKey,
   formatVietnamDate,
   formatVietnamDateTime,
+  getFirstDayOfMonthIsoDateKey,
+  getLastDayOfMonthIsoDateKey,
+  getMonthCalendarGridIsoWeeks,
+  getMonthKeyFromIsoDateKey,
   getMinimumVietnamDateKeyForLeadHours,
   getVietnamDateKey,
   getVietnamDateKeyAfterHours,
+  getWeekDayIsoKeys,
+  getWeekStartMondayIsoDateKey,
   isIsoDateKey,
   isVietnamDateKeyMeetingLeadHours,
   parseIsoDateKeyToDate,
@@ -79,3 +86,14 @@ export {
   resolvePrimaryImageUri,
 } from './image';
 export { parseDeliveryNoteWithImage } from './deliveryNote';
+export {
+  canCheckInCaretakerProgress,
+  canCheckOutCaretakerProgress,
+  getCaretakerStatusPalette,
+  isLateCheckInCaretakerProgress,
+  isCaretakerAssignedStatus,
+  isCaretakerCompletedStatus,
+  isCaretakerInProgressStatus,
+  sanitizeCaretakerTaskDateKey,
+  sortCaretakerProgressesByTaskDate,
+} from './caretakerProgress';

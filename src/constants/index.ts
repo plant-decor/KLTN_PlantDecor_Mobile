@@ -224,9 +224,14 @@ export const API = {
     ADMIN_CATEGORIES: "/admin/Categories",
     ADMIN_TAGS: "/admin/Tags",
 
-    // AI Design
-    // AI_DESIGN: '/ai/design',
-    // AI_DESIGN_RESULT: (id: string) => `/ai/design/${id}`,
+    // AI Room Design
+    ROOM_DESIGN_ENUM_GROUP: "room-design",
+    ROOM_DESIGN_ALLERGY_PLANTS: "/RoomDesign/allergy-plants",
+    ROOM_DESIGN_ANALYZE_UPLOAD: "/RoomDesign/analyze-upload",
+    ROOM_DESIGN_GENERATE_IMAGES: (layoutDesignId: number) =>
+      `/RoomDesign/${layoutDesignId}/generate-images`,
+    ROOM_DESIGN_GENERATED_IMAGES: (layoutDesignId: number) =>
+      `/RoomDesign/${layoutDesignId}/generated-images`,
 
     // User
     PROFILE: "/User/user-profile",
@@ -273,10 +278,15 @@ export const API = {
     CANCEL_SERVICE_REGISTRATION: (id: number) => `/service-registrations/${id}/cancel`,
     CARETAKER_ASSIGNED_SERVICE_REGISTRATIONS: "/service-registrations/my-tasks",
     CARETAKER_ASSGINED_SERVICE_REGISTRATIONS: "/service-registrations/my-tasks",
+    
     SERVICE_PROGRESS_TODAY: "/service-progress/today",
     SERVICE_PROGRESS_MY_SCHEDULE: "/service-progress/my-schedule",
+    SERVICE_PROGRESS_DETAIL: (id: number) => `/service-progress/${id}`,
+    SERVICE_PROGRESSES_BY_REGISTRATION: (registrationId: number) =>
+      `/service-progress/by-registration/${registrationId}`,
     SERVICE_PROGRESS_CHECK_IN: (id: number) => `/service-progress/${id}/check-in`,
     SERVICE_PROGRESS_CHECK_OUT: (id: number) => `/service-progress/${id}/check-out`,
+    SERVICE_PROGRESS_INCIDENT_REPORT: (id: number) => `/service-progress/${id}/incident-report`,
 
   },
 } as const;

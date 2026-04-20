@@ -13,12 +13,19 @@ import {
   GetMyServiceRegistrationsResponse,
   GetNurseriesNearbyRequest,
   GetNurseriesNearbyResponse,
+  GetServiceProgressDetailResponse,
   GetServiceProgressMyScheduleRequest,
   GetServiceProgressMyScheduleResponse,
+  GetServiceProgressesByRegistrationResponse,
   GetServiceProgressTodayResponse,
   GetServiceRegistrationDetailResponse,
   GetShiftsResponse,
+  Nursery,
   NurseryNearby,
+  ReportServiceProgressIncidentRequest,
+  ReportServiceProgressIncidentResponse,
+  SearchNurseriesRequest,
+  SearchNurseriesResponse,
   ServiceProgress,
   ServiceRegistration,
   ServiceRegistrationShift,
@@ -142,6 +149,26 @@ export const careService = {
     }
   },
 
+  getAllNurseries: async (request?: SearchNurseriesRequest): Promise<Nursery[]> => {
+    try {
+      const response = await api.post<SearchNurseriesResponse>(
+        API.ENDPOINTS.NURSERIES,
+        request ?? {
+          pagination: {
+            pageNumber: 0,
+            pageSize: 0,
+          },
+          isActive: true,
+        }
+      );
+
+      return response.data.payload?.items ?? [];
+    } catch (error: any) {
+      console.error('getAllNurseries error:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
   getShifts: async (): Promise<ServiceRegistrationShift[]> => {
     try {
       const response = await api.get<GetShiftsResponse>(API.ENDPOINTS.SHIFTS);
@@ -246,6 +273,35 @@ export const careService = {
     }
   },
 
+  getServiceProgressDetail: async (id: number): Promise<ServiceProgress> => {
+    try {
+      const response = await api.get<GetServiceProgressDetailResponse>(
+        API.ENDPOINTS.SERVICE_PROGRESS_DETAIL(id)
+      );
+      return response.data.payload;
+    } catch (error: any) {
+      console.error('getServiceProgressDetail error:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  getServiceProgressesByRegistration: async (
+    registrationId: number
+  ): Promise<ServiceProgress[]> => {
+    try {
+      const response = await api.get<GetServiceProgressesByRegistrationResponse>(
+        API.ENDPOINTS.SERVICE_PROGRESSES_BY_REGISTRATION(registrationId)
+      );
+      return response.data.payload ?? [];
+    } catch (error: any) {
+      console.error(
+        'getServiceProgressesByRegistration error:',
+        error.response?.data || error.message
+      );
+      throw error;
+    }
+  },
+
   checkInServiceProgress: async (id: number): Promise<ServiceProgress> => {
     try {
       const response = await api.post<CheckInServiceProgressResponse>(
@@ -300,6 +356,56 @@ export const careService = {
       return response.data.payload;
     } catch (error: any) {
       console.error('checkOutServiceProgress error:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  reportServiceProgressIncident: async (
+    id: number,
+    request: ReportServiceProgressIncidentRequest
+  ): Promise<ServiceProgress> => {
+    const normalizedUri = request.incidentImage?.uri?.trim();
+    if (!normalizedUri) {
+      throw new Error('Invalid incident image uri');
+    }
+
+    const inferredFileName = normalizedUri.split('/').pop() || `incident-${Date.now()}.jpg`;
+    const fileName = request.incidentImage.fileName?.trim() || inferredFileName;
+    const mimeType = request.incidentImage.mimeType?.trim() || 'image/jpeg';
+
+    const formData = new FormData();
+    const incidentReason =
+      typeof request.IncidentReason === 'string' ? request.IncidentReason.trim() : '';
+
+    if (incidentReason.length > 0) {
+      formData.append('IncidentReason', incidentReason);
+    }
+
+    formData.append(
+      'incidentImage',
+      {
+        uri: normalizedUri,
+        name: fileName,
+        type: mimeType,
+      } as any
+    );
+
+    try {
+      const response = await api.post<ReportServiceProgressIncidentResponse>(
+        API.ENDPOINTS.SERVICE_PROGRESS_INCIDENT_REPORT(id),
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      );
+      return response.data.payload;
+    } catch (error: any) {
+      console.error(
+        'reportServiceProgressIncident error:',
+        error.response?.data || error.message
+      );
       throw error;
     }
   },

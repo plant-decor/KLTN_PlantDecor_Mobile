@@ -661,6 +661,7 @@ export interface SearchNurseriesRequest {
     pageNumber: number;
     pageSize: number;
   };
+  isActive?: boolean;
 }
 
 export interface SearchNurseriesResponse {
@@ -1414,7 +1415,8 @@ export interface GetMyServiceRegistrationsResponse {
 }
 
 export interface CreateServiceRegistrationRequest {
-  nurseryCareServiceId: number;
+  careServicePackageId: number;
+  preferredNurseryId: number | null;
   serviceDate: string;
   scheduleDaysOfWeek: number[];
   preferredShiftId: number;
@@ -1473,6 +1475,11 @@ export interface ServiceProgress {
   actualEndTime: string | null;
   description: string | null;
   evidenceImageUrl: string | null;
+  careServiceType?: number;
+  careServiceTypeName?: string;
+  hasIncidents?: boolean;
+  incidentReason?: string | null;
+  incidentImageUrl?: string | null;
   shift: ServiceRegistrationShift | null;
   caretaker: ServiceRegistrationCaretaker | null;
   serviceRegistration: ServiceProgressRegistrationSummary | null;
@@ -1491,6 +1498,20 @@ export interface GetServiceProgressMyScheduleRequest {
 }
 
 export interface GetServiceProgressMyScheduleResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: ServiceProgress[];
+}
+
+export interface GetServiceProgressDetailResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: ServiceProgress;
+}
+
+export interface GetServiceProgressesByRegistrationResponse {
   success: boolean;
   statusCode: number;
   message: string;
@@ -1516,6 +1537,24 @@ export interface CheckInServiceProgressResponse {
 }
 
 export interface CheckOutServiceProgressResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: ServiceProgress;
+}
+
+export interface IncidentReportImageFile {
+  uri: string;
+  fileName?: string;
+  mimeType?: string;
+}
+
+export interface ReportServiceProgressIncidentRequest {
+  IncidentReason?: string;
+  incidentImage: IncidentReportImageFile;
+}
+
+export interface ReportServiceProgressIncidentResponse {
   success: boolean;
   statusCode: number;
   message: string;
@@ -1562,24 +1601,108 @@ export interface GetServiceRegistrationDetailResponse {
   payload: ServiceRegistration;
 }
 
-// // ==================== AI Design ====================
-// export interface AIDesignRequest {
-//   roomImage: string;
-//   roomType: 'living_room' | 'bedroom' | 'office' | 'balcony' | 'garden';
-//   style: 'modern' | 'minimalist' | 'tropical' | 'zen' | 'classic';
-//   budget?: 'low' | 'medium' | 'high';
-//   preferences?: string;
-// }
+// ==================== AI Room Design ====================
+export interface RoomDesignImageFile {
+  uri: string;
+  fileName?: string;
+  mimeType?: string;
+}
 
-// export interface AIDesignResult {
-//   id: string;
-//   originalImage: string;
-//   designedImage: string;
-//   suggestedPlants: Plant[];
-//   description: string;
-//   estimatedCost: number;
-//   createdAt: string;
-// }
+export interface RoomDesignAllergyPlant {
+  id: number;
+  name: string;
+  scientificName?: string | null;
+  imageUrl?: string | null;
+}
+
+export interface RoomDesignAnalyzeRequest {
+  image: RoomDesignImageFile;
+  roomType: string;
+  roomStyle: string;
+  /** Omitted from multipart when undefined / null / empty */
+  fengShuiElement?: string | null;
+  minBudget?: number;
+  maxBudget?: number;
+  careLevelType?: string | null;
+  /** Omitted when undefined so the backend can treat as unset */
+  hasAllergy?: boolean | null;
+  allergyNote?: string;
+  allergicPlantIds?: number[];
+  petSafe?: boolean | null;
+  childSafe?: boolean | null;
+  preferredNurseryIds?: number[];
+}
+
+export interface RoomDesignRecommendationEntityRef {
+  id?: number | null;
+  plantId?: number | null;
+  commonPlantId?: number | null;
+  plantInstanceId?: number | null;
+  name?: string | null;
+  plantName?: string | null;
+  imageUrl?: string | null;
+  primaryImageUrl?: string | null;
+  basePrice?: number | null;
+  specificPrice?: number | null;
+  images?: unknown;
+}
+
+export interface RoomDesignRecommendation {
+  id: string;
+  name: string;
+  plantId?: number | null;
+  commonPlantId?: number | null;
+  plantInstanceId?: number | null;
+  imageUrl?: string | null;
+  price?: number | null;
+  specificPrice?: number | null;
+  nurseryId?: number | null;
+  nurseryName?: string | null;
+  plantReason?: string | null;
+  placementPosition?: string | null;
+  placementReason?: string | null;
+  /** Analyze-upload API (flat item) */
+  entityType?: string | null;
+  entityId?: number | null;
+  productId?: number | null;
+  description?: string | null;
+  fengShuiElement?: string | null;
+  matchScore?: number | null;
+  careDifficulty?: string | null;
+  isPurchasable?: boolean | null;
+  commonPlant?: RoomDesignRecommendationEntityRef | null;
+  plantInstance?: RoomDesignRecommendationEntityRef | null;
+  raw?: unknown;
+}
+
+export interface RoomDesignRoomAnalysis {
+  availableSpace?: string | null;
+  colorPalette?: string[] | null;
+  summary?: string | null;
+}
+
+export interface RoomDesignAnalyzeResult {
+  layoutDesignId: number | null;
+  roomAnalysis?: RoomDesignRoomAnalysis | null;
+  totalCount?: number | null;
+  processingTimeMs?: number | null;
+  userId?: number | null;
+  previewImageUrl?: string | null;
+  plantCollageUrl?: string | null;
+  aiResponseImageUrl?: string | null;
+  fluxPromptUsed?: string | null;
+  roomImageUrl?: string | null;
+  summary?: string | null;
+  recommendations: RoomDesignRecommendation[];
+  raw?: unknown;
+}
+
+export interface RoomDesignGeneratedImage {
+  id: string;
+  imageUrl: string;
+  prompt?: string | null;
+  source?: string | null;
+}
 
 // // ==================== Review ====================
 // export interface Review {
@@ -1624,6 +1747,14 @@ export type RootStackParamList = {
   };
   CaretakerHome: undefined;
   CaretakerTasks: undefined;
+  CaretakerTaskDetail: {
+    progressId: number;
+    serviceRegistrationId: number;
+  };
+  CaretakerRegistrationDetail: {
+    registrationId: number;
+    highlightedProgressId?: number;
+  };
   PlantDetail: { plantId: string };
   PlantInstanceDetail: {
     plantInstanceId: number;
@@ -1657,7 +1788,14 @@ export type RootStackParamList = {
   VerifyCode: { email: string; password: string };
   ForgotPassword: { email?: string } | undefined;
   OrderDetail: { orderId: number };
-  ServiceRegistrationDetail: { registrationId: number };
+  ServiceRegistrationDetail: {
+    registrationId: number;
+    highlightedProgressId?: number;
+  };
+  CustomerServiceProgressDetail: {
+    progressId: number;
+    serviceRegistrationId: number;
+  };
   CareServicePackageDetail: { packageId: number };
   Login: undefined;
   Register: undefined;

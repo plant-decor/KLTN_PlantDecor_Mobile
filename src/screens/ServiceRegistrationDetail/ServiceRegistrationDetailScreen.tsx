@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,7 +19,7 @@ import { useTranslation } from 'react-i18next';
 import { BrandedHeader } from '../../components/branding';
 import { COLORS, FONTS, RADIUS, SHADOWS, SPACING } from '../../constants';
 import { careService, orderService, paymentService } from '../../services';
-import { RootStackParamList, ServiceRegistration, ServiceRegistrationShift } from '../../types';
+import { RootStackParamList, ServiceProgress, ServiceRegistration, ServiceRegistrationShift } from '../../types';
 import {
   canContinueOrderPayment,
   formatVietnamDate,
@@ -25,6 +27,7 @@ import {
   isServiceRegistrationAwaitPaymentStatus,
   isServiceRegistrationCancellableStatus,
   notify,
+  sortCaretakerProgressesByTaskDate,
 } from '../../utils';
 
 type RouteProps = RouteProp<RootStackParamList, 'ServiceRegistrationDetail'>;
@@ -72,6 +75,40 @@ const getRegistrationStatusColors = (statusName: string) => {
   };
 };
 
+const getProgressStatusPalette = (statusName: string | null) => {
+  const normalized = (statusName || '').trim().toLowerCase();
+
+  if (normalized.includes('pending') || normalized.includes('scheduled')) {
+    return { backgroundColor: '#FFF3BF', borderColor: '#FFE066', textColor: '#A66700' };
+  }
+
+  if (normalized.includes('progress') || normalized.includes('ongoing') || normalized.includes('active')) {
+    return { backgroundColor: '#E7F5FF', borderColor: '#74C0FC', textColor: '#1864AB' };
+  }
+
+  if (normalized.includes('completed')) {
+    return { backgroundColor: '#D3F9D8', borderColor: '#69DB7C', textColor: '#2B8A3E' };
+  }
+
+  if (normalized.includes('cancel') || normalized.includes('fail')) {
+    return { backgroundColor: '#FFE3E3', borderColor: '#FF8787', textColor: '#C92A2A' };
+  }
+
+  return { backgroundColor: COLORS.gray100, borderColor: COLORS.gray300, textColor: COLORS.textSecondary };
+};
+
+const formatDateLabel = (value: string, locale: string): string => {
+  if (!value || value.trim().length === 0) {
+    return '--';
+  }
+
+  return formatVietnamDate(value, locale, { empty: '--' });
+};
+
+const formatDateTimeLabel = (value: string | null | undefined, locale: string): string => {
+  return formatVietnamDateTime(value, locale, { empty: '--', hour12: false });
+};
+
 export default function ServiceRegistrationDetailScreen() {
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<RouteProps>();
@@ -81,11 +118,13 @@ export default function ServiceRegistrationDetailScreen() {
   const registrationId = route.params.registrationId;
 
   const [registration, setRegistration] = useState<ServiceRegistration | null>(null);
+  const [progresses, setProgresses] = useState<ServiceProgress[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isCancellingRegistration, setIsCancellingRegistration] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
+  const [previewImageUri, setPreviewImageUri] = useState<string | null>(null);
 
   const formatDate = useCallback(
     (value: string) => formatVietnamDate(value, locale, { empty: value }),
@@ -106,8 +145,12 @@ export default function ServiceRegistrationDetailScreen() {
       setIsLoading(true);
       setErrorMessage(null);
 
-      const payload = await careService.getServiceRegistrationDetail(registrationId);
-      setRegistration(payload);
+      const [registrationPayload, progressesPayload] = await Promise.all([
+        careService.getServiceRegistrationDetail(registrationId),
+        careService.getServiceProgressesByRegistration(registrationId),
+      ]);
+      setRegistration(registrationPayload);
+      setProgresses(sortCaretakerProgressesByTaskDate(progressesPayload ?? []));
     } catch (error: any) {
       const apiMessage = error?.response?.data?.message;
       setErrorMessage(
@@ -374,14 +417,14 @@ export default function ServiceRegistrationDetailScreen() {
           <View style={styles.card}>
             <View style={styles.topRow}>
               <Text style={styles.codeText}>#{registration.id}</Text>
-              <View style={[styles.statusBadge, { backgroundColor: statusColors.backgroundColor }]}>
+              <View style={[styles.registrationStatusBadge, { backgroundColor: statusColors.backgroundColor }]}>
                 <Text style={[styles.statusText, { color: statusColors.textColor }]}>
                   {registration.statusName}
                 </Text>
               </View>
             </View>
 
-            <View style={styles.infoRow}>
+            <View style={styles.registrationInfoRow}>
               <Text style={styles.infoLabel}>
                 {t('careService.registrationServiceDateLabel', {
                   defaultValue: 'Service date',
@@ -389,7 +432,7 @@ export default function ServiceRegistrationDetailScreen() {
               </Text>
               <Text style={styles.infoValue}>{formatDate(registration.serviceDate)}</Text>
             </View>
-            <View style={styles.infoRow}>
+            <View style={styles.registrationInfoRow}>
               <Text style={styles.infoLabel}>
                 {t('careService.registrationCreatedAtLabel', {
                   defaultValue: 'Created at',
@@ -397,7 +440,7 @@ export default function ServiceRegistrationDetailScreen() {
               </Text>
               <Text style={styles.infoValue}>{formatDateTime(registration.createdAt)}</Text>
             </View>
-            <View style={styles.infoRow}>
+            <View style={styles.registrationInfoRow}>
               <Text style={styles.infoLabel}>
                 {t('careService.registrationApprovedAtLabel', {
                   defaultValue: 'Approved at',
@@ -405,7 +448,7 @@ export default function ServiceRegistrationDetailScreen() {
               </Text>
               <Text style={styles.infoValue}>{formatDateTime(registration.approvedAt)}</Text>
             </View>
-            <View style={styles.infoRow}>
+            <View style={styles.registrationInfoRow}>
               <Text style={styles.infoLabel}>
                 {t('careService.registrationTotalSessionsLabel', {
                   defaultValue: 'Total sessions',
@@ -418,7 +461,7 @@ export default function ServiceRegistrationDetailScreen() {
 
             <View style={styles.separator} />
 
-            <View style={styles.infoRow}>
+            <View style={styles.registrationInfoRow}>
               <Text style={styles.infoLabel}>
                 {t('careService.registrationPackageLabel', {
                   defaultValue: 'Package',
@@ -428,7 +471,7 @@ export default function ServiceRegistrationDetailScreen() {
                 {registration.nurseryCareService?.careServicePackage?.name ?? '-'}
               </Text>
             </View>
-            <View style={styles.infoRow}>
+            <View style={styles.registrationInfoRow}>
               <Text style={styles.infoLabel}>
                 {t('careService.registrationNurseryLabel', {
                   defaultValue: 'Nursery',
@@ -438,7 +481,7 @@ export default function ServiceRegistrationDetailScreen() {
                 {registration.nurseryCareService?.nurseryName ?? '-'}
               </Text>
             </View>
-            <View style={styles.infoRow}>
+            <View style={styles.registrationInfoRow}>
               <Text style={styles.infoLabel}>
                 {t('careService.registrationUnitPriceLabel', {
                   defaultValue: 'Unit price',
@@ -469,7 +512,7 @@ export default function ServiceRegistrationDetailScreen() {
 
             <View style={styles.separator} />
 
-            <View style={styles.infoRow}>
+            <View style={styles.registrationInfoRow}>
               <Text style={styles.infoLabel}>
                 {t('careService.registrationAddressLabel', {
                   defaultValue: 'Address',
@@ -477,7 +520,7 @@ export default function ServiceRegistrationDetailScreen() {
               </Text>
               <Text style={styles.infoValueRight}>{registration.address || '-'}</Text>
             </View>
-            <View style={styles.infoRow}>
+            <View style={styles.registrationInfoRow}>
               <Text style={styles.infoLabel}>
                 {t('careService.registrationPhoneLabel', {
                   defaultValue: 'Phone',
@@ -485,7 +528,7 @@ export default function ServiceRegistrationDetailScreen() {
               </Text>
               <Text style={styles.infoValue}>{registration.phone || '-'}</Text>
             </View>
-            <View style={styles.infoRow}>
+            <View style={styles.registrationInfoRow}>
               <Text style={styles.infoLabel}>
                 {t('careService.registrationScheduleLabel', {
                   defaultValue: 'Schedule days',
@@ -493,7 +536,7 @@ export default function ServiceRegistrationDetailScreen() {
               </Text>
               <Text style={styles.infoValueRight}>{scheduleDaysLabel}</Text>
             </View>
-            <View style={styles.infoRow}>
+            <View style={styles.registrationInfoRow}>
               <Text style={styles.infoLabel}>
                 {t('careService.registrationShiftLabel', {
                   defaultValue: 'Preferred shift',
@@ -505,7 +548,7 @@ export default function ServiceRegistrationDetailScreen() {
                   : '-'}
               </Text>
             </View>
-            <View style={styles.infoRow}>
+            <View style={styles.registrationInfoRow}>
               <Text style={styles.infoLabel}>
                 {t('careService.registrationNoteLabel', {
                   defaultValue: 'Note',
@@ -513,6 +556,110 @@ export default function ServiceRegistrationDetailScreen() {
               </Text>
               <Text style={styles.infoValueRight}>{registration.note || '-'}</Text>
             </View>
+
+            {(registration.currentCaretaker || registration.mainCaretaker) && (
+              <>
+                <View style={styles.sectionSeparator} />
+
+                <View style={styles.sectionContainer}>
+                  <Text style={styles.sectionTitle}>
+                    {t('careService.caretakerInformationTitle', {
+                      defaultValue: 'Caretaker information',
+                    })}
+                  </Text>
+
+                  {(registration.currentCaretaker || registration.mainCaretaker) && (
+                    <>
+                      {registration.currentCaretaker && (
+                        <>
+                          <View style={styles.registrationInfoRow}>
+                            <Text style={styles.infoLabel}>
+                              {t('careService.caretakerNameLabel', {
+                                defaultValue: 'Name',
+                              })}
+                            </Text>
+                            <Text style={styles.infoValue}>
+                              {registration.currentCaretaker.fullName || '-'}
+                            </Text>
+                          </View>
+
+                          {typeof registration.currentCaretaker.phone === 'string' &&
+                            registration.currentCaretaker.phone.trim().length > 0 && (
+                              <View style={styles.registrationInfoRow}>
+                                <Text style={styles.infoLabel}>
+                                  {t('careService.caretakerPhoneLabel', {
+                                    defaultValue: 'Phone',
+                                  })}
+                                </Text>
+                                <Text style={styles.infoValue}>
+                                  {registration.currentCaretaker.phone}
+                                </Text>
+                              </View>
+                            )}
+
+                          {typeof registration.currentCaretaker.email === 'string' &&
+                            registration.currentCaretaker.email.trim().length > 0 && (
+                              <View style={styles.registrationInfoRow}>
+                                <Text style={styles.infoLabel}>
+                                  {t('careService.caretakerEmailLabel', {
+                                    defaultValue: 'Email',
+                                  })}
+                                </Text>
+                                <Text style={[styles.infoValue, { flex: 1 }]}>
+                                  {registration.currentCaretaker.email}
+                                </Text>
+                              </View>
+                            )}
+                        </>
+                      )}
+
+                      {!registration.currentCaretaker && registration.mainCaretaker && (
+                        <>
+                          <View style={styles.registrationInfoRow}>
+                            <Text style={styles.infoLabel}>
+                              {t('careService.caretakerNameLabel', {
+                                defaultValue: 'Name',
+                              })}
+                            </Text>
+                            <Text style={styles.infoValue}>
+                              {registration.mainCaretaker.fullName || '-'}
+                            </Text>
+                          </View>
+
+                          {typeof registration.mainCaretaker.phone === 'string' &&
+                            registration.mainCaretaker.phone.trim().length > 0 && (
+                              <View style={styles.registrationInfoRow}>
+                                <Text style={styles.infoLabel}>
+                                  {t('careService.caretakerPhoneLabel', {
+                                    defaultValue: 'Phone',
+                                  })}
+                                </Text>
+                                <Text style={styles.infoValue}>
+                                  {registration.mainCaretaker.phone}
+                                </Text>
+                              </View>
+                            )}
+
+                          {typeof registration.mainCaretaker.email === 'string' &&
+                            registration.mainCaretaker.email.trim().length > 0 && (
+                              <View style={styles.registrationInfoRow}>
+                                <Text style={styles.infoLabel}>
+                                  {t('careService.caretakerEmailLabel', {
+                                    defaultValue: 'Email',
+                                  })}
+                                </Text>
+                                <Text style={[styles.infoValue, { flex: 1 }]}>
+                                  {registration.mainCaretaker.email}
+                                </Text>
+                              </View>
+                            )}
+                      </>
+                      )}
+                    </>
+                  )}
+                </View>
+              </>
+            )}
 
             {canCancelRegistration ? (
               <View style={styles.cancelReasonBlock}>
@@ -588,8 +735,166 @@ export default function ServiceRegistrationDetailScreen() {
               </View>
             ) : null}
           </View>
+
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>
+              {t('caretaker.progressListTitle', { defaultValue: 'Service progresses' })}
+            </Text>
+
+            {progresses.length === 0 ? (
+              <Text style={styles.emptyProgressText}>
+                {t('caretaker.progressListEmpty', {
+                  defaultValue: 'No progresses found for this registration.',
+                })}
+              </Text>
+            ) : (
+              progresses.map((item) => {
+                const itemStatusPalette = getProgressStatusPalette(item.statusName || '--');
+                const hasIncidentData =
+                  Boolean(item.hasIncidents) ||
+                  (typeof item.incidentReason === 'string' && item.incidentReason.trim().length > 0) ||
+                  (typeof item.incidentImageUrl === 'string' && item.incidentImageUrl.trim().length > 0);
+
+                return (
+                  <View key={item.id} style={styles.progressCard}>
+                    <View style={styles.cardTopRow}>
+                      <View
+                        style={[
+                          styles.statusBadge,
+                          {
+                            backgroundColor: itemStatusPalette.backgroundColor,
+                            borderColor: itemStatusPalette.borderColor,
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.statusBadgeText, { color: itemStatusPalette.textColor }]}>
+                          {item.statusName || '--'}
+                        </Text>
+                      </View>
+
+                      <Text style={styles.taskDateText}>{formatDateLabel(item.taskDate, locale)}</Text>
+                    </View>
+
+                    <View style={styles.infoRow}>
+                      <Ionicons name="time-outline" size={16} color={COLORS.gray600} />
+                      <Text style={styles.infoText} numberOfLines={1}>
+                        {item.shift?.shiftName || '--'} ({item.shift?.startTime || '--'} - {item.shift?.endTime || '--'})
+                      </Text>
+                    </View>
+
+                    <View style={styles.timeSummaryWrap}>
+                      <Text style={styles.timeSummaryLabel}>
+                        {t('caretaker.startTimeLabel', { defaultValue: 'Start time' })}:{' '}
+                        <Text style={styles.timeSummaryValue}>{formatDateTimeLabel(item.actualStartTime, locale)}</Text>
+                      </Text>
+                      <Text style={styles.timeSummaryLabel}>
+                        {t('caretaker.endTimeLabel', { defaultValue: 'End time' })}:{' '}
+                        <Text style={styles.timeSummaryValue}>{formatDateTimeLabel(item.actualEndTime, locale)}</Text>
+                      </Text>
+                    </View>
+
+                    {typeof item.description === 'string' && item.description.trim().length > 0 ? (
+                      <View style={styles.descriptionWrap}>
+                        <Ionicons name="document-text-outline" size={15} color={COLORS.gray600} />
+                        <Text style={styles.descriptionText}>{item.description.trim()}</Text>
+                      </View>
+                    ) : null}
+
+                    {hasIncidentData ? (
+                      <View style={styles.incidentWrap}>
+                        <Text style={styles.incidentTitle}>
+                          {t('caretaker.incidentSectionTitle', { defaultValue: 'Incident report' })}
+                        </Text>
+
+                        <Text style={styles.incidentText}>
+                          {t('caretaker.hasIncidentLabel', { defaultValue: 'Has incidents' })}:{' '}
+                          {item.hasIncidents ? t('common.yes', { defaultValue: 'Yes' }) : t('common.no', { defaultValue: 'No' })}
+                        </Text>
+
+                        {typeof item.incidentReason === 'string' && item.incidentReason.trim().length > 0 ? (
+                          <Text style={styles.incidentText}>
+                            {t('caretaker.incidentReasonLabel', { defaultValue: 'Reason' })}: {item.incidentReason.trim()}
+                          </Text>
+                        ) : null}
+
+                        {typeof item.incidentImageUrl === 'string' && item.incidentImageUrl.trim().length > 0 ? (
+                          <TouchableOpacity
+                            activeOpacity={0.9}
+                            onPress={() => setPreviewImageUri(item.incidentImageUrl?.trim() || null)}
+                          >
+                            <Image
+                              source={{ uri: item.incidentImageUrl.trim() }}
+                              style={styles.evidencePreviewImage}
+                              resizeMode="cover"
+                            />
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
+                    ) : null}
+
+                    {typeof item.evidenceImageUrl === 'string' && item.evidenceImageUrl.trim().length > 0 ? (
+                      <View style={styles.evidenceWrap}>
+                        <Text style={styles.evidenceLabel}>
+                          {t('caretaker.checkOutImageLabel', { defaultValue: 'Evidence image' })}
+                        </Text>
+                        <TouchableOpacity
+                          activeOpacity={0.9}
+                          onPress={() => setPreviewImageUri(item.evidenceImageUrl?.trim() || null)}
+                        >
+                          <Image
+                            source={{ uri: item.evidenceImageUrl.trim() }}
+                            style={styles.evidencePreviewImage}
+                            resizeMode="cover"
+                          />
+                        </TouchableOpacity>
+                      </View>
+                    ) : null}
+
+                    <TouchableOpacity
+                      style={styles.taskDetailButton}
+                      onPress={() =>
+                        navigation.navigate('CustomerServiceProgressDetail', {
+                          progressId: item.id,
+                          serviceRegistrationId: item.serviceRegistrationId,
+                        })
+                      }
+                    >
+                      <Ionicons name="document-text-outline" size={16} color={COLORS.primary} />
+                      <Text style={styles.taskDetailButtonText}>
+                        {t('caretaker.viewDetail', { defaultValue: 'View detail' })}
+                      </Text>
+                      <Ionicons name="chevron-forward" size={16} color={COLORS.primary} />
+                    </TouchableOpacity>
+                  </View>
+                );
+              })
+            )}
+          </View>
         </ScrollView>
       )}
+
+      {previewImageUri ? (
+        <Modal
+          visible={Boolean(previewImageUri)}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setPreviewImageUri(null)}
+        >
+          <View style={styles.fullImageModalOverlay}>
+            <TouchableOpacity
+              style={styles.fullImageCloseButton}
+              onPress={() => setPreviewImageUri(null)}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="close" size={24} color={COLORS.white} />
+            </TouchableOpacity>
+
+            {previewImageUri ? (
+              <Image source={{ uri: previewImageUri }} style={styles.fullImagePreview} resizeMode="contain" />
+            ) : null}
+          </View>
+        </Modal>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -663,6 +968,7 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.xl,
     padding: SPACING.lg,
     ...SHADOWS.sm,
+    marginBottom: SPACING.lg,
   },
   topRow: {
     flexDirection: 'row',
@@ -676,7 +982,7 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     fontWeight: '700',
   },
-  statusBadge: {
+  registrationStatusBadge: {
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.sm,
     paddingVertical: 4,
@@ -685,7 +991,7 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.xs,
     fontWeight: '700',
   },
-  infoRow: {
+  registrationInfoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
@@ -790,5 +1096,162 @@ const styles = StyleSheet.create({
   },
   actionButtonDisabled: {
     opacity: 0.65,
+  },
+  sectionTitle: {
+    fontSize: FONTS.sizes.lg,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    marginBottom: SPACING.md,
+  },
+  progressCard: {
+    backgroundColor: COLORS.gray50,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    marginBottom: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  cardTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.sm,
+    gap: SPACING.sm,
+  },
+  statusBadge: {
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
+    borderWidth: 1,
+  },
+  statusBadgeText: {
+    fontSize: FONTS.sizes.xs,
+    fontWeight: '700',
+  },
+  taskDateText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.sm,
+    gap: SPACING.xs,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+  },
+  timeSummaryWrap: {
+    gap: SPACING.xs,
+    marginBottom: SPACING.sm,
+    paddingHorizontal: SPACING.sm,
+  },
+  timeSummaryLabel: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+  },
+  timeSummaryValue: {
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+  },
+  descriptionWrap: {
+    flexDirection: 'row',
+    gap: SPACING.xs,
+    marginBottom: SPACING.sm,
+    paddingHorizontal: SPACING.sm,
+  },
+  descriptionText: {
+    flex: 1,
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+    fontStyle: 'italic',
+  },
+  incidentWrap: {
+    backgroundColor: '#FFF3BF',
+    borderRadius: RADIUS.md,
+    padding: SPACING.sm,
+    marginBottom: SPACING.sm,
+    borderWidth: 1,
+    borderColor: '#FFE066',
+  },
+  incidentTitle: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '700',
+    color: '#A66700',
+    marginBottom: SPACING.xs,
+  },
+  incidentText: {
+    fontSize: FONTS.sizes.xs,
+    color: '#A66700',
+    marginBottom: SPACING.xs,
+  },
+  evidenceWrap: {
+    marginBottom: SPACING.sm,
+  },
+  evidenceLabel: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+    marginBottom: SPACING.xs,
+  },
+  evidencePreviewImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.gray200,
+  },
+  taskDetailButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.secondaryLight,
+  },
+  taskDetailButtonText: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '700',
+    color: COLORS.primary,
+  },
+  emptyProgressText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    paddingVertical: SPACING.lg,
+  },
+  fullImageModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullImageCloseButton: {
+    position: 'absolute',
+    top: 40,
+    right: 20,
+    zIndex: 10,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fullImagePreview: {
+    width: '90%',
+    height: '70%',
+  },
+  sectionSeparator: {
+    height: 1,
+    backgroundColor: COLORS.border,
+    marginVertical: SPACING.md,
+  },
+  sectionContainer: {
+    gap: SPACING.sm,
   },
 });
