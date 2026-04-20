@@ -179,6 +179,8 @@ export const API = {
     // Plants
     PLANTS: "/shop/plants/search",
     PLANT_DETAIL: (id: number) => `/shop/plants/${id}`,
+    USER_PLANTS_MY: "/user-plants/my",
+    PLANT_GUIDE: (plantId: number) => `/plants/${plantId}/guide`,
 
     COMMON_PLANTS: "/shop/common-plants/search",
     COMMON_DETAIL: (id: number) => `/shop/common-plants/${id}`,

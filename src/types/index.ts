@@ -305,6 +305,57 @@ export interface Category {
   subCategories?: Category[];
 }
 
+// ==================== User Plants & Guides ====================
+export interface UserPlant {
+  id: number;
+  plantId: number;
+  plantInstanceId?: number | null;
+  plantName: string;
+  plantSpecificName?: string | null;
+  primaryImageUrl?: string | null;
+  purchaseDate?: string | null;
+  lastWateredDate?: string | null;
+  lastFertilizedDate?: string | null;
+  lastPrunedDate?: string | null;
+  location?: string | null;
+  currentTrunkDiameter?: number | null;
+  currentHeight?: number | null;
+  healthStatus?: string | null;
+  age?: number | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface UserPlantsResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: UserPlant[];
+}
+
+export interface PlantGuide {
+  id: number;
+  plantId: number;
+  plantName: string;
+  lightRequirement?: number | null;
+  lightRequirementName?: string | null;
+  watering?: string | null;
+  fertilizing?: string | null;
+  pruning?: string | null;
+  temperature?: string | null;
+  humidity?: string | null;
+  soil?: string | null;
+  careNotes?: string | null;
+  createdAt?: string | null;
+}
+
+export interface PlantGuideResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: PlantGuide;
+}
+
 // ==================== Plant Search ====================
 export interface SearchPlantsRequest {
   pagination?: {
@@ -1772,6 +1823,7 @@ export type RootStackParamList = {
   AIDesignResult: { resultId: string };
   Cart: undefined;
   Wishlist: undefined;
+  UserPlants: undefined;
   Checkout: {
     source?: CheckoutSource;
     items?: CheckoutItem[];

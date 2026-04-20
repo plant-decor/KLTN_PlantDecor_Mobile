@@ -115,6 +115,11 @@ export default function ProfileScreen() {
       onPress: () => navigation.navigate('Cart'),
     },
     {
+      icon: 'leaf-outline' as const,
+      label: t('profile.userPlant'),
+      onPress: () => navigation.navigate('UserPlants'),
+    },
+    {
       icon: 'sparkles-outline' as const,
       label: t('profile.myAIDesign'),
       onPress: () => navigation.navigate('AIDesign'),

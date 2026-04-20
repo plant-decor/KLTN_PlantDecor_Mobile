@@ -12,6 +12,10 @@ import {
   PlantInstanceDetailResponse,
   PlantComboDetailResponse,
   PlantDetailResponse,
+  UserPlant,
+  UserPlantsResponse,
+  PlantGuide,
+  PlantGuideResponse,
   SearchAdminListParams,
   SearchCommonPlantsNurseryRequest,
   SearchCommonPlantsNurseryResponse,
@@ -188,6 +192,26 @@ export const plantService = {
       return response.data.payload;
     } catch (error: any) {
       console.error('getPlantDetail error:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  getUserPlants: async (): Promise<UserPlant[] | null> => {
+    try {
+      const response = await api.get<UserPlantsResponse>(API.ENDPOINTS.USER_PLANTS_MY);
+      return response.data.payload ?? null;
+    } catch (error: any) {
+      console.error('getUserPlants error:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  getPlantGuide: async (plantId: number): Promise<PlantGuide | null> => {
+    try {
+      const response = await api.get<PlantGuideResponse>(API.ENDPOINTS.PLANT_GUIDE(plantId));
+      return response.data.payload ?? null;
+    } catch (error: any) {
+      console.error('getPlantGuide error:', error.response?.data || error.message);
       throw error;
     }
   },

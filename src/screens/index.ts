@@ -18,6 +18,7 @@ export { default as CareServicePackageDetailScreen } from './CareServicePackageD
 export { default as MaterialDetailScreen } from './MaterialDetail/MaterialDetailScreen';
 export { default as ComboDetailScreen } from './ComboDetail/ComboDetailScreen';
 export { default as WishlistScreen } from './Wishlist/WishlistScreen';
+export { default as UserPlantsScreen } from './UserPlants/UserPlantsScreen';
 export { default as EditProfileScreen } from './EditProfile/EditProfileScreen';
 export { default as OrderHistoryScreen } from './OrderHistory/OrderHistoryScreen';
 export { default as OrderDetailScreen } from './OrderDetail/OrderDetailScreen';
