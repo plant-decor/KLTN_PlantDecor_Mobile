@@ -271,6 +271,7 @@ export const API = {
     //CareService
     CARE_SERVICE_PACKAGES: "/care-service-packages",
     CARE_SERVICE_PACKAGES_DETAIL: (id: number) => `/care-service-packages/${id}`,
+    CARE_SERVICE_PACKAGE_WITH_NURSERIES: (id: number) => `/care-service-packages/${id}/with-nurseries`,
     SHIFTS: "/shifts",
     NURSERIES_NEARBY: "/nurseries/nearby",
 
@@ -290,6 +291,49 @@ export const API = {
     SERVICE_PROGRESS_CHECK_OUT: (id: number) => `/service-progress/${id}/check-out`,
     SERVICE_PROGRESS_INCIDENT_REPORT: (id: number) => `/service-progress/${id}/incident-report`,
 
+    // Support Conversations
+    SUPPORT_CONVERSATIONS: "/support-conversations",
+    SUPPORT_CONVERSATIONS_START: "/support-conversations/start",
+    SUPPORT_CONVERSATIONS_LATEST_ACTIVE: "/support-conversations/latest-active",
+    SUPPORT_CONVERSATIONS_WAITING: "/support-conversations/waiting",
+    SUPPORT_CONVERSATIONS_MY_CLAIMED: "/support-conversations/my-claimed",
+    SUPPORT_CONVERSATION_DETAIL: (id: number) => `/support-conversations/${id}`,
+    SUPPORT_CONVERSATION_MESSAGES: (id: number) => `/support-conversations/${id}/messages`,
+    SUPPORT_CONVERSATION_CLOSE: (id: number) => `/support-conversations/${id}/close`,
+    SUPPORT_CONVERSATION_CLAIM: (id: number) => `/support-conversations/${id}/claim`,
+    SUPPORT_CHAT_HUB: ENV.SUPPORT_CHAT_HUB_PATH,
+  },
+} as const;
+
+export const SUPPORT_CHAT_REALTIME = {
+  EVENTS: {
+    MESSAGE_RECEIVED: [
+      "messageReceived",
+      "ReceiveSupportMessage",
+      "ReceiveMessage",
+      "MessageReceived",
+    ],
+    CONVERSATION_UPDATED: [
+      "SupportConversationUpdated",
+      "ConversationUpdated",
+    ],
+    CONVERSATION_CLOSED: [
+      "SupportConversationClosed",
+      "ConversationClosed",
+    ],
+  },
+  METHODS: {
+    SEND_MESSAGE: [
+      "SendMessage",
+    ],
+    JOIN_CONVERSATION: [
+      "JoinConversation",
+      "JoinSupportConversation",
+    ],
+    LEAVE_CONVERSATION: [
+      "LeaveConversation",
+      "LeaveSupportConversation",
+    ],
   },
 } as const;
 

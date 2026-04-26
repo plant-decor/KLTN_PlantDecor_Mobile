@@ -500,6 +500,7 @@ export default function ShipperOrderDetailScreen() {
   const isActionLoading = processingOrderId === order.id;
   const totalUnits = order.items.reduce((sum, lineItem) => sum + Math.max(0, lineItem.quantity || 0), 0);
   const parsedDelivery = parseDeliveryNoteWithImage(order.deliveryNote);
+  const deliveryImageUrl = order.deliveryImageUrl || parsedDelivery.deliveryImageUrl;
   const isStartBlocked =
     canShowStart &&
     Boolean(activeShippingOrder) &&
@@ -581,6 +582,29 @@ export default function ShipperOrderDetailScreen() {
           <Text style={styles.metaText}>
             {t('shippingList.subTotal', { defaultValue: 'Sub total' })}: {formatCurrency(order.subTotalAmount)}
           </Text>
+
+          {typeof order.depositAmount === 'number' && order.depositAmount > 0 ? (
+            <View style={styles.paymentSummary}>
+              <View style={styles.paymentBox}>
+                <Text style={styles.paymentLabel}>
+                  {t('shipperOrderDetail.paidDepositLabel', { defaultValue: 'Paid deposit' })}
+                </Text>
+                <Text style={styles.paymentValue}>{formatCurrency(order.depositAmount)}</Text>
+              </View>
+
+              <View style={[styles.paymentBox, styles.paymentBoxRight]}>
+                <Text style={styles.paymentLabel}>
+                  {t('shipperOrderDetail.remainingLabel', { defaultValue: 'Remaining' })}
+                </Text>
+                <Text style={styles.paymentValue}>{formatCurrency(order.remainingAmount ?? Math.max(0, order.totalAmount - (order.depositAmount ?? 0)))}</Text>
+              </View>
+            </View>
+          ) : (
+            <Text style={styles.metaText}>
+              {t('shipperOrderDetail.totalAmount', { defaultValue: 'Total amount' })}: {formatCurrency(order.totalAmount)}
+            </Text>
+          )}
+
           <Text style={styles.metaText}>
             {t('shipperOrderDetail.totalUnits', {
               defaultValue: 'Total units: {{count}}',
@@ -712,7 +736,7 @@ export default function ShipperOrderDetailScreen() {
             </Text>
           </View>
 
-          {parsedDelivery.deliveryImageUrl ? (
+          {deliveryImageUrl ? (
             <View style={styles.noteDeliveryImageWrap}>
               <Text style={styles.noteDeliveryImageLabel}>
                 {t('shippingList.deliveryImageLabel', {
@@ -721,10 +745,10 @@ export default function ShipperOrderDetailScreen() {
               </Text>
               <TouchableOpacity
                 activeOpacity={0.9}
-                onPress={() => setPreviewImageUri(parsedDelivery.deliveryImageUrl)}
+                onPress={() => setPreviewImageUri(deliveryImageUrl)}
               >
                 <Image
-                  source={{ uri: parsedDelivery.deliveryImageUrl }}
+                  source={{ uri: deliveryImageUrl }}
                   style={styles.noteDeliveryImagePreview}
                   resizeMode="cover"
                 />
@@ -1214,6 +1238,31 @@ const styles = StyleSheet.create({
     height: 140,
     borderRadius: RADIUS.md,
     backgroundColor: COLORS.gray100,
+  },
+  paymentSummary: {
+    marginTop: SPACING.sm,
+    flexDirection: 'row',
+    gap: SPACING.sm,
+  },
+  paymentBox: {
+    flex: 1,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    padding: SPACING.sm,
+  },
+  paymentBoxRight: {},
+  paymentLabel: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+    fontWeight: '700',
+  },
+  paymentValue: {
+    marginTop: SPACING.xs,
+    fontSize: FONTS.sizes.md,
+    color: COLORS.textPrimary,
+    fontWeight: '800',
   },
   fullImageModalOverlay: {
     flex: 1,

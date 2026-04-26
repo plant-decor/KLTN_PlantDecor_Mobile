@@ -22,7 +22,7 @@ import { COLORS, FONTS, RADIUS, SHADOWS, SPACING } from '../../constants';
 import { BrandedHeader } from '../../components/branding';
 import { orderService } from '../../services';
 import { useAuthStore } from '../../stores';
-import { OrderLineItem, OrderNursery, RootStackParamList } from '../../types';
+import { OrderLineItem, OrderNursery, RootStackParamList, ShipperNurseryOrderDetailPayload } from '../../types';
 import {
   getOrderStatusColors,
   getOrderStatusLabel,
@@ -155,8 +155,8 @@ export default function ShippingListScreen() {
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
 
   const [activeFilter, setActiveFilter] = useState<StatusFilter>('assigned');
-  const [orders, setOrders] = useState<OrderNursery[]>([]);
-  const [activeShippingOrder, setActiveShippingOrder] = useState<OrderNursery | null>(null);
+  const [orders, setOrders] = useState<(OrderNursery | ShipperNurseryOrderDetailPayload)[]>([]);
+  const [activeShippingOrder, setActiveShippingOrder] = useState<OrderNursery | ShipperNurseryOrderDetailPayload | null>(null);
   const [totalCount, setTotalCount] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -169,7 +169,7 @@ export default function ShippingListScreen() {
 
   const [modalVisible, setModalVisible] = useState(false);
   const [actionType, setActionType] = useState<ShipperActionType | null>(null);
-  const [selectedOrder, setSelectedOrder] = useState<OrderNursery | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<OrderNursery | ShipperNurseryOrderDetailPayload | null>(null);
   const [actionNote, setActionNote] = useState('');
   const [selectedDeliveryImage, setSelectedDeliveryImage] = useState<SelectedDeliveryImage | null>(null);
   const [previewImageUri, setPreviewImageUri] = useState<string | null>(null);
@@ -394,7 +394,7 @@ export default function ShippingListScreen() {
     [activeFilter, currentPage, isLoading, isPageLoading, isRefreshing, loadOrders, totalPages]
   );
 
-  const updateOrderOnCurrentPage = useCallback((updatedOrder: OrderNursery, filter: StatusFilter) => {
+  const updateOrderOnCurrentPage = useCallback((updatedOrder: OrderNursery | ShipperNurseryOrderDetailPayload, filter: StatusFilter) => {
     const shouldKeep = isOrderInFilter(updatedOrder, filter);
 
     setOrders((previousOrders) => {
@@ -496,7 +496,7 @@ export default function ShippingListScreen() {
     handleDeliveryImageAsset(result.assets?.[0]);
   }, [handleDeliveryImageAsset, isSubmittingAction, t]);
 
-  const openActionModal = (order: OrderNursery, nextAction: ShipperActionType) => {
+  const openActionModal = (order: OrderNursery | ShipperNurseryOrderDetailPayload, nextAction: ShipperActionType) => {
     if (
       nextAction === 'start-shipping' &&
       activeShippingOrder &&
@@ -638,7 +638,7 @@ export default function ShippingListScreen() {
     }
   };
 
-  const handleContact = (order: OrderNursery) => {
+  const handleContact = (order: OrderNursery | ShipperNurseryOrderDetailPayload) => {
     notify({
       message: t('shippingList.contactInfo', {
         defaultValue: 'Contact nursery {{nurseryName}} to coordinate delivery.',
@@ -648,7 +648,7 @@ export default function ShippingListScreen() {
   };
 
   const handleViewOrderDetail = useCallback(
-    (order: OrderNursery) => {
+    (order: OrderNursery | ShipperNurseryOrderDetailPayload) => {
       navigation.navigate('ShipperOrderDetail', {
         orderId: resolveOrderDetailId(order),
         nurseryOrderId: order.id,
@@ -657,7 +657,8 @@ export default function ShippingListScreen() {
     [navigation]
   );
 
-  const renderOrderCard = ({ item }: { item: OrderNursery }) => {
+  const renderOrderCard = ({ item }: { item: OrderNursery | ShipperNurseryOrderDetailPayload }) => {
+    const shipperItem = item as ShipperNurseryOrderDetailPayload;
     const statusColors = getOrderStatusColors(item.statusName);
     const isActionLoading = processingOrderId === item.id;
     const isStartBlocked =
@@ -669,9 +670,10 @@ export default function ShippingListScreen() {
     const canShowDeliveryFailed = canMarkDeliveryFailed(item.statusName);
     const totalUnits = item.items.reduce((sum, lineItem) => sum + Math.max(0, lineItem.quantity || 0), 0);
     const parsedDelivery = parseDeliveryNoteWithImage(item.deliveryNote);
+    const deliveryImageUrl = (shipperItem.deliveryImageUrl || parsedDelivery.deliveryImageUrl) as string | null;
     const displayNote =
       parsedDelivery.note ||
-      item.shipperNote ||
+      (shipperItem.shipperNote as string | undefined) ||
       t('shippingList.noShipperNote', { defaultValue: 'No shipper note yet.' });
 
     return (
@@ -719,6 +721,33 @@ export default function ShippingListScreen() {
               subtotal: formatCurrency(item.subTotalAmount),
             })}
           </Text>
+        </View>
+
+        <View style={styles.infoRow}>
+          <Ionicons name="person-outline" size={16} color={COLORS.gray500} />
+          <Text style={styles.infoRowText} numberOfLines={1}>
+            {shipperItem.customerName || t('shippingList.noCustomer', { defaultValue: 'Customer' })}
+          </Text>
+
+          {typeof shipperItem.depositAmount === 'number' && shipperItem.depositAmount > 0 ? (
+            <View style={styles.paymentInlineWrap}>
+              <View style={styles.paymentPill}>
+                <Text style={styles.paymentPillLabel}>
+                  {t('shipperOrderList.paidDepositLabel', { defaultValue: 'Paid deposit' })}
+                </Text>
+                <Text style={styles.paymentPillValue}>{formatCurrency(shipperItem.depositAmount)}</Text>
+              </View>
+
+              <View style={styles.paymentPill}>
+                <Text style={styles.paymentPillLabel}>
+                  {t('shipperOrderList.remainingLabel', { defaultValue: 'Remaining' })}
+                </Text>
+                <Text style={styles.paymentPillValue}>{formatCurrency(shipperItem.remainingAmount ?? Math.max(0, (shipperItem.totalAmount || 0) - (shipperItem.depositAmount || 0)))}</Text>
+              </View>
+            </View>
+          ) : typeof shipperItem.remainingAmount === 'number' ? (
+            <Text style={styles.lineItemPrice}>{formatCurrency(shipperItem.remainingAmount)}</Text>
+          ) : null}
         </View>
 
         <View style={styles.divider} />
@@ -772,7 +801,7 @@ export default function ShippingListScreen() {
           </Text>
         </View>
 
-        {parsedDelivery.deliveryImageUrl ? (
+        {deliveryImageUrl ? (
           <View style={styles.noteDeliveryImageWrap}>
             <Text style={styles.noteDeliveryImageLabel}>
               {t('shippingList.deliveryImageLabel', {
@@ -781,10 +810,10 @@ export default function ShippingListScreen() {
             </Text>
             <TouchableOpacity
               activeOpacity={0.9}
-              onPress={() => setPreviewImageUri(parsedDelivery.deliveryImageUrl)}
+              onPress={() => setPreviewImageUri(deliveryImageUrl)}
             >
               <Image
-                source={{ uri: parsedDelivery.deliveryImageUrl }}
+                source={{ uri: deliveryImageUrl }}
                 style={styles.noteDeliveryImagePreview}
                 resizeMode="cover"
               />
@@ -1530,6 +1559,32 @@ const styles = StyleSheet.create({
     height: 128,
     borderRadius: RADIUS.md,
     backgroundColor: COLORS.gray100,
+  },
+  paymentInlineWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  paymentPill: {
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  paymentPillLabel: {
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.textSecondary,
+    fontWeight: '700',
+  },
+  paymentPillValue: {
+    marginTop: 2,
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textPrimary,
+    fontWeight: '800',
   },
   fullImageModalOverlay: {
     flex: 1,

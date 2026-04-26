@@ -21,7 +21,7 @@ import { COLORS, FONTS, RADIUS, SHADOWS, SPACING } from '../../constants';
 import { BrandedHeader } from '../../components/branding';
 import { orderService } from '../../services';
 import { useAuthStore } from '../../stores';
-import { OrderLineItem, OrderNursery, RootStackParamList } from '../../types';
+import { OrderLineItem, OrderNursery, RootStackParamList, ShipperNurseryOrderDetailPayload } from '../../types';
 import {
   getOrderStatusColors,
   getOrderStatusLabel,
@@ -116,15 +116,15 @@ export default function ShipperHomeScreen() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
 
-  const [shippingOrder, setShippingOrder] = useState<OrderNursery | null>(null);
-  const [assignedOrders, setAssignedOrders] = useState<OrderNursery[]>([]);
+  const [shippingOrder, setShippingOrder] = useState<OrderNursery | ShipperNurseryOrderDetailPayload | null>(null);
+  const [assignedOrders, setAssignedOrders] = useState<(OrderNursery | ShipperNurseryOrderDetailPayload)[]>([]);
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [actionType, setActionType] = useState<ShipperActionType | null>(null);
-  const [selectedOrder, setSelectedOrder] = useState<OrderNursery | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<OrderNursery | ShipperNurseryOrderDetailPayload | null>(null);
   const [actionNote, setActionNote] = useState('');
   const [selectedDeliveryImage, setSelectedDeliveryImage] = useState<SelectedDeliveryImage | null>(null);
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
@@ -257,6 +257,17 @@ export default function ShipperHomeScreen() {
         return;
       }
 
+      const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+      if (asset?.fileSize && asset.fileSize > MAX_FILE_SIZE) {
+        notify({
+          title: t('common.error', { defaultValue: 'Error' }),
+          message: t('shippingList.imageTooLarge', {
+            defaultValue: 'Image size must be less than 5MB.',
+          }),
+        });
+        return;
+      }
+
       const fallbackFileName = selectedUri.split('/').pop() || `delivery-${Date.now()}.jpg`;
       const fileName = asset?.fileName?.trim() || fallbackFileName;
       const mimeType = asset?.mimeType?.trim() || resolveImageMimeType(fileName);
@@ -316,7 +327,7 @@ export default function ShipperHomeScreen() {
 
     const result = await ImagePicker.launchCameraAsync({
       allowsEditing: false,
-      quality: 0.8,
+      quality: 0.5,
     });
 
     if (result.canceled) {
@@ -327,7 +338,7 @@ export default function ShipperHomeScreen() {
   }, [handleDeliveryImageAsset, isSubmittingAction, t]);
 
   const openActionModal = useCallback(
-    (order: OrderNursery, nextAction: ShipperActionType) => {
+    (order: OrderNursery | ShipperNurseryOrderDetailPayload, nextAction: ShipperActionType) => {
       if (nextAction === 'start-shipping' && shippingOrder && shippingOrder.id !== order.id) {
         notify({
           title: t('common.error', { defaultValue: 'Error' }),
@@ -463,7 +474,7 @@ export default function ShipperHomeScreen() {
   ]);
 
   const handleContact = useCallback(
-    (order: OrderNursery) => {
+    (order: OrderNursery | ShipperNurseryOrderDetailPayload) => {
       notify({
         message: t('shippingList.contactInfo', {
           defaultValue: 'Contact nursery {{nurseryName}} to coordinate delivery.',
@@ -475,7 +486,7 @@ export default function ShipperHomeScreen() {
   );
 
   const handleViewOrderDetail = useCallback(
-    (order: OrderNursery) => {
+    (order: OrderNursery | ShipperNurseryOrderDetailPayload) => {
       navigation.navigate('ShipperOrderDetail', {
         orderId: resolveOrderDetailId(order),
         nurseryOrderId: order.id,
@@ -485,8 +496,9 @@ export default function ShipperHomeScreen() {
   );
 
   const renderOrderCard = useCallback(
-    (order: OrderNursery, sectionType: 'shipping' | 'assigned') => {
+    (order: OrderNursery | ShipperNurseryOrderDetailPayload, sectionType: 'shipping' | 'assigned') => {
       const statusColors = getOrderStatusColors(order.statusName);
+      const shipperOrder = order as ShipperNurseryOrderDetailPayload;
       const isActionLoading = processingOrderId === order.id;
       const isStartBlocked =
         sectionType === 'assigned' && !!shippingOrder && shippingOrder.id !== order.id;
@@ -540,6 +552,24 @@ export default function ShipperHomeScreen() {
               })}
             </Text>
           </View>
+
+          {typeof shipperOrder.depositAmount === 'number' && shipperOrder.depositAmount > 0 ? (
+            <View style={styles.paymentSummarySmall}>
+              <View style={styles.paymentPill}>
+                <Text style={styles.paymentPillLabel}>
+                  {t('shipperOrderList.paidDepositLabel', { defaultValue: 'Paid deposit' })}
+                </Text>
+                <Text style={styles.paymentPillValue}>{formatCurrency(shipperOrder.depositAmount)}</Text>
+              </View>
+
+              <View style={[styles.paymentPill, styles.paymentPillRight]}>
+                <Text style={styles.paymentPillLabel}>
+                  {t('shipperOrderList.remainingLabel', { defaultValue: 'Remaining' })}
+                </Text>
+                <Text style={styles.paymentPillValue}>{formatCurrency(shipperOrder.remainingAmount ?? Math.max(0, (shipperOrder.totalAmount || 0) - (shipperOrder.depositAmount || 0)))}</Text>
+              </View>
+            </View>
+          ) : null}
 
           {previewLineItem ? (
             <View style={styles.itemPreviewRow}>
@@ -1472,6 +1502,34 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.sm,
     color: COLORS.textSecondary,
     fontWeight: '600',
+  },
+  paymentSummarySmall: {
+    marginTop: SPACING.sm,
+    flexDirection: 'row',
+    gap: SPACING.sm,
+  },
+  paymentPill: {
+    flex: 1,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  paymentPillRight: {},
+  paymentPillLabel: {
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.textSecondary,
+    fontWeight: '700',
+  },
+  paymentPillValue: {
+    marginTop: 2,
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textPrimary,
+    fontWeight: '800',
   },
   modalActions: {
     marginTop: SPACING.lg,

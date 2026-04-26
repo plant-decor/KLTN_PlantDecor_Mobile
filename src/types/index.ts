@@ -1192,6 +1192,7 @@ export interface OrderNursery {
   statusName: string;
   shipperNote: string | null;
   deliveryNote: string | null;
+  deliveryImageUrl?: string | null;
   note: string | null;
   items: OrderLineItem[];
 }
@@ -1205,6 +1206,10 @@ export interface ShipperNurseryOrderDetailPayload extends OrderNursery {
   customerEmail: string | null;
   customerPhone: string | null;
   customerAddress: string;
+  totalAmount: number;
+  depositAmount: number | null;
+  remainingAmount: number | null;
+  deliveryImageUrl: string | null;
 }
 
 export interface InvoiceDetail {
@@ -1263,7 +1268,7 @@ export interface GetOrdersResponse {
 }
 
 export interface GetNurseryOrdersPayload {
-  items: OrderNursery[];
+  items: ShipperNurseryOrderDetailPayload[];
   totalCount: number;
   pageNumber: number;
   pageSize: number;
@@ -1398,6 +1403,25 @@ export interface GetCareServicePackageDetailResponse {
   payload: CareServicePackage;
 }
 
+export interface NurseryCareServiceItem {
+  nurseryCareServiceId: number;
+  nurseryId: number;
+  nurseryName: string;
+  nurseryAddress: string;
+  nurseryPhone: string;
+}
+
+export interface CareServicePackageWithNurseries extends CareServicePackage {
+  nurseryCareServices: NurseryCareServiceItem[];
+}
+
+export interface GetCareServicePackageWithNurseriesResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: CareServicePackageWithNurseries;
+}
+
 export interface CareServicePackageSummary {
   id: number;
   name: string;
@@ -1412,6 +1436,8 @@ export interface NurseryCareService {
   id: number;
   nurseryId: number;
   nurseryName: string;
+  nurseryAddress: string;
+  nurseryPhone: string;
   careServicePackage: CareServicePackageSummary;
 }
 
@@ -1474,8 +1500,8 @@ export interface CreateServiceRegistrationRequest {
   address: string;
   phone: string;
   note?: string;
-  latitude: number;
-  longitude: number;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 export interface ServiceRegistrationShift {
@@ -1786,6 +1812,66 @@ export interface PaginatedResponse<T> {
   totalPages: number;
 }
 
+// ==================== Support Conversations ====================
+export interface SupportParticipant {
+  userId: number;
+  fullName: string | null;
+  email: string | null;
+  phoneNumber: string | null;
+  avatarUrl: string | null;
+  joinedAt: string;
+}
+
+export interface SupportMessage {
+  id: number;
+  chatSessionId: number;
+  senderId: number;
+  senderName: string | null;
+  content: string;
+  createdAt: string;
+  isFromConsultant?: boolean;
+}
+
+export interface SupportConversation {
+  id: number;
+  status: number;
+  startedAt: string;
+  endedAt: string | null;
+  participants: SupportParticipant[];
+  latestMessage?: SupportMessage | null;
+  messages?: SupportMessage[];
+  totalMessages?: number;
+  totalPages?: number;
+  pageNumber?: number;
+  pageSize?: number;
+}
+
+export interface SendMessageRequest {
+  content: string;
+}
+
+export type SupportRealtimeConnectionState =
+  | 'disconnected'
+  | 'connecting'
+  | 'connected'
+  | 'reconnecting';
+
+export interface SupportConversationRealtimeUpdate {
+  conversationId: number;
+  status?: number;
+  endedAt?: string | null;
+  latestMessage?: SupportMessage | null;
+  conversation?: SupportConversation | null;
+}
+
+export interface SupportRealtimeIncomingMessage {
+  messageId: number;
+  conversationId: number;
+  senderId: number;
+  content: string;
+  sendAt: string;
+}
+
 // ==================== Navigation ====================
 export type RootStackParamList = {
   MainTabs: NavigatorScreenParams<MainTabParamList> | undefined;
@@ -1856,6 +1942,7 @@ export type RootStackParamList = {
   CategoryPlants: { categoryId: string; categoryName: string };
   EditProfile: undefined;
   OrderHistory: undefined;
+  SupportChat: undefined;
 };
 
 export type MainTabParamList = {

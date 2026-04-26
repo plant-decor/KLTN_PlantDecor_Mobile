@@ -4,6 +4,7 @@ import {
   Alert,
   Platform,
   ScrollView,
+  RefreshControl,
   StyleSheet,
   Text,
   TextInput,
@@ -250,6 +251,7 @@ export default function CareServiceRegistrationScreen() {
   const [step, setStep] = useState<CareStep>(1);
   const [packages, setPackages] = useState<CareServicePackage[]>([]);
   const [selectedPackageId, setSelectedPackageId] = useState<number | null>(null);
+  const [selectedPackageDetail, setSelectedPackageDetail] = useState<CareServicePackage | null>(null);
   const [isLoadingPackages, setIsLoadingPackages] = useState(false);
 
   const [address, setAddress] = useState(initialAddress);
@@ -266,7 +268,6 @@ export default function CareServiceRegistrationScreen() {
   const [nurseries, setNurseries] = useState<CareRegistrationNursery[]>([]);
   const [selectedNurseryId, setSelectedNurseryId] = useState<number | null>(null);
   const [isLoadingNurseries, setIsLoadingNurseries] = useState(false);
-  const [nurseryListMode, setNurseryListMode] = useState<'all' | 'nearby'>('all');
 
   const [serviceDate, setServiceDate] = useState(() =>
     formatLocalIsoDate(getMinimumDateForLeadHours(PERIOD_MIN_LEAD_HOURS))
@@ -291,12 +292,14 @@ export default function CareServiceRegistrationScreen() {
   const [registrationHasNextPage, setRegistrationHasNextPage] = useState(false);
   const [registrationTotalCount, setRegistrationTotalCount] = useState(0);
   const [activeRegistrationStatus, setActiveRegistrationStatus] = useState<number | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const lastGeocodedAddressRef = useRef<string>(
     initialLatitude !== null && initialLongitude !== null ? initialAddress.trim() : ''
   );
   const addressSuggestionRequestIdRef = useRef(0);
   const isSelectingAddressSuggestionRef = useRef(false);
+  const addressInputRef = useRef<TextInput | null>(null);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -1201,99 +1204,111 @@ export default function CareServiceRegistrationScreen() {
     t,
   ]);
 
-  const handleLoadAllNurseries = useCallback(async () => {
-    if (!selectedPackageId) {
+  const handleUseProfileAddress = useCallback(async () => {
+    const profileAddress =
+      typeof user?.address === 'string' ? user.address : user?.address?.fullAddress ?? '';
+
+    if (!profileAddress) {
       Alert.alert(
         t('common.error', { defaultValue: 'Error' }),
-        t('careService.selectPackageRequired', {
-          defaultValue: 'Please select a care service package first.',
+        t('careService.profileAddressMissing', {
+          defaultValue: 'No profile address available in your profile.',
         })
       );
       return;
     }
 
+    setAddress(profileAddress);
+    setAddressSuggestions([]);
+    setIsAddressFocused(false);
+    lastGeocodedAddressRef.current = profileAddress.trim();
+
+    const profileLatitude = normalizeCoordinate(user?.latitude);
+    const profileLongitude = normalizeCoordinate(user?.longitude);
+
+    if (profileLatitude !== null && profileLongitude !== null) {
+      setLatitude(profileLatitude);
+      setLongitude(profileLongitude);
+      return;
+    }
+
     try {
-      setIsLoadingNurseries(true);
-
-      const allNurseries = await careService.getAllNurseries({
-        pagination: {
-          pageNumber: 0,
-          pageSize: 0,
-        },
-        isActive: true,
-      });
-
-      setNurseries(allNurseries.map(mapShopNurseryToCareRegistrationNursery));
-      setSelectedNurseryId(null);
-      setNurseryListMode('all');
-    } catch (error: any) {
-      const apiMessage = error?.response?.data?.message;
-      Alert.alert(
-        t('common.error', { defaultValue: 'Error' }),
-        typeof apiMessage === 'string' && apiMessage.trim().length > 0
-          ? apiMessage
-          : t('careService.allNurseriesLoadFailed', {
-              defaultValue: 'Unable to load nursery list. Please try again.',
-            })
-      );
+      setIsGeocodingAddress(true);
+      const resolvedCoordinates = await resolveCoordinatesFromAddress(profileAddress);
+      if (resolvedCoordinates) {
+        setLatitude(resolvedCoordinates.lat);
+        setLongitude(resolvedCoordinates.lng);
+      }
     } finally {
-      setIsLoadingNurseries(false);
+      setIsGeocodingAddress(false);
     }
-  }, [selectedPackageId, t]);
+  }, [user, resolveCoordinatesFromAddress, t]);
+  const resetRegistrationState = useCallback(() => {
+    setStep(1);
+    setSelectedPackageId(null);
+    setSelectedPackageDetail(null);
+    setNurseries([]);
+    setSelectedNurseryId(null);
 
-  const handleLoadNearbyNurseries = useCallback(async () => {
-    if (isGeocodingAddress) {
-      return;
-    }
+    setAddress(initialAddress);
+    setLatitude(initialLatitude);
+    setLongitude(initialLongitude);
+    setIsAddressFocused(false);
+    setAddressSuggestions([]);
+    setHasAddressSuggestionQueryFinished(false);
+    lastGeocodedAddressRef.current =
+      initialLatitude !== null && initialLongitude !== null ? initialAddress.trim() : '';
 
-    if (!selectedPackageId) {
-      Alert.alert(
-        t('common.error', { defaultValue: 'Error' }),
-        t('careService.selectPackageRequired', {
-          defaultValue: 'Please select a care service package first.',
-        })
-      );
-      return;
-    }
+    setServiceDate(formatLocalIsoDate(getMinimumDateForLeadHours(PERIOD_MIN_LEAD_HOURS)));
+    setSelectedScheduleDays([]);
+    setPreferredShiftId(null);
+    setShiftOptions([]);
 
+    setNote('');
+    setPhone(user?.phoneNumber ?? user?.phone ?? '');
+
+    setIsSubmitting(false);
+    setIsResolvingLocation(false);
+    setIsGeocodingAddress(false);
+    setIsLoadingNurseries(false);
+  }, [initialAddress, initialLatitude, initialLongitude, user]);
+
+  const handleRefresh = useCallback(async () => {
+    // reset registration UI/form state
+    resetRegistrationState();
+
+    setIsRefreshing(true);
     try {
-      setIsLoadingNurseries(true);
-
-      const coordinates = await resolveCoordinatesForNurserySearch();
-      if (!coordinates) {
-        Alert.alert(
-          t('common.error', { defaultValue: 'Error' }),
-          t('careService.locationUnavailable', {
-            defaultValue:
-              'Unable to determine your current location. Please move to an open area and try again.',
-          })
-        );
-        return;
+      if (isAuthenticated) {
+        try {
+          const pkgs = await careService.getCareServicePackages();
+          setPackages(pkgs);
+        } catch (e) {
+          // ignore package load errors on refresh
+        }
       }
 
-      const nearbyNurseries = await careService.getNurseriesNearby({
-        lat: coordinates.lat,
-        lng: coordinates.lng,
-        radiusKm: DEFAULT_RADIUS_KM,
-      });
+      // reload service flow (shifts, enums)
+      try {
+        await loadServiceFlow();
+      } catch (e) {
+        // ignore
+      }
 
-      setNurseries(nearbyNurseries.map(mapNearbyNurseryToCareRegistrationNursery));
-      setSelectedNurseryId(null);
-      setNurseryListMode('nearby');
-    } catch (error: any) {
-      const apiMessage = error?.response?.data?.message;
-      Alert.alert(
-        t('common.error', { defaultValue: 'Error' }),
-        typeof apiMessage === 'string' && apiMessage.trim().length > 0
-          ? apiMessage
-          : t('careService.nurseriesLoadFailed', {
-              defaultValue: 'Unable to load nearby nurseries. Please try again.',
-            })
-      );
+      // if on registrations tab, reload registrations
+      if (activeTab === 'registrations') {
+        try {
+          await loadMyRegistrations(registrationPageNumber, activeRegistrationStatus);
+        } catch (e) {
+          // ignore
+        }
+      }
     } finally {
-      setIsLoadingNurseries(false);
+      setIsRefreshing(false);
     }
-  }, [isGeocodingAddress, resolveCoordinatesForNurserySearch, selectedPackageId, t]);
+  }, [isAuthenticated, loadServiceFlow, loadMyRegistrations, activeTab, registrationPageNumber, activeRegistrationStatus, resetRegistrationState]);
+
+  
 
   const handleSelectNursery = useCallback((nursery: CareRegistrationNursery) => {
     setSelectedNurseryId(nursery.id);
@@ -1354,7 +1369,7 @@ export default function CareServiceRegistrationScreen() {
     }
   }, [isShowingServiceDatePicker, step]);
 
-  const handleContinueFromPackages = useCallback(() => {
+  const handleContinueFromPackages = useCallback(async () => {
     if (!selectedPackageId) {
       Alert.alert(
         t('common.error', { defaultValue: 'Error' }),
@@ -1365,18 +1380,137 @@ export default function CareServiceRegistrationScreen() {
       return;
     }
 
-    setStep(2);
-    void handleLoadAllNurseries();
-  }, [handleLoadAllNurseries, selectedPackageId, t]);
+    try {
+      setIsLoadingNurseries(true);
+
+      const pkgWithNurseries = await careService.getCareServicePackageWithNurseries(
+        selectedPackageId
+      );
+
+      if (pkgWithNurseries) {
+        setSelectedPackageDetail(pkgWithNurseries);
+      }
+
+      if (Array.isArray(pkgWithNurseries?.nurseryCareServices)) {
+        setNurseries(
+          pkgWithNurseries.nurseryCareServices.map((item) => ({
+            id: item.nurseryId,
+            name: item.nurseryName,
+            address:
+              typeof (item as any).nurseryAddress === 'string' && (item as any).nurseryAddress.trim().length > 0
+                ? (item as any).nurseryAddress
+                : '',
+            phone:
+              typeof (item as any).nurseryPhone === 'string' && (item as any).nurseryPhone.trim().length > 0
+                ? (item as any).nurseryPhone
+                : null,
+            distanceKm: null,
+          }))
+        );
+      } else {
+        setNurseries([]);
+      }
+
+      setSelectedNurseryId(null);
+
+      // Prefill address and coordinates from user profile if the address field is empty
+      try {
+        const profileAddress =
+          typeof user?.address === 'string'
+            ? user.address
+            : user?.address?.fullAddress ?? '';
+
+        const profileLat = normalizeCoordinate(user?.latitude);
+        const profileLng = normalizeCoordinate(user?.longitude);
+
+        if ((!address || address.trim().length === 0) && profileAddress) {
+          setAddress(profileAddress);
+
+          if (profileLat !== null && profileLng !== null) {
+            setLatitude(profileLat);
+            setLongitude(profileLng);
+            lastGeocodedAddressRef.current = profileAddress.trim();
+          } else {
+            // Try geocoding the profile address if coords are not present
+            try {
+              setIsGeocodingAddress(true);
+              const resolved = await resolveCoordinatesFromAddress(profileAddress);
+              if (resolved) {
+                setLatitude(resolved.lat);
+                setLongitude(resolved.lng);
+                lastGeocodedAddressRef.current = profileAddress.trim();
+              }
+            } finally {
+              setIsGeocodingAddress(false);
+            }
+          }
+        }
+      } catch {
+        // ignore profile prefill errors, user can still edit manually
+      }
+
+      setStep(2);
+    } catch (error: any) {
+      const apiMessage = error?.response?.data?.message;
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        typeof apiMessage === 'string' && apiMessage.trim().length > 0
+          ? apiMessage
+          : t('careService.nurseriesLoadFailed', {
+              defaultValue: 'Unable to load nearby nurseries. Please try again.',
+            })
+      );
+    } finally {
+      setIsLoadingNurseries(false);
+    }
+  }, [selectedPackageId, t]);
 
   const handleContinueFromNurseries = useCallback(() => {
+    const trimmedAddress = address.trim();
+    if (!trimmedAddress) {
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        t('careService.addressRequired', {
+          defaultValue: 'Please enter the service address.',
+        }),
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              addressInputRef.current?.focus();
+            },
+          },
+        ]
+      );
+      return;
+    }
+
     setStep(3);
-  }, []);
+  }, [address, t]);
 
   const handleSkipNurseryPreference = useCallback(() => {
+    const trimmedAddress = address.trim();
+    if (!trimmedAddress) {
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        t('careService.addressRequired', {
+          defaultValue: 'Please enter the service address.',
+        }),
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              addressInputRef.current?.focus();
+            },
+          },
+        ]
+      );
+      return;
+    }
+
     setSelectedNurseryId(null);
     setStep(3);
-  }, []);
+  }, [address, t]);
 
   const handleSubmitRegistration = useCallback(async () => {
     if (!selectedPackageId) {
@@ -1394,11 +1528,21 @@ export default function CareServiceRegistrationScreen() {
     const trimmedPhone = phone.trim();
     const trimmedNote = note.trim();
 
-    if (!trimmedAddress || !trimmedPhone) {
+    if (!trimmedAddress) {
       Alert.alert(
         t('common.error', { defaultValue: 'Error' }),
-        t('careService.requiredFields', {
-          defaultValue: 'Please complete all required fields.',
+        t('careService.addressRequired', {
+          defaultValue: 'Please enter the service address.',
+        })
+      );
+      return;
+    }
+
+    if (!trimmedPhone) {
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        t('careService.phoneRequired', {
+          defaultValue: 'Please enter your phone number.',
         })
       );
       return;
@@ -1716,6 +1860,14 @@ export default function CareServiceRegistrationScreen() {
               ]}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
+              refreshControl={
+                <RefreshControl
+                  refreshing={isRefreshing}
+                  onRefresh={handleRefresh}
+                  colors={[COLORS.primary]}
+                  tintColor={COLORS.primary}
+                />
+              }
             >
 
             {step === 1 ? (
@@ -1817,24 +1969,14 @@ export default function CareServiceRegistrationScreen() {
               })}
             </Text>
 
-            <TouchableOpacity
-              style={styles.stepTwoSkipButton}
-              onPress={handleSkipNurseryPreference}
-              disabled={isLoadingNurseries || isGeocodingAddress}
-            >
-              <Ionicons name="play-skip-forward-outline" size={16} color={COLORS.primary} />
-              <Text style={styles.stepTwoSkipButtonText}>
-                {t('careService.skipNurseryButton', {
-                  defaultValue: 'Skip nursery preference',
-                })}
-              </Text>
-            </TouchableOpacity>
+            
 
             <Text style={styles.inputLabel}>
               {t('careService.addressLabel', { defaultValue: 'Service address' })}
             </Text>
             <TextInput
               style={[styles.input, styles.addressInput]}
+              ref={addressInputRef}
               value={address}
               onChangeText={handleChangeAddress}
               onFocus={() => setIsAddressFocused(true)}
@@ -1946,39 +2088,35 @@ export default function CareServiceRegistrationScreen() {
                   styles.secondaryActionButton,
                   (isLoadingNurseries || isGeocodingAddress) && styles.disabledActionButton,
                 ]}
-                onPress={() => void handleLoadNearbyNurseries()}
+                onPress={() => void handleUseProfileAddress()}
                 disabled={isLoadingNurseries || isGeocodingAddress}
               >
-                {isLoadingNurseries ? (
+                {isGeocodingAddress ? (
                   <ActivityIndicator size="small" color={COLORS.primary} />
                 ) : (
-                  <Ionicons name="search-outline" size={16} color={COLORS.primary} />
+                  <Ionicons name="person-outline" size={16} color={COLORS.primary} />
                 )}
                 <Text style={styles.secondaryActionText}>
-                  {t('careService.findNurseries', {
-                    defaultValue: 'Find nearby nurseries',
+                  {t('careService.useProfileAddress', {
+                    defaultValue: 'Use profile address',
                   })}
                 </Text>
               </TouchableOpacity>
             </View>
+            
 
-            {nurseryListMode === 'nearby' ? (
-              <TouchableOpacity
-                style={[
-                  styles.resetNurseriesButton,
-                  (isLoadingNurseries || isGeocodingAddress) && styles.disabledActionButton,
-                ]}
-                onPress={() => void handleLoadAllNurseries()}
-                disabled={isLoadingNurseries || isGeocodingAddress}
-              >
-                <Ionicons name="list-outline" size={16} color={COLORS.primary} />
-                <Text style={styles.resetNurseriesButtonText}>
-                  {t('careService.showAllNurseriesButton', {
-                    defaultValue: 'Show all nurseries',
-                  })}
-                </Text>
-              </TouchableOpacity>
-            ) : null}
+            <TouchableOpacity
+              style={styles.stepTwoSkipButton}
+              onPress={handleSkipNurseryPreference}
+              disabled={isLoadingNurseries || isGeocodingAddress}
+            >
+              <Ionicons name="play-skip-forward-outline" size={16} color={COLORS.primary} />
+              <Text style={styles.stepTwoSkipButtonText}>
+                {t('careService.skipNurseryButton', {
+                  defaultValue: 'Skip nursery preference',
+                })}
+              </Text>
+            </TouchableOpacity>
 
             {isLoadingNurseries ? (
               <View style={styles.loaderWrap}>
@@ -1986,13 +2124,9 @@ export default function CareServiceRegistrationScreen() {
               </View>
             ) : nurseries.length === 0 ? (
               <Text style={styles.helperText}>
-                {nurseryListMode === 'nearby'
-                  ? t('careService.noNearbyNurseries', {
-                      defaultValue: 'No nearby nurseries found for your current location.',
-                    })
-                  : t('careService.noNurseries', {
-                      defaultValue: 'No nurseries found.',
-                    })}
+                {t('careService.noNurseriesForPackage', {
+                  defaultValue: 'No nurseries found for the selected package.',
+                })}
               </Text>
             ) : (
               <View style={styles.optionList}>
@@ -2320,6 +2454,14 @@ export default function CareServiceRegistrationScreen() {
           style={styles.scrollView}
           contentContainerStyle={styles.contentContainer}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={handleRefresh}
+              colors={[COLORS.primary]}
+              tintColor={COLORS.primary}
+            />
+          }
         >
           <View style={styles.sectionCard}>
             <View style={styles.registrationsHeaderRow}>

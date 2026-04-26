@@ -16,6 +16,8 @@ const ENV = {
     process.env.EXPO_PUBLIC_DEV_API_URL ?? defaultDevApiUrl,
   PROD_API_URL:
     process.env.EXPO_PUBLIC_PROD_API_URL ?? 'https://api.plantdecor.vn/api',
+  SUPPORT_CHAT_HUB_PATH:
+    process.env.EXPO_PUBLIC_SUPPORT_CHAT_HUB_PATH ?? '/hubs/chat',
   GOOGLE_WEB_CLIENT_ID:
     process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? '',
   API_TIMEOUT: parseTimeout(process.env.EXPO_PUBLIC_API_TIMEOUT, 15000),

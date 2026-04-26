@@ -7,6 +7,8 @@ import {
   CreateServiceRegistrationRequest,
   CreateServiceRegistrationResponse,
   GetCareServicePackageDetailResponse,
+  GetCareServicePackageWithNurseriesResponse,
+  CareServicePackageWithNurseries,
   GetCareServicePackagesResponse,
   GetMyServiceRegistrationsPayload,
   GetMyServiceRegistrationsRequest,
@@ -126,6 +128,24 @@ export const careService = {
     } catch (error: any) {
       console.error(
         'getCareServicePackageDetail error:',
+        error.response?.data || error.message
+      );
+      throw error;
+    }
+  },
+
+  getCareServicePackageWithNurseries: async (
+    id: number
+  ): Promise<CareServicePackageWithNurseries> => {
+    try {
+      const response = await api.get<GetCareServicePackageWithNurseriesResponse>(
+        API.ENDPOINTS.CARE_SERVICE_PACKAGE_WITH_NURSERIES(id)
+      );
+
+      return response.data.payload;
+    } catch (error: any) {
+      console.error(
+        'getCareServicePackageWithNurseries error:',
         error.response?.data || error.message
       );
       throw error;

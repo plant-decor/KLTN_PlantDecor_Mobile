@@ -130,6 +130,11 @@ export default function ProfileScreen() {
       onPress: () => navigation.navigate('Wishlist'),
     },
     {
+      icon: 'chatbubble-ellipses-outline' as const,
+      label: t('profile.supportChat', { defaultValue: 'Support Chat' }),
+      onPress: () => navigation.navigate('SupportChat'),
+    },
+    {
       icon: 'settings-outline' as const,
       label: t('profile.settings'),
       onPress: () => {},

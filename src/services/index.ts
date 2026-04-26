@@ -9,3 +9,5 @@ export { paymentService } from './paymentService';
 export { careService } from './careService';
 export { googleSignInService } from './googleSignInService';
 export { roomDesignService } from './roomDesignService';
+export { supportService } from './supportService';
+export { supportRealtimeService } from './supportRealtimeService';
