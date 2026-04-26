@@ -7,6 +7,7 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { RootNavigator } from './src/navigation';
 import { useAuthStore } from './src/stores';
 import { COLORS } from './src/constants';
+import { Notify } from './src/components/Notify';
 import './src/i18n';
 
 export default function App() {
@@ -29,6 +30,7 @@ export default function App() {
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={COLORS.primary} />
           </View>
+          <Notify />
           <StatusBar style="auto" />
         </SafeAreaProvider>
       </GestureHandlerRootView>
@@ -42,6 +44,7 @@ export default function App() {
           <RootNavigator />
           <StatusBar style="auto" />
         </NavigationContainer>
+        <Notify />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

@@ -34,6 +34,7 @@ export default function UserPlantsScreen() {
 
   const [refreshing, setRefreshing] = useState(false);
   const [guideVisible, setGuideVisible] = useState(false);
+  const [guideImageUri, setGuideImageUri] = useState<string | null>(null);
 
   useEffect(() => {
     void fetchUserPlants();
@@ -49,9 +50,15 @@ export default function UserPlantsScreen() {
   }, [fetchUserPlants]);
 
   const openGuide = useCallback(async (plant: UserPlant) => {
+    setGuideImageUri(plant.primaryImageUrl ?? null);
     setGuideVisible(true);
     await fetchPlantGuide(plant.plantId);
   }, [fetchPlantGuide]);
+
+  const closeGuide = useCallback(() => {
+    setGuideVisible(false);
+    setGuideImageUri(null);
+  }, []);
 
   const getHealthColor = (status: string | undefined) => {
     if (!status) return COLORS.textSecondary;
@@ -191,7 +198,7 @@ export default function UserPlantsScreen() {
         visible={guideVisible} 
         animationType="slide" 
         presentationStyle="pageSheet"
-        onRequestClose={() => setGuideVisible(false)}
+        onRequestClose={closeGuide}
       >
         <View style={styles.modalHeader}>
           <Text style={styles.modalTitle}>
@@ -199,7 +206,7 @@ export default function UserPlantsScreen() {
           </Text>
           <TouchableOpacity 
             style={styles.closeButton} 
-            onPress={() => setGuideVisible(false)}
+            onPress={closeGuide}
             hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
           >
             <Ionicons name="close-circle" size={28} color={COLORS.gray400} />
@@ -219,9 +226,13 @@ export default function UserPlantsScreen() {
             showsVerticalScrollIndicator={false}
           >
             <View style={styles.guideHeroSection}>
-              <View style={styles.guideHeroIcon}>
-                <Ionicons name="book-outline" size={32} color={COLORS.primary} />
-              </View>
+              {guideImageUri ? (
+                <Image source={{ uri: guideImageUri }} style={styles.guideHeroImage} resizeMode="cover" />
+              ) : (
+                <View style={styles.guideHeroIcon}>
+                  <Ionicons name="book-outline" size={32} color={COLORS.primary} />
+                </View>
+              )}
               <Text style={styles.guideHeroTitle}>{selectedGuide.plantName}</Text>
               <Text style={styles.guideHeroSubtitle}>
                 {t('userPlants.guideSubtitle', { defaultValue: 'Essential care instructions for your plant to thrive.' })}
@@ -257,7 +268,7 @@ export default function UserPlantsScreen() {
             </Text>
             <TouchableOpacity 
               style={styles.retryButton}
-              onPress={() => setGuideVisible(false)}
+              onPress={closeGuide}
             >
               <Text style={styles.retryButtonText}>{t('common.goBack', { defaultValue: 'Go Back' })}</Text>
             </TouchableOpacity>
@@ -456,6 +467,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: SPACING.md,
+  },
+  guideHeroImage: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    marginBottom: SPACING.md,
+    backgroundColor: COLORS.gray100,
   },
   guideHeroTitle: { 
     fontSize: FONTS.sizes['2xl'], 

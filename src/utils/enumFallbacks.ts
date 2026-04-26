@@ -126,6 +126,25 @@ const FALLBACK_GROUPS: Record<string, SystemEnumValue[]> = {
     { value: 7, name: 'Corridor' },
     { value: 8, name: 'DiningRoom' },
   ],
+  ReturnTicketStatus: [
+    { value: 0, name: 'Pending' },
+    { value: 1, name: 'InReview' },
+    { value: 2, name: 'PartiallyApproved' },
+    { value: 3, name: 'Approved' },
+    { value: 4, name: 'Rejected' },
+    { value: 5, name: 'Refunded' },
+  ],
+  ReturnTicketItemStatus: [
+    { value: 0, name: 'Pending' },
+    { value: 1, name: 'Approved' },
+    { value: 2, name: 'Rejected' },
+    { value: 3, name: 'Refunded' },
+  ],
+  ReturnTicketAssignmentStatus: [
+    { value: 0, name: 'Pending' },
+    { value: 1, name: 'InReview' },
+    { value: 2, name: 'Completed' },
+  ],
 };
 
 const GROUP_ALIASES: Record<string, string[]> = {
@@ -158,6 +177,17 @@ const GROUP_ALIASES: Record<string, string[]> = {
     'wishlistType',
     'wishlistItem',
   ],
+  ReturnTicketStatus: ['ReturnTicketStatus', 'returnTicketStatus', 'returnTicket'],
+  ReturnTicketItemStatus: [
+    'ReturnTicketItemStatus',
+    'returnTicketItemStatus',
+    'returnTicketItem',
+  ],
+  ReturnTicketAssignmentStatus: [
+    'ReturnTicketAssignmentStatus',
+    'returnTicketAssignmentStatus',
+    'returnTicketAssignment',
+  ],
 };
 
 const RESOURCE_GROUPS: Record<string, string[]> = {
@@ -187,6 +217,9 @@ const RESOURCE_GROUPS: Record<string, string[]> = {
   lightrequirement: ['LightRequirement'],
   roomtype: ['RoomType'],
   combodetail: ['LightRequirement', 'RoomType'],
+  returntickets: ['ReturnTicketStatus'],
+  returnticketitems: ['ReturnTicketItemStatus'],
+  returnticketassignments: ['ReturnTicketAssignmentStatus'],
 };
 
 const normalizedAliasMap = Object.entries(GROUP_ALIASES).reduce<Record<string, string>>(

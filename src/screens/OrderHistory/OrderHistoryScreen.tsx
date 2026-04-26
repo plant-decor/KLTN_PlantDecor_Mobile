@@ -17,9 +17,9 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { COLORS, FONTS, RADIUS, SHADOWS, SPACING } from '../../constants';
 import { BrandedHeader } from '../../components/branding';
-import { orderService, paymentService } from '../../services';
+import { orderService, paymentService, returnTicketService } from '../../services';
 import { useAuthStore, useEnumStore } from '../../stores';
-import { OrderPayload, RootStackParamList } from '../../types';
+import { OrderPayload, ReturnTicket, RootStackParamList } from '../../types';
 import {
   canContinueOrderPayment,
   formatVietnamDateTime,
@@ -32,6 +32,12 @@ import {
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'OrderHistory'>;
 type StatusFilter = 'all' | string;
+
+const normalizeStatusToken = (status: string): string =>
+  status.replace(/[^a-z0-9]/gi, '').toLowerCase();
+
+const isPendingConfirmationStatus = (status: string): boolean =>
+  normalizeStatusToken(status) === 'pendingconfirmation';
 
 export default function OrderHistoryScreen() {
   const { t, i18n } = useTranslation();
@@ -50,6 +56,7 @@ export default function OrderHistoryScreen() {
   const [processingCancelOrderId, setProcessingCancelOrderId] = useState<number | null>(null);
   const [processingInvoiceKey, setProcessingInvoiceKey] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [returnTicketByOrderId, setReturnTicketByOrderId] = useState<Record<number, ReturnTicket>>({});
 
   useFocusEffect(
     useCallback(() => {
@@ -124,6 +131,16 @@ export default function OrderHistoryScreen() {
     [enumStatusLabelMap, t]
   );
 
+  const getReturnTicketStatusLabel = useCallback(
+    (status: string) => {
+      const normalized = normalizeStatusToken(status);
+      return t(`returnTicket.status.${normalized}`, {
+        defaultValue: status,
+      });
+    },
+    [t]
+  );
+
   const formatCurrency = useCallback(
     (value: number) => `${(value || 0).toLocaleString(locale)}đ`,
     [locale]
@@ -147,13 +164,24 @@ export default function OrderHistoryScreen() {
         const fetchedOrders = await orderService.getMyOrders(
           filter === 'all' ? undefined : filter
         );
+        const fetchedReturnTickets = await returnTicketService
+          .getMyReturnTickets()
+          .catch(() => []);
 
         const sortedOrders = [...fetchedOrders].sort(
           (left, right) =>
             toVietnamTimestamp(right.createdAt) - toVietnamTimestamp(left.createdAt)
         );
+        const ticketMap = fetchedReturnTickets.reduce<Record<number, ReturnTicket>>(
+          (accumulator, ticket) => {
+            accumulator[ticket.orderId] = ticket;
+            return accumulator;
+          },
+          {}
+        );
 
         setOrders(sortedOrders);
+        setReturnTicketByOrderId(ticketMap);
       } catch (error: any) {
         const apiMessage = error?.response?.data?.message;
         setErrorMessage(
@@ -340,6 +368,9 @@ export default function OrderHistoryScreen() {
 
   const renderOrderItem = ({ item }: { item: OrderPayload }) => {
     const statusColors = getOrderStatusColors(item.statusName);
+    const existingReturnTicket = returnTicketByOrderId[item.id];
+    const canRequestReturn =
+      isPendingConfirmationStatus(item.statusName) && !existingReturnTicket;
     const firstInvoice = item.invoices?.[0];
     const firstContinuableInvoice = item.invoices.find((invoice) =>
       canContinueOrderPayment(item.statusName, invoice.statusName)
@@ -466,6 +497,46 @@ export default function OrderHistoryScreen() {
                   </Text>
                 )}
               </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : null}
+
+        {isPendingConfirmationStatus(item.statusName) ? (
+          <View style={styles.actionRow}>
+            <TouchableOpacity
+              style={[
+                canRequestReturn ? styles.continueButton : styles.returnStatusButton,
+                hasRunningAction && canRequestReturn && styles.actionButtonDisabled,
+              ]}
+              onPress={(event) => {
+                event.stopPropagation();
+                navigation.navigate('OrderDetail', { orderId: item.id });
+              }}
+              disabled={hasRunningAction && canRequestReturn}
+            >
+              <Text
+                style={
+                  canRequestReturn
+                    ? styles.continueButtonText
+                    : styles.returnStatusButtonText
+                }
+              >
+                {canRequestReturn
+                  ? t('orderHistory.requestReturn', {
+                      defaultValue: 'Request return',
+                    })
+                  : t('orderHistory.returnRequested', {
+                      defaultValue: 'Return requested',
+                    })}
+              </Text>
+            </TouchableOpacity>
+
+            {existingReturnTicket ? (
+              <View style={styles.returnStatusPill}>
+                <Text style={styles.returnStatusPillText}>
+                  {getReturnTicketStatusLabel(existingReturnTicket.statusName)}
+                </Text>
+              </View>
             ) : null}
           </View>
         ) : null}
@@ -799,6 +870,32 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.sm,
     fontWeight: '700',
     color: COLORS.white,
+  },
+  returnStatusButton: {
+    minWidth: 148,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.gray100,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+  },
+  returnStatusButtonText: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  returnStatusPill: {
+    alignSelf: 'center',
+    borderRadius: RADIUS.full,
+    backgroundColor: '#E8F7EF',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 6,
+  },
+  returnStatusPillText: {
+    fontSize: FONTS.sizes.xs,
+    fontWeight: '700',
+    color: COLORS.primary,
   },
   actionButtonDisabled: {
     opacity: 0.65,

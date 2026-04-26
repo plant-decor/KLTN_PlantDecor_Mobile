@@ -1169,6 +1169,7 @@ export interface CreateOrderRequest {
 
 export interface OrderLineItem {
   id: number;
+  nurseryOrderDetailId?: number | null;
   itemName: string;
   quantity: number;
   price: number;
@@ -1364,6 +1365,88 @@ export interface ContinuePaymentResponse {
   statusCode: number;
   message: string;
   payload: CreatePaymentPayload;
+}
+
+// ==================== Return Tickets ====================
+export interface CreateReturnTicketItemRequest {
+  nurseryOrderDetailId: number;
+  requestedQuantity: number;
+  reason: string;
+}
+
+export interface CreateReturnTicketRequest {
+  orderId: number;
+  reason: string;
+  items: CreateReturnTicketItemRequest[];
+}
+
+export interface ReturnTicketImageFile {
+  uri: string;
+  fileName?: string;
+  mimeType?: string;
+}
+
+export interface ReturnTicketItem {
+  id: number;
+  nurseryOrderDetailId: number;
+  itemName: string;
+  productImageUrl: string | null;
+  requestedQuantity: number;
+  approvedQuantity: number | null;
+  reason: string;
+  managerDecisionNote: string | null;
+  refundedAmount: number | null;
+  refundReference: string | null;
+  refundedAt: string | null;
+  status: number;
+  statusName: string;
+  nurseryOrderId: number;
+  nurseryId: number;
+  imageUrls: string[];
+}
+
+export interface ReturnTicketAssignment {
+  id: number;
+  nurseryId: number;
+  managerId: number | null;
+  managerName: string | null;
+  status: number;
+  statusName: string;
+  assignedAt: string;
+}
+
+export interface ReturnTicket {
+  id: number;
+  orderId: number;
+  customerId: number;
+  reason: string;
+  status: number;
+  statusName: string;
+  totalRefundedAmount: number;
+  createdAt: string;
+  items: ReturnTicketItem[];
+  assignments: ReturnTicketAssignment[];
+}
+
+export interface ReturnTicketResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: ReturnTicket;
+}
+
+export interface GetMyReturnTicketsResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: ReturnTicket[];
+}
+
+export interface UploadReturnTicketItemImagesResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: ReturnTicketItem;
 }
 
 // ==================== Care Service ====================
@@ -1812,6 +1895,146 @@ export interface PaginatedResponse<T> {
   totalPages: number;
 }
 
+// ==================== AI Chat ====================
+export type AIChatSessionStatus = number | string;
+export type AIChatMessageRole = 'user' | 'assistant' | 'system' | string;
+
+export interface AIChatSessionCreateRequest {
+  title?: string;
+}
+
+export interface AIChatSessionSummary {
+  sessionId: number;
+  title: string | null;
+  status: AIChatSessionStatus;
+  startedAt: string;
+  endedAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface AIChatSessionCreateResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: AIChatSessionSummary;
+}
+
+export interface AIChatSessionsPayload {
+  items: AIChatSessionSummary[];
+  totalCount: number;
+  pageNumber: number;
+  pageSize: number;
+  totalPages: number;
+  hasPrevious: boolean;
+  hasNext: boolean;
+}
+
+export interface AIChatSessionsResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: AIChatSessionsPayload;
+}
+
+export interface AIChatHistoryMessage {
+  messageId: number;
+  role: AIChatMessageRole;
+  content: string;
+  intent?: string | null;
+  isFallback?: boolean;
+  isPolicyResponse?: boolean;
+  createdAt: string;
+}
+
+export interface AIChatHistoryPayload {
+  sessionId: number;
+  title: string | null;
+  status: AIChatSessionStatus;
+  startedAt: string;
+  endedAt: string | null;
+  totalCount: number;
+  pageNumber: number;
+  pageSize: number;
+  totalPages: number;
+  messages: AIChatMessage[];
+}
+
+export interface AIChatHistoryResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: AIChatHistoryPayload;
+}
+
+export interface AIChatConversationTurn {
+  role: AIChatMessageRole;
+  content: string;
+}
+
+export interface AIChatSuggestedPlant {
+  entityType: string;
+  entityId: number;
+  name: string;
+  description?: string | null;
+  price?: number | null;
+  imageUrl?: string | null;
+  isPurchasable?: boolean;
+  relevanceScore?: number | null;
+}
+
+export interface AIChatbotRequest {
+  sessionId: number;
+  message: string;
+  roomDescription?: string | null;
+  fengShuiElement?: string | number | null;
+  maxBudget?: number | null;
+  limit?: number | null;
+  preferredRooms?: Array<string | number> | null;
+  petSafe?: boolean | null;
+  childSafe?: boolean | null;
+  onlyPurchasable: boolean;
+  conversationHistory?: AIChatConversationTurn[];
+}
+
+export interface AIChatPayload {
+  intent?: string | null;
+  reply: string;
+  roomEnvironmentSummary?: string | null;
+  suggestedPlants?: AIChatSuggestedPlant[];
+  careTips?: string[];
+  followUpQuestions?: string[];
+  policySources?: string[];
+  disclaimer?: string | null;
+  usedFallback?: boolean;
+}
+
+export interface AIChatResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: AIChatPayload;
+}
+
+export interface AIChatEnumGroup {
+  enumName: string;
+  values: SystemEnumValue[];
+}
+
+export interface AIChatMessage {
+  id: number | string;
+  role: AIChatMessageRole;
+  content: string;
+  intent?: string | null;
+  isFallback?: boolean;
+  isPolicyResponse?: boolean;
+  createdAt: string;
+  suggestedPlants?: AIChatSuggestedPlant[];
+  followUpQuestions?: string[];
+  disclaimer?: string | null;
+  pending?: boolean;
+  failed?: boolean;
+}
+
 // ==================== Support Conversations ====================
 export interface SupportParticipant {
   userId: number;
@@ -1923,6 +2146,13 @@ export type RootStackParamList = {
   PaymentSuccess: {
     orderId?: number;
   };
+  AIChat: {
+    sessionId?: number;
+    createNew?: boolean;
+  } | undefined;
+  AIChatSessions: {
+    selectedSessionId?: number;
+  } | undefined;
   VerifyCode: { email: string; password: string };
   ForgotPassword: { email?: string } | undefined;
   OrderDetail: { orderId: number };

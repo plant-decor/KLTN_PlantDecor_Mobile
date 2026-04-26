@@ -1,4 +1,5 @@
-import { Alert, Platform, ToastAndroid } from 'react-native';
+import { Alert, Platform } from 'react-native';
+import { useNotificationStore } from '../stores/useNotificationStore';
 
 export type NotifyOptions = {
   message: string;
@@ -13,17 +14,20 @@ export const notify = ({
   androidDuration = 'short',
   useAlert = false,
 }: NotifyOptions) => {
-  if (Platform.OS === 'android' && !useAlert) {
-    const duration =
-      androidDuration === 'long' ? ToastAndroid.LONG : ToastAndroid.SHORT;
-    ToastAndroid.show(message, duration);
+  if (useAlert) {
+    if (title) {
+      Alert.alert(title, message);
+    } else {
+      Alert.alert(message);
+    }
     return;
   }
 
-  if (title) {
-    Alert.alert(title, message);
-    return;
-  }
-
-  Alert.alert(message);
+  const duration = androidDuration === 'long' ? 5000 : 3000;
+  
+  useNotificationStore.getState().showNotification({
+    message,
+    title,
+    duration,
+  });
 };

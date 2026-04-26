@@ -9,6 +9,8 @@ import {
   CartScreen,
   CheckoutScreen,
   PaymentSuccessScreen,
+  AIChatScreen,
+  AIChatSessionsScreen,
   PaymentWebViewScreen,
   VerifyCodeScreen,
   AIDesignScreen,
@@ -67,6 +69,8 @@ export default function RootNavigator() {
     <>
       <Stack.Screen name="MainTabs" component={BottomTabNavigator} />
       <Stack.Screen name="Home" component={HomeScreen} />
+      <Stack.Screen name="AIChat" component={AIChatScreen} />
+      <Stack.Screen name="AIChatSessions" component={AIChatSessionsScreen} />
       <Stack.Screen name="SupportChat" component={SupportChatScreen} />
       <Stack.Screen name="PlantDetail" component={PlantDetailScreen} />
       <Stack.Screen name="PlantInstanceDetail" component={PlantInstanceDetailScreen} />

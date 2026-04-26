@@ -7,6 +7,8 @@ export { default as AIDesignScreen } from './AIDesign/AIDesignScreen';
 export { default as CheckoutScreen } from './Checkout/CheckoutScreen';
 export { default as PaymentWebViewScreen } from './PaymentWebView/PaymentWebViewScreen';
 export { default as PaymentSuccessScreen } from './PaymentSuccess/PaymentSuccessScreen';
+export { default as AIChatScreen } from './AIChat/AIChatScreen';
+export { default as AIChatSessionsScreen } from './AIChatSessions/AIChatSessionsScreen';
 export { default as VerifyCodeScreen } from './VerifyCode/VerifyCodeScreen';
 export { default as SupportChatScreen } from './SupportChat/SupportChatScreen';
 export { default as LoginScreen } from './Login/LoginScreen';

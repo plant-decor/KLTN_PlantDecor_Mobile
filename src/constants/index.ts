@@ -235,6 +235,13 @@ export const API = {
     ROOM_DESIGN_GENERATED_IMAGES: (layoutDesignId: number) =>
       `/RoomDesign/${layoutDesignId}/generated-images`,
 
+    // AI Chat
+    AI_CHAT_ENUMS: "/system/enums/AI-chat",
+    AI_CHAT_SESSIONS: "/ai-search/chatbot/sessions",
+    AI_CHAT_SESSION_HISTORY: (sessionId: number) =>
+      `/ai-search/chatbot/sessions/${sessionId}/history`,
+    AI_CHAT_CHATBOT: "/ai-search/chatbot",
+
     // User
     PROFILE: "/User/user-profile",
     UPDATE_PROFILE: "/User/user-profile",
@@ -267,6 +274,11 @@ export const API = {
       `/shipper/nursery-orders/${orderId}/mark-delivered`,
     MARK_DELIVERY_FAILED: (orderId: number) =>
       `/shipper/nursery-orders/${orderId}/mark-delivery-failed`,
+
+    //Return Tickets
+    CREATE_RETURN_TICKET: "/return-tickets",
+    MY_RETURN_TICKETS: "/return-tickets/my",
+    RETURN_TICKET_IMAGE_UPLOAD: (ticketId: number, itemId: number) => `/return-tickets/${ticketId}/items/${itemId}/images`,
 
     //CareService
     CARE_SERVICE_PACKAGES: "/care-service-packages",

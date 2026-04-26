@@ -32,7 +32,7 @@ import {
 } from '../../utils';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'ShippingList'>;
-type StatusFilter = 'assigned' | 'shipping' | 'delivered' | 'delivery-failed';
+type StatusFilter = 'assigned' | 'shipping' | 'delivered' | 'failed';
 type ShipperActionType = 'start-shipping' | 'mark-delivered' | 'mark-delivery-failed';
 type PageToken = number | 'left-ellipsis' | 'right-ellipsis';
 type SelectedDeliveryImage = {
@@ -52,7 +52,7 @@ const FILTER_STATUS_MAP: Record<StatusFilter, number> = {
   assigned: 3,
   shipping: 4,
   delivered: 5,
-  'delivery-failed': 7,
+  failed: 9,
 };
 
 const normalizeToken = (value: string): string => value.trim().toLowerCase();
@@ -177,7 +177,7 @@ export default function ShippingListScreen() {
   const [processingOrderId, setProcessingOrderId] = useState<number | null>(null);
 
   const statusFilters = useMemo<StatusFilter[]>(
-    () => ['assigned', 'shipping', 'delivered', 'delivery-failed'],
+    () => ['assigned', 'shipping', 'delivered', 'failed'],
     []
   );
 
@@ -227,8 +227,8 @@ export default function ShippingListScreen() {
         return t('shippingList.filterDelivered', { defaultValue: 'Delivered' });
       }
 
-      return t('shippingList.filterDeliveryFailed', {
-        defaultValue: 'Delivery failed',
+      return t('shippingList.filterFailed', {
+        defaultValue: 'Failed',
       });
     },
     [t]

@@ -84,6 +84,46 @@ function AttributeCard({ icon, iconColor, iconBg, label, value }: AttributeProps
   );
 }
 
+// Lightweight HTML-to-plain-text helper: decodes common entities and strips tags.
+function decodeHtmlEntities(input: unknown): string {
+  if (input == null) return '';
+  let text = String(input);
+
+  // Preserve simple block breaks
+  text = text.replace(/<br\s*\/?>/gi, '\n');
+  text = text.replace(/<\/p\s*>/gi, '\n');
+  text = text.replace(/<p[^>]*>/gi, '');
+
+  // Decode named entities (common ones)
+  const entities: Record<string, string> = {
+    '&nbsp;': ' ',
+    '&amp;': '&',
+    '&lt;': '<',
+    '&gt;': '>',
+    '&quot;': '"',
+    '&#39;': "'",
+    '&apos;': "'",
+  };
+
+  for (const [k, v] of Object.entries(entities)) {
+    text = text.split(k).join(v);
+  }
+
+  // Decode numeric entities
+  text = text.replace(/&#(\d+);/g, (_m, dec) => String.fromCharCode(parseInt(dec, 10)));
+  text = text.replace(/&#x([0-9a-fA-F]+);/g, (_m, hex) => String.fromCharCode(parseInt(hex, 16)));
+
+  // Strip any remaining tags
+  text = text.replace(/<[^>]+>/g, '');
+
+  // Normalize whitespace but preserve single newlines
+  text = text.replace(/[ \t\u00A0]+/g, ' ');
+  text = text.replace(/\n{2,}/g, '\n\n');
+  text = text.trim();
+
+  return text;
+}
+
 export default function MaterialDetailScreen() {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
@@ -446,6 +486,139 @@ export default function MaterialDetailScreen() {
         : availableNurseryOptions.slice(0, 3),
     [availableNurseryOptions, showAllNurseries]
   );
+  
+  // Parse material.specifications which may be a JSON string or an object
+  const parsedSpecifications = useMemo(() => {
+    const raw = material?.specifications;
+    if (raw == null) return null;
+
+    // If already an object, return as-is
+    if (typeof raw === 'object') return raw as Record<string, any>;
+
+    if (typeof raw === 'string') {
+      const trimmed = raw.trim();
+      if (trimmed.length === 0) return null;
+
+      try {
+        // Most backends return a JSON-encoded string here
+        return JSON.parse(trimmed) as Record<string, any>;
+      } catch {
+        // If parsing fails, attempt a best-effort unescape and parse
+        try {
+          const unescaped = trimmed.replace(/\\"/g, '"');
+          return JSON.parse(unescaped) as Record<string, any>;
+        } catch {
+          // Fallback to showing the raw string
+          return trimmed;
+        }
+      }
+    }
+
+    return String(raw);
+  }, [material?.specifications]);
+
+  const formatSpecLabel = useCallback(
+    (key: string) => {
+      switch (key) {
+        case 'ph':
+          return 'pH';
+        case 'drainage':
+          return t('materialDetail.spec.drainage', { defaultValue: 'Drainage' });
+        case 'waterRetention':
+          return t('materialDetail.spec.waterRetention', { defaultValue: 'Water retention' });
+        case 'organic':
+          return t('materialDetail.spec.organic', { defaultValue: 'Organic' });
+        case 'weightKg':
+          return t('materialDetail.spec.weight', { defaultValue: 'Weight' });
+        case 'suitableFor':
+          return t('materialDetail.spec.suitableFor', { defaultValue: 'Suitable for' });
+        default:
+          // Pretty-print camelCase keys
+          return key.replace(/([A-Z])/g, ' $1').replace(/^./, (s) => s.toUpperCase());
+      }
+    },
+    [t]
+  );
+
+  const formatSpecValue = useCallback(
+    (key: string, value: any) => {
+      if (value == null) return '-';
+      if (key === 'organic') return value ? t('common.yes', { defaultValue: 'Yes' }) : t('common.no', { defaultValue: 'No' });
+      if (key === 'weightKg') return `${value} kg`;
+      if (Array.isArray(value))
+        return value.length > 0
+          ? value
+              .map((v) => (typeof v === 'string' ? decodeHtmlEntities(v) : String(v)))
+              .join(', ')
+          : '-';
+      if (typeof value === 'string') return decodeHtmlEntities(value);
+      return String(value);
+    },
+    [t]
+  );
+  const getSpecIcon = useCallback(
+    (key: string): { name: keyof typeof Ionicons.glyphMap; color: string } => {
+      switch (key) {
+        case 'ph':
+          return { name: 'flask-outline', color: '#8B5CF6' };
+        case 'drainage':
+          return { name: 'water-outline', color: '#0EA5E9' };
+        case 'waterRetention':
+          return { name: 'leaf-outline', color: '#10B981' };
+        case 'organic':
+          return { name: 'nutrition-outline', color: '#84CC16' };
+        case 'weightKg':
+          return { name: 'barbell-outline', color: '#F59E0B' };
+        case 'suitableFor':
+          return { name: 'flower-outline', color: '#EC4899' };
+        default:
+          return { name: 'checkmark-circle-outline', color: '#6B7280' };
+      }
+    },
+    []
+  );
+
+  // Render a single spec row with icon, label and formatted value
+  const SpecRow = useCallback(
+    ({ specKey, specValue }: { specKey: string; specValue: any }) => {
+      const icon = getSpecIcon(specKey);
+
+      return (
+        <View style={styles.specRow} key={specKey}>
+          <View style={styles.specLeft}>
+            <View style={[styles.specIconWrap, { backgroundColor: `${icon.color}20` }]}>
+              <Ionicons name={icon.name} size={16} color={icon.color} />
+            </View>
+            <Text style={styles.specKey}>{formatSpecLabel(specKey)}</Text>
+          </View>
+
+          <View style={styles.specRight}>
+            {specKey === 'ph' ? (
+              <View style={styles.phBadge}>
+                <Text style={styles.phText}>{String(specValue)}</Text>
+              </View>
+            ) : specKey === 'suitableFor' && Array.isArray(specValue) ? (
+              <View style={styles.chipsContainer}>
+                {specValue.length > 0 ? (
+                  specValue.map((v: string, i: number) => (
+                    <View key={i} style={styles.chip}>
+                      <Text style={styles.chipText}>{decodeHtmlEntities(v)}</Text>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={styles.specText}>-</Text>
+                )}
+              </View>
+            ) : (
+              <Text style={styles.specText}>{formatSpecValue(specKey, specValue)}</Text>
+            )}
+          </View>
+        </View>
+      );
+    },
+    [formatSpecLabel, formatSpecValue, getSpecIcon]
+  );
+
   const handleBottomBarLayout = useCallback((event: LayoutChangeEvent) => {
     const nextHeight = event.nativeEvent.layout.height;
     setBottomBarHeight((previousHeight) =>
@@ -752,7 +925,9 @@ export default function MaterialDetailScreen() {
             </View>
           </View>
 
-          <Text style={styles.description}>{material.description || '-'}</Text>
+          <Text style={styles.description}>
+            {material.description ? decodeHtmlEntities(material.description) : '-'}
+          </Text>
 
           <View style={styles.sectionWrap}>
             <Text style={styles.sectionTitle}>
@@ -795,7 +970,30 @@ export default function MaterialDetailScreen() {
               {t('materialDetail.specifications', { defaultValue: 'Specifications' })}
             </Text>
             <View style={styles.specCard}>
-              <Text style={styles.specText}>{material.specifications || '-'}</Text>
+              {parsedSpecifications == null ? (
+                <Text style={styles.specText}>-</Text>
+              ) : typeof parsedSpecifications === 'string' ? (
+                <Text style={styles.specText}>{decodeHtmlEntities(parsedSpecifications)}</Text>
+              ) : (
+                <View>
+                  {parsedSpecifications.type ? (
+                    <Text style={[styles.specText, { fontWeight: '700', marginBottom: 8 }]}>
+                      {decodeHtmlEntities(String(parsedSpecifications.type))}
+                    </Text>
+                  ) : null}
+
+                  {parsedSpecifications.properties &&
+                  typeof parsedSpecifications.properties === 'object' &&
+                  Object.keys(parsedSpecifications.properties).length > 0 ? (
+                    Object.entries(parsedSpecifications.properties).map(([key, value]) => (
+                      // render a nicer row for each property
+                      <SpecRow key={key} specKey={key} specValue={value} />
+                    ))
+                  ) : (
+                    <Text style={styles.specText}>-</Text>
+                  )}
+                </View>
+              )}
             </View>
           </View>
 
@@ -1338,6 +1536,67 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     color: COLORS.textSecondary,
     lineHeight: 20,
+  },
+  specRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  specLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  specIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  specKey: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+  },
+  specRight: {
+    alignItems: 'flex-end',
+    marginLeft: 12,
+    minWidth: 80,
+  },
+  chipsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    justifyContent: 'flex-end',
+  },
+  chip: {
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 12,
+    marginLeft: 6,
+    marginBottom: 6,
+  },
+  chipText: {
+    fontSize: 12,
+    color: '#1E293B',
+    fontWeight: '600',
+  },
+  phBadge: {
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    minWidth: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  phText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#3730A3',
   },
   tagsContainer: {
     marginTop: SPACING.md,

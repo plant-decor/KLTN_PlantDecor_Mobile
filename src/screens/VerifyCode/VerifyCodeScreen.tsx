@@ -160,7 +160,6 @@ export default function VerifyCodeScreen() {
           <BrandedHeader
             containerStyle={styles.header}
             sideWidth={44}
-            title={t('verifyCode.headerTitle')}
             left={
               <TouchableOpacity
                 style={styles.headerBackBtn}

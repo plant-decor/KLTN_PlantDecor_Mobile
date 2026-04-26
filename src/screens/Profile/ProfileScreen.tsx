@@ -135,6 +135,11 @@ export default function ProfileScreen() {
       onPress: () => navigation.navigate('SupportChat'),
     },
     {
+      icon: 'sparkles' as const,
+      label: t('profile.aiAssistant', { defaultValue: 'AI Assistant' }),
+      onPress: () => navigation.navigate('AIChat'),
+    },
+    {
       icon: 'settings-outline' as const,
       label: t('profile.settings'),
       onPress: () => {},
@@ -182,7 +187,7 @@ export default function ProfileScreen() {
           ))}
         </View>
 
-        <View style={styles.languageContainer}>
+        {/* <View style={styles.languageContainer}>
           <Text style={styles.languageTitle}>{t('common.language')}</Text>
           <View style={styles.languageSwitchRow}>
             <TouchableOpacity
@@ -218,7 +223,7 @@ export default function ProfileScreen() {
               </Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </View> */}
 
         {/* Logout */}
         <TouchableOpacity
