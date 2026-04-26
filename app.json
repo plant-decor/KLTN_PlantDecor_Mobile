@@ -5,21 +5,22 @@
     "scheme": "plantdecor",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/images/only-logo.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/images/only-logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#2D6A4F"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.plantdecor.mobile"
+      "bundleIdentifier": "com.plantdecor.mobile",
+      "icon": "./assets/images/only-logo.png"
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/images/only-logo.png",
         "backgroundColor": "#2D6A4F"
       },
       "edgeToEdgeEnabled": true,
@@ -27,7 +28,7 @@
       "package": "com.plantdecor.mobile"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/images/only-logo.png"
     },
     "plugins": [
       "expo-secure-store",
