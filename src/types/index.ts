@@ -1781,12 +1781,45 @@ export interface RoomDesignAnalyzeRequest {
   roomStyle: string;
   /** Omitted from multipart when undefined / null / empty */
   fengShuiElement?: string | null;
+  roomArea?: number;
+  lightDirection?: string | null;
+  dominantDirection?: string | null;
+  naturalLightLevel?: string | null;
   minBudget?: number;
   maxBudget?: number;
   careLevelType?: string | null;
   /** Omitted when undefined so the backend can treat as unset */
   hasAllergy?: boolean | null;
   allergyNote?: string;
+  allergicPlantIds?: number[];
+  petSafe?: boolean | null;
+  childSafe?: boolean | null;
+  preferredNurseryIds?: number[];
+}
+
+export interface RoomDesignUploadedImage {
+  roomImageId: number;
+  imageUrl?: string | null;
+  viewAngle?: string | null;
+  moderationStatus?: string | null;
+  moderationReason?: string | null;
+  uploadedAt?: string | null;
+}
+
+export interface RoomDesignAnalyzePayload {
+  roomImageIds: number[];
+  fengShuiElement?: string | null;
+  roomType: string;
+  roomStyle: string;
+  roomArea?: number;
+  lightDirection?: string | null;
+  dominantDirection?: string | null;
+  naturalLightLevel?: string | null;
+  minBudget?: number;
+  maxBudget?: number;
+  careLevelType?: string | null;
+  hasAllergy?: boolean | null;
+  allergyNote?: string | null;
   allergicPlantIds?: number[];
   petSafe?: boolean | null;
   childSafe?: boolean | null;
@@ -1860,8 +1893,11 @@ export interface RoomDesignAnalyzeResult {
 export interface RoomDesignGeneratedImage {
   id: string;
   imageUrl: string;
-  prompt?: string | null;
-  source?: string | null;
+  layoutDesignPlantId?: number | null;
+  commonPlantId?: number | null;
+  plantInstanceId?: number | null;
+  placementPosition?: string | null;
+  isSuccess?: boolean;
 }
 
 // // ==================== Review ====================

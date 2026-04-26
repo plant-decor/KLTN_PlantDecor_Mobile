@@ -227,8 +227,10 @@ export const API = {
     ADMIN_TAGS: "/admin/Tags",
 
     // AI Room Design
+    ROOM_IMAGE_UPLOAD: "/RoomImages/upload",
     ROOM_DESIGN_ENUM_GROUP: "room-design",
     ROOM_DESIGN_ALLERGY_PLANTS: "/RoomDesign/allergy-plants",
+    ROOM_DESIGN_ANALYZE: "/RoomDesign/analyze",
     ROOM_DESIGN_ANALYZE_UPLOAD: "/RoomDesign/analyze-upload",
     ROOM_DESIGN_GENERATE_IMAGES: (layoutDesignId: number) =>
       `/RoomDesign/${layoutDesignId}/generate-images`,

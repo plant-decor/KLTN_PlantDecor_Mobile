@@ -432,7 +432,7 @@ const en = {
     buyNowFailed: 'Unable to open buy now for this plant instance.',
     generatedImagesTitle: 'Generated layout images',
     generatedImagesSubtitle:
-      'Run image generation after analysis, then review prompts and visuals before shopping below.',
+      'Generate images after analysis to visualize the recommendations in your room. Generated images are based on the layout design created by AI, which may take a few minutes to be ready after analysis.',
     generateImagesButton: 'Generate images',
     generatingImages: 'Generating images...',
     generatedImagesLoading: 'Checking generated images...',

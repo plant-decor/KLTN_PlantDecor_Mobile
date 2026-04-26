@@ -2,12 +2,15 @@ import { API } from '../constants';
 import {
   ApiResponse,
   RoomDesignAllergyPlant,
+  RoomDesignImageFile,
   RoomDesignAnalyzeRequest,
   RoomDesignAnalyzeResult,
   RoomDesignGeneratedImage,
   RoomDesignRecommendation,
   RoomDesignRecommendationEntityRef,
   RoomDesignRoomAnalysis,
+  RoomDesignUploadedImage,
+  RoomDesignAnalyzePayload,
 } from '../types';
 import { resolveImageUri, resolveImageUris } from '../utils/image';
 import api from './api';
@@ -481,8 +484,6 @@ const normalizeGeneratedImageItem = (
     return {
       id: `generated-image-${index}`,
       imageUrl: directImage,
-      prompt: fallbackPrompt ?? null,
-      source: null,
     };
   }
 
@@ -491,19 +492,19 @@ const normalizeGeneratedImageItem = (
     return null;
   }
 
+  const parseNum = (val: unknown) => (typeof val === 'number' ? val : null);
+
   return {
     id:
       toTrimmedString(record.id) ??
-      toTrimmedString(record.imageId) ??
+      toTrimmedString(record.layoutDesignPlantId) ??
       `${imageUrl}-${index}`,
     imageUrl,
-    prompt:
-      toTrimmedString(getValueByKeys(record, ['prompt', 'Prompt', 'fluxPromptUsed'])) ??
-      fallbackPrompt ??
-      null,
-    source:
-      toTrimmedString(getValueByKeys(record, ['source', 'type', 'imageType'])) ??
-      null,
+    layoutDesignPlantId: parseNum(record.layoutDesignPlantId),
+    commonPlantId: parseNum(record.commonPlantId),
+    plantInstanceId: parseNum(record.plantInstanceId),
+    placementPosition: toTrimmedString(record.placementPosition) ?? null,
+    isSuccess: typeof record.isSuccess === 'boolean' ? record.isSuccess : undefined,
   };
 };
 
@@ -513,10 +514,6 @@ const createGeneratedImagesFallback = (
   if (!record) {
     return [];
   }
-
-  const prompt =
-    toTrimmedString(getValueByKeys(record, ['fluxPromptUsed', 'FluxPromptUsed', 'prompt'])) ??
-    null;
 
   const fallbackFields = [
     {
@@ -549,8 +546,6 @@ const createGeneratedImagesFallback = (
     images.push({
       id: field.id,
       imageUrl,
-      prompt,
-      source: field.source,
     });
   });
 
@@ -655,6 +650,58 @@ const extractAllergyPlantItems = (responseBody: ApiResponse<unknown> | unknown):
   return [];
 };
 
+const normalizeRoomImageItem = (source: unknown): RoomDesignUploadedImage | null => {
+  const record = toRecord(source);
+  if (!record) {
+    return null;
+  }
+
+  const id =
+    toNumber(getValueByKeys(record, ['roomImageId', 'RoomImageId', 'id', 'Id'])) ??
+    null;
+
+  if (id === null) {
+    return null;
+  }
+
+  return {
+    roomImageId: id,
+    imageUrl: toTrimmedString(getValueByKeys(record, ['imageUrl', 'ImageUrl', 'url', 'Url'])) ?? null,
+    viewAngle: toTrimmedString(getValueByKeys(record, ['viewAngle', 'ViewAngle'])) ?? null,
+    moderationStatus:
+      toTrimmedString(getValueByKeys(record, ['moderationStatus', 'ModerationStatus'])) ?? null,
+    moderationReason:
+      toTrimmedString(getValueByKeys(record, ['moderationReason', 'ModerationReason'])) ?? null,
+    uploadedAt: toTrimmedString(getValueByKeys(record, ['uploadedAt', 'UploadedAt'])) ?? null,
+  };
+};
+
+const extractRoomImageItems = (responseBody: ApiResponse<unknown> | unknown): RoomDesignUploadedImage[] => {
+  const unwrapped = unwrapEnvelope(responseBody);
+  if (Array.isArray(unwrapped)) {
+    return unwrapped
+      .map((item) => normalizeRoomImageItem(item))
+      .filter((item): item is RoomDesignUploadedImage => Boolean(item));
+  }
+
+  const root = toRecord(unwrapped);
+  if (!root) {
+    return [];
+  }
+
+  const candidates = getArrayByKeys(root, [
+    'roomImages',
+    'RoomImages',
+    'items',
+    'Images',
+    'images',
+  ]);
+
+  return candidates
+    .map((item) => normalizeRoomImageItem(item))
+    .filter((item): item is RoomDesignUploadedImage => Boolean(item));
+};
+
 export const roomDesignService = {
   searchAllergyPlants: async (
     keyword?: string,
@@ -675,6 +722,44 @@ export const roomDesignService = {
     return extractAllergyPlantItems(response.data)
       .map((item, index) => normalizeAllergyPlant(item, index))
       .filter((item): item is RoomDesignAllergyPlant => Boolean(item));
+  },
+
+  uploadRoomImage: async (
+    image: RoomDesignImageFile,
+    viewAngle: string
+  ): Promise<RoomDesignUploadedImage[]> => {
+    const normalizedUri = image.uri.trim();
+    if (!normalizedUri) {
+      throw new Error('Invalid room image uri');
+    }
+
+    const inferredFileName =
+      image.fileName?.trim() || normalizedUri.split('/').pop() || `room-${Date.now()}.jpg`;
+    const mimeType = image.mimeType?.trim() || 'image/jpeg';
+
+    const formData = new FormData();
+    formData.append(
+      'Images',
+      {
+        uri: normalizedUri,
+        name: inferredFileName,
+        type: mimeType,
+      } as any
+    );
+    formData.append('ViewAngles', viewAngle);
+
+    const response = await api.post<ApiResponse<unknown>>(
+      API.ENDPOINTS.ROOM_IMAGE_UPLOAD,
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        timeout: ROOM_DESIGN_REQUEST_TIMEOUT,
+      }
+    );
+
+    return extractRoomImageItems(response.data);
   },
 
   analyzeUpload: async (
@@ -706,6 +791,25 @@ export const roomDesignService = {
     const fengShui = request.fengShuiElement?.trim();
     if (fengShui) {
       formData.append('FengShuiElement', fengShui);
+    }
+
+    if (request.roomArea != null && Number.isFinite(request.roomArea)) {
+      formData.append('RoomArea', String(request.roomArea));
+    }
+
+    const lightDir = request.lightDirection?.trim();
+    if (lightDir) {
+      formData.append('LightDirection', lightDir);
+    }
+
+    const domDir = request.dominantDirection?.trim();
+    if (domDir) {
+      formData.append('DominantDirection', domDir);
+    }
+
+    const natLight = request.naturalLightLevel?.trim();
+    if (natLight) {
+      formData.append('NaturalLightLevel', natLight);
     }
 
     if (request.minBudget != null && Number.isFinite(request.minBudget)) {
@@ -755,6 +859,20 @@ export const roomDesignService = {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
+        timeout: ROOM_DESIGN_REQUEST_TIMEOUT,
+      }
+    );
+
+    return normalizeAnalyzeResult(response.data);
+  },
+
+  analyze: async (
+    payload: RoomDesignAnalyzePayload
+  ): Promise<RoomDesignAnalyzeResult> => {
+    const response = await api.post<ApiResponse<unknown>>(
+      API.ENDPOINTS.ROOM_DESIGN_ANALYZE,
+      payload,
+      {
         timeout: ROOM_DESIGN_REQUEST_TIMEOUT,
       }
     );

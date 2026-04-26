@@ -431,7 +431,7 @@ const vi = {
     buyNowFailed: 'Không thể mở mua ngay cho cây độc bản này.',
     generatedImagesTitle: 'Ảnh bố trí được tạo',
     generatedImagesSubtitle:
-      'Chạy tạo ảnh sau khi phân tích, xem prompt và hình ảnh rồi mua hàng ở mục bên dưới.',
+      'Đây là những ảnh bố trí được AI tạo ra dựa trên ảnh căn phòng của bạn. Hãy xem chúng để có thêm cảm hứng trang trí nhé!',
     generateImagesButton: 'Tạo ảnh',
     generatingImages: 'Đang tạo ảnh...',
     generatedImagesLoading: 'Đang kiểm tra ảnh đã tạo...',

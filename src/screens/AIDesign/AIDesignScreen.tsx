@@ -10,6 +10,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Modal,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
@@ -29,6 +30,8 @@ import {
   RoomDesignGeneratedImage,
   RoomDesignImageFile,
   RoomDesignRecommendation,
+  RoomDesignUploadedImage,
+  RoomDesignAnalyzePayload,
 } from '../../types';
 import { isCustomerRole } from '../../utils/authFlow';
 import { notify, resolveImageUris } from '../../utils';
@@ -71,6 +74,10 @@ const FALLBACK_ROOM_STYLE_NAMES: readonly string[] = [
   'Mediterranean',
   'Rustic',
 ];
+
+const FALLBACK_LIGHT_DIRECTIONS: readonly string[] = ['North', 'South', 'East', 'West', 'NorthEast', 'NorthWest', 'SouthEast', 'SouthWest'];
+const FALLBACK_DOMINANT_DIRECTIONS: readonly string[] = ['North', 'South', 'East', 'West', 'NorthEast', 'NorthWest', 'SouthEast', 'SouthWest'];
+const FALLBACK_NATURAL_LIGHT_LEVELS: readonly string[] = ['LowLight', 'MediumLight', 'BrightLight', 'DirectSun'];
 
 const ALLERGY_SEARCH_TAKE = 50;
 const ALLERGY_SEARCH_DEBOUNCE_MS = 350;
@@ -189,14 +196,30 @@ type SectionCardProps = {
   title: string;
   subtitle?: string;
   children: React.ReactNode;
+  collapsible?: boolean;
+  defaultCollapsed?: boolean;
 };
 
-function SectionCard({ title, subtitle, children }: SectionCardProps) {
+function SectionCard({ title, subtitle, children, collapsible, defaultCollapsed }: SectionCardProps) {
+  const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed ?? false);
+
   return (
     <View style={styles.sectionCard}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      {subtitle ? <Text style={styles.sectionSubtitle}>{subtitle}</Text> : null}
-      <View style={styles.sectionContent}>{children}</View>
+      <TouchableOpacity 
+        style={styles.sectionHeader} 
+        onPress={() => collapsible && setIsCollapsed(!isCollapsed)}
+        disabled={!collapsible}
+        activeOpacity={0.7}
+      >
+        <View style={styles.sectionTitleRow}>
+          <Text style={styles.sectionTitle}>{title}</Text>
+          {collapsible ? (
+            <Ionicons name={isCollapsed ? 'chevron-down' : 'chevron-up'} size={20} color={COLORS.textPrimary} />
+          ) : null}
+        </View>
+        {subtitle ? <Text style={styles.sectionSubtitle}>{subtitle}</Text> : null}
+      </TouchableOpacity>
+      {!isCollapsed ? <View style={styles.sectionContent}>{children}</View> : null}
     </View>
   );
 }
@@ -352,6 +375,23 @@ export default function AIDesignScreen() {
   const isCustomer = isCustomerRole(userRole);
 
   const [selectedImage, setSelectedImage] = useState<RoomDesignImageFile | null>(null);
+  type LocalRoomImage = {
+    viewAngle: string;
+    roomImageId?: number | null;
+    imageUrl?: string | null;
+    moderationStatus?: string | null;
+    moderationReason?: string | null;
+    uploadedAt?: string | null;
+    uploading?: boolean;
+    error?: string | null;
+  };
+
+  const [uploadedRoomImages, setUploadedRoomImages] = useState<LocalRoomImage[]>(() => [
+    { viewAngle: 'Front' },
+    { viewAngle: 'Left' },
+    { viewAngle: 'Right' },
+    { viewAngle: 'Back' },
+  ]);
   const [fengShuiSelection, setFengShuiSelection] = useState<FengShuiSelection>('omit');
   const [roomTypeNames, setRoomTypeNames] = useState<string[]>(() => [
     ...FALLBACK_ROOM_TYPE_NAMES,
@@ -361,6 +401,16 @@ export default function AIDesignScreen() {
   ]);
   const [roomType, setRoomType] = useState('LivingRoom');
   const [roomStyle, setRoomStyle] = useState('Minimalist');
+  const [roomArea, setRoomArea] = useState('');
+
+  const [lightDirectionNames, setLightDirectionNames] = useState<string[]>(() => [...FALLBACK_LIGHT_DIRECTIONS]);
+  const [dominantDirectionNames, setDominantDirectionNames] = useState<string[]>(() => [...FALLBACK_DOMINANT_DIRECTIONS]);
+  const [naturalLightLevelNames, setNaturalLightLevelNames] = useState<string[]>(() => [...FALLBACK_NATURAL_LIGHT_LEVELS]);
+
+  const [lightDirection, setLightDirection] = useState('omit');
+  const [dominantDirection, setDominantDirection] = useState('omit');
+  const [naturalLightLevel, setNaturalLightLevel] = useState('omit');
+
   const [careLevelSelection, setCareLevelSelection] = useState<CareLevelSelection>('omit');
   const [minBudget, setMinBudget] = useState('');
   const [maxBudget, setMaxBudget] = useState('');
@@ -399,6 +449,7 @@ export default function AIDesignScreen() {
   const [generatedImagesError, setGeneratedImagesError] = useState<string | null>(
     null
   );
+  const [fullScreenImage, setFullScreenImage] = useState<string | null>(null);
   const allergySearchRequestId = useRef(0);
   const generatedImagesPollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
@@ -436,6 +487,45 @@ export default function AIDesignScreen() {
     [roomStyleNames, t]
   );
 
+  const lightDirectionChipOptions = useMemo(
+    () => [
+      { value: 'omit', label: t('aiDesign.filterUnspecified', { defaultValue: 'Any' }) },
+      ...lightDirectionNames.map((name) => ({
+        value: name,
+        label: t(`aiDesign.lightDirection.${name}`, {
+          defaultValue: formatEnumNameDefault(name),
+        }),
+      }))
+    ],
+    [lightDirectionNames, t]
+  );
+
+  const dominantDirectionChipOptions = useMemo(
+    () => [
+      { value: 'omit', label: t('aiDesign.filterUnspecified', { defaultValue: 'Any' }) },
+      ...dominantDirectionNames.map((name) => ({
+        value: name,
+        label: t(`aiDesign.dominantDirection.${name}`, {
+          defaultValue: formatEnumNameDefault(name),
+        }),
+      }))
+    ],
+    [dominantDirectionNames, t]
+  );
+
+  const naturalLightLevelChipOptions = useMemo(
+    () => [
+      { value: 'omit', label: t('aiDesign.filterUnspecified', { defaultValue: 'Any' }) },
+      ...naturalLightLevelNames.map((name) => ({
+        value: name,
+        label: t(`aiDesign.naturalLightLevel.${name}`, {
+          defaultValue: formatEnumNameDefault(name),
+        }),
+      }))
+    ],
+    [naturalLightLevelNames, t]
+  );
+
   useEffect(() => {
     if (!isAuthenticated || !isCustomer) {
       return;
@@ -452,6 +542,10 @@ export default function AIDesignScreen() {
 
         const roomTypeGroup = groups.find((g) => g.enumName === 'RoomType');
         const roomStyleGroup = groups.find((g) => g.enumName === 'RoomStyle');
+        const lightDirGroup = groups.find((g) => g.enumName === 'LightDirection');
+        const domDirGroup = groups.find((g) => g.enumName === 'DominantDirection');
+        const natLightGroup = groups.find((g) => g.enumName === 'NaturalLightLevel');
+
         const rt =
           roomTypeGroup?.values
             .map((v) => v.name.trim())
@@ -460,9 +554,24 @@ export default function AIDesignScreen() {
           roomStyleGroup?.values
             .map((v) => v.name.trim())
             .filter((n) => n.length > 0) ?? [];
+        const ld =
+          lightDirGroup?.values
+            .map((v) => v.name.trim())
+            .filter((n) => n.length > 0) ?? [];
+        const dd =
+          domDirGroup?.values
+            .map((v) => v.name.trim())
+            .filter((n) => n.length > 0) ?? [];
+        const nl =
+          natLightGroup?.values
+            .map((v) => v.name.trim())
+            .filter((n) => n.length > 0) ?? [];
 
         setRoomTypeNames(rt.length > 0 ? rt : [...FALLBACK_ROOM_TYPE_NAMES]);
         setRoomStyleNames(rs.length > 0 ? rs : [...FALLBACK_ROOM_STYLE_NAMES]);
+        setLightDirectionNames(ld.length > 0 ? ld : [...FALLBACK_LIGHT_DIRECTIONS]);
+        setDominantDirectionNames(dd.length > 0 ? dd : [...FALLBACK_DOMINANT_DIRECTIONS]);
+        setNaturalLightLevelNames(nl.length > 0 ? nl : [...FALLBACK_NATURAL_LIGHT_LEVELS]);
       })
       .catch(() => {
         if (cancelled) {
@@ -471,6 +580,9 @@ export default function AIDesignScreen() {
 
         setRoomTypeNames([...FALLBACK_ROOM_TYPE_NAMES]);
         setRoomStyleNames([...FALLBACK_ROOM_STYLE_NAMES]);
+        setLightDirectionNames([...FALLBACK_LIGHT_DIRECTIONS]);
+        setDominantDirectionNames([...FALLBACK_DOMINANT_DIRECTIONS]);
+        setNaturalLightLevelNames([...FALLBACK_NATURAL_LIGHT_LEVELS]);
       });
 
     return () => {
@@ -691,6 +803,134 @@ export default function AIDesignScreen() {
     }
   }, [handleSelectImageAsset, t]);
 
+  const uploadRoomImageForAngle = useCallback(
+    async (imageFile: RoomDesignImageFile, angle: string) => {
+      setUploadedRoomImages((current) =>
+        current.map((item) =>
+          item.viewAngle === angle ? { ...item, uploading: true, error: undefined } : item
+        )
+      );
+
+      try {
+        const uploaded = await roomDesignService.uploadRoomImage(imageFile, angle);
+        const first = uploaded[0];
+
+        if (first) {
+          setUploadedRoomImages((current) =>
+            current.map((item) =>
+              item.viewAngle === angle
+                ? {
+                    ...item,
+                    roomImageId: first.roomImageId,
+                    imageUrl: first.imageUrl ?? null,
+                    moderationStatus: first.moderationStatus ?? null,
+                    uploadedAt: first.uploadedAt ?? null,
+                    uploading: false,
+                    error: undefined,
+                  }
+                : item
+            )
+          );
+        } else {
+          setUploadedRoomImages((current) =>
+            current.map((item) =>
+              item.viewAngle === angle
+                ? { ...item, uploading: false, error: t('aiDesign.uploadNoResponse') }
+                : item
+            )
+          );
+        }
+
+        return uploaded;
+      } catch (error: unknown) {
+        setUploadedRoomImages((current) =>
+          current.map((item) =>
+            item.viewAngle === angle
+              ? {
+                  ...item,
+                  uploading: false,
+                  error: resolveApiMessage(
+                    error,
+                    t('aiDesign.uploadFailed', { defaultValue: 'Upload failed' })
+                  ),
+                }
+              : item
+          )
+        );
+
+        throw error;
+      }
+    },
+    [t]
+  );
+
+  const handlePickForAngle = useCallback(
+    async (angle: string) => {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (permission.status !== 'granted') {
+        Alert.alert(
+          t('aiDesign.permissionTitle', { defaultValue: 'Permission required' }),
+          t('aiDesign.mediaPermissionMessage', {
+            defaultValue: 'Please grant photo library access.',
+          })
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        quality: 0.9,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        const asset = result.assets[0];
+        const normalizedUri = asset.uri?.trim();
+        if (!normalizedUri) return;
+
+        const fileName =
+          asset.fileName?.trim() || normalizedUri.split('/').pop() || `room-${Date.now()}.jpg`;
+        const mimeType = asset.mimeType?.trim() || 'image/jpeg';
+
+        await uploadRoomImageForAngle({ uri: normalizedUri, fileName, mimeType }, angle);
+      }
+    },
+    [uploadRoomImageForAngle, t]
+  );
+
+  const handleTakePhotoForAngle = useCallback(
+    async (angle: string) => {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (permission.status !== 'granted') {
+        Alert.alert(
+          t('aiDesign.permissionTitle', { defaultValue: 'Permission required' }),
+          t('aiDesign.cameraPermissionMessage', {
+            defaultValue: 'Please grant camera access.',
+          })
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        quality: 0.9,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        const asset = result.assets[0];
+        const normalizedUri = asset.uri?.trim();
+        if (!normalizedUri) return;
+
+        const fileName =
+          asset.fileName?.trim() || normalizedUri.split('/').pop() || `room-${Date.now()}.jpg`;
+        const mimeType = asset.mimeType?.trim() || 'image/jpeg';
+
+        await uploadRoomImageForAngle({ uri: normalizedUri, fileName, mimeType }, angle);
+      }
+    },
+    [uploadRoomImageForAngle, t]
+  );
+
   const toggleAllergyPlant = useCallback((plant: RoomDesignAllergyPlant) => {
     setSelectedAllergyPlants((currentPlants) => {
       if (currentPlants.some((item) => item.id === plant.id)) {
@@ -767,11 +1007,15 @@ export default function AIDesignScreen() {
   );
 
   const handleAnalyzeRoom = useCallback(async () => {
-    if (!selectedImage) {
+    const roomImageIds = uploadedRoomImages
+      .map((it) => it.roomImageId)
+      .filter((id): id is number => typeof id === 'number' && Number.isFinite(id));
+
+    if (roomImageIds.length === 0) {
       Alert.alert(
         t('aiDesign.missingImageTitle', { defaultValue: 'Missing image' }),
         t('aiDesign.missingImageMessage', {
-          defaultValue: 'Please choose or capture a room image.',
+          defaultValue: 'Please upload at least one room image (Front/Left/Right/Back).',
         })
       );
       return;
@@ -835,10 +1079,14 @@ export default function AIDesignScreen() {
       const hasAllergyPayload =
         allergySend === 'omit' ? undefined : allergySend === 'yes';
 
-      const result = await roomDesignService.analyzeUpload({
-        image: selectedImage,
+      const payload: RoomDesignAnalyzePayload = {
+        roomImageIds,
         roomType,
         roomStyle,
+        roomArea: roomArea.trim() ? Number(roomArea.trim()) : undefined,
+        lightDirection: lightDirection === 'omit' ? undefined : lightDirection,
+        dominantDirection: dominantDirection === 'omit' ? undefined : dominantDirection,
+        naturalLightLevel: naturalLightLevel === 'omit' ? undefined : naturalLightLevel,
         fengShuiElement: fengShuiApi?.trim() ? fengShuiApi : undefined,
         minBudget: minBudgetPayload,
         maxBudget: maxBudgetPayload,
@@ -854,7 +1102,9 @@ export default function AIDesignScreen() {
           selectedPreferredNurseryIds.length > 0
             ? selectedPreferredNurseryIds
             : undefined,
-      });
+      };
+
+      const result = await roomDesignService.analyze(payload);
 
       setAnalysisResult(result);
     } catch (error: unknown) {
@@ -882,22 +1132,33 @@ export default function AIDesignScreen() {
     selectedPreferredNurseryIds,
     roomStyle,
     roomType,
+    roomArea,
+    lightDirection,
+    dominantDirection,
+    naturalLightLevel,
     selectedAllergyPlants,
-    selectedImage,
     t,
+    uploadedRoomImages,
   ]);
 
   const handleAddRecommendationToCart = useCallback(
-    async (recommendation: RoomDesignRecommendation) => {
-      if (!recommendation.commonPlantId) {
+    async (
+      entity: RoomDesignRecommendation | RoomDesignGeneratedImage,
+      isGeneratedImage = false
+    ) => {
+      const commonPlantId = isGeneratedImage
+        ? (entity as RoomDesignGeneratedImage).commonPlantId
+        : (entity as RoomDesignRecommendation).commonPlantId;
+
+      if (!commonPlantId) {
         return;
       }
 
-      setActiveRecommendationActionId(`cart-${recommendation.id}`);
+      setActiveRecommendationActionId(`cart-${entity.id}`);
 
       try {
         const payload = await addCartItem({
-          commonPlantId: recommendation.commonPlantId,
+          commonPlantId,
           nurseryPlantComboId: null,
           nurseryMaterialId: null,
           quantity: 1,
@@ -930,31 +1191,47 @@ export default function AIDesignScreen() {
   );
 
   const handleBuyRecommendationNow = useCallback(
-    async (recommendation: RoomDesignRecommendation) => {
-      if (!recommendation.plantInstanceId) {
+    async (
+      entity: RoomDesignRecommendation | RoomDesignGeneratedImage,
+      isGeneratedImage = false
+    ) => {
+      const plantInstanceId = isGeneratedImage
+        ? (entity as RoomDesignGeneratedImage).plantInstanceId
+        : (entity as RoomDesignRecommendation).plantInstanceId;
+
+      if (!plantInstanceId) {
         return;
       }
 
-      setActiveRecommendationActionId(`buy-${recommendation.id}`);
+      setActiveRecommendationActionId(`buy-${entity.id}`);
 
       try {
-        const detail = await plantService.getPlantInstanceDetail(
-          recommendation.plantInstanceId
-        );
+        const detail = await plantService.getPlantInstanceDetail(plantInstanceId);
         const detailImages = resolveImageUris(detail.images);
-        const primaryImage = detailImages[0] ?? recommendation.imageUrl ?? undefined;
-        const checkoutPrice =
-          detail.specificPrice ??
-          recommendation.specificPrice ??
-          recommendation.price ??
-          0;
+        
+        let primaryImage: string | undefined;
+        let checkoutPrice = 0;
+        let fallbackName = '';
+
+        if (isGeneratedImage) {
+          const genEntity = entity as RoomDesignGeneratedImage;
+          primaryImage = detailImages[0] ?? genEntity.imageUrl ?? undefined;
+          checkoutPrice = detail.specificPrice ?? 0;
+          fallbackName = detail.plantName ?? `Plant Instance #${plantInstanceId}`;
+        } else {
+          const recEntity = entity as RoomDesignRecommendation;
+          primaryImage = detailImages[0] ?? recEntity.imageUrl ?? undefined;
+          checkoutPrice =
+            detail.specificPrice ?? recEntity.specificPrice ?? recEntity.price ?? 0;
+          fallbackName = detail.plantName ?? recEntity.name;
+        }
 
         navigation.navigate('Checkout', {
           source: 'buy-now',
           items: [
             {
               id: `room_design_instance_${detail.id}`,
-              name: detail.plantName ?? recommendation.name,
+              name: fallbackName,
               size:
                 detail.height != null
                   ? `${detail.height} cm`
@@ -1095,53 +1372,111 @@ export default function AIDesignScreen() {
               defaultValue: 'Upload a room photo to let AI analyze your space.',
             })}
           >
-            {selectedImage ? (
-              <View style={styles.selectedImageWrap}>
-                <Image
-                  source={{ uri: selectedImage.uri }}
-                  style={styles.selectedImage}
-                  resizeMode="cover"
-                />
-                <View style={styles.selectedImageActions}>
-                  <TouchableOpacity
-                    style={styles.imageSecondaryButton}
-                    onPress={pickImageFromLibrary}
-                  >
-                    <Ionicons name="images-outline" size={18} color={COLORS.primary} />
-                    <Text style={styles.imageSecondaryButtonText}>
-                      {t('aiDesign.library', { defaultValue: 'Library' })}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.imageSecondaryButton}
-                    onPress={takePhoto}
-                  >
-                    <Ionicons name="camera-outline" size={18} color={COLORS.primary} />
-                    <Text style={styles.imageSecondaryButtonText}>
-                      {t('aiDesign.takePhoto', { defaultValue: 'Take photo' })}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
+            <View style={styles.imageGrid}>
+              <View style={styles.imageGridRow}>
+                {['Front', 'Back'].map((angle) => {
+                  const item = uploadedRoomImages.find((it) => it.viewAngle === angle) ?? { viewAngle: angle };
+                  return (
+                    <View key={angle} style={[styles.imagePickerCard, styles.imageGridCard]}>
+                      {item.imageUrl ? (
+                        <TouchableOpacity
+                          activeOpacity={0.85}
+                          onPress={() => setFullScreenImage(item.imageUrl!)}
+                          style={{ width: '100%' }}
+                        >
+                          <Image
+                            source={{ uri: item.imageUrl }}
+                            style={styles.selectedImage}
+                            resizeMode="cover"
+                          />
+                        </TouchableOpacity>
+                      ) : (
+                        <Ionicons name="images-outline" size={30} color={COLORS.primary} />
+                      )}
+                      <Text style={styles.imagePickerCardTitle}>{item.viewAngle}</Text>
+                      <View style={styles.selectedImageActions}>
+                        <TouchableOpacity
+                          style={[styles.imageSecondaryButton, styles.imageSecondaryButtonSmall]}
+                          onPress={() => handlePickForAngle(item.viewAngle)}
+                        >
+                          <Ionicons name="images-outline" size={16} color={COLORS.primary} />
+                          <Text style={[styles.imageSecondaryButtonText, { fontSize: FONTS.sizes.sm }]}> 
+                            {t('aiDesign.library', { defaultValue: 'Library' })}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.imageSecondaryButton, styles.imageSecondaryButtonSmall]}
+                          onPress={() => handleTakePhotoForAngle(item.viewAngle)}
+                        >
+                          <Ionicons name="camera-outline" size={16} color={COLORS.primary} />
+                          <Text style={[styles.imageSecondaryButtonText, { fontSize: FONTS.sizes.sm }]}> 
+                            {t('aiDesign.takePhoto', { defaultValue: 'Take photo' })}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                      {item.uploading ? <ActivityIndicator /> : null}
+                      {item.error ? (
+                        <Text style={[styles.imagePickerCardTitle, { color: COLORS.error }]}> 
+                          {item.error}
+                        </Text>
+                      ) : null}
+                    </View>
+                  );
+                })}
               </View>
-            ) : (
-              <View style={styles.imagePickerRow}>
-                <TouchableOpacity
-                  style={styles.imagePickerCard}
-                  onPress={pickImageFromLibrary}
-                >
-                  <Ionicons name="images-outline" size={30} color={COLORS.primary} />
-                  <Text style={styles.imagePickerCardTitle}>
-                    {t('aiDesign.library', { defaultValue: 'Library' })}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.imagePickerCard} onPress={takePhoto}>
-                  <Ionicons name="camera-outline" size={30} color={COLORS.primary} />
-                  <Text style={styles.imagePickerCardTitle}>
-                    {t('aiDesign.takePhoto', { defaultValue: 'Take photo' })}
-                  </Text>
-                </TouchableOpacity>
+
+              <View style={styles.imageGridRow}>
+                {['Left', 'Right'].map((angle) => {
+                  const item = uploadedRoomImages.find((it) => it.viewAngle === angle) ?? { viewAngle: angle };
+                  return (
+                    <View key={angle} style={[styles.imagePickerCard, styles.imageGridCard]}>
+                      {item.imageUrl ? (
+                        <TouchableOpacity
+                          activeOpacity={0.85}
+                          onPress={() => setFullScreenImage(item.imageUrl!)}
+                          style={{ width: '100%' }}
+                        >
+                          <Image
+                            source={{ uri: item.imageUrl }}
+                            style={styles.selectedImage}
+                            resizeMode="cover"
+                          />
+                        </TouchableOpacity>
+                      ) : (
+                        <Ionicons name="images-outline" size={30} color={COLORS.primary} />
+                      )}
+                      <Text style={styles.imagePickerCardTitle}>{item.viewAngle}</Text>
+                      <View style={styles.selectedImageActions}>
+                        <TouchableOpacity
+                          style={[styles.imageSecondaryButton, styles.imageSecondaryButtonSmall]}
+                          onPress={() => handlePickForAngle(item.viewAngle)}
+                        >
+                          <Ionicons name="images-outline" size={16} color={COLORS.primary} />
+                          <Text style={[styles.imageSecondaryButtonText, { fontSize: FONTS.sizes.sm }]}> 
+                            {t('aiDesign.library', { defaultValue: 'Library' })}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.imageSecondaryButton, styles.imageSecondaryButtonSmall]}
+                          onPress={() => handleTakePhotoForAngle(item.viewAngle)}
+                        >
+                          <Ionicons name="camera-outline" size={16} color={COLORS.primary} />
+                          <Text style={[styles.imageSecondaryButtonText, { fontSize: FONTS.sizes.sm }]}> 
+                            {t('aiDesign.takePhoto', { defaultValue: 'Take photo' })}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                      {item.uploading ? <ActivityIndicator /> : null}
+                      {item.error ? (
+                        <Text style={[styles.imagePickerCardTitle, { color: COLORS.error }]}> 
+                          {item.error}
+                        </Text>
+                      ) : null}
+                    </View>
+                  );
+                })}
               </View>
-            )}
+            </View>
           </SectionCard>
 
           <SectionCard
@@ -1181,6 +1516,47 @@ export default function AIDesignScreen() {
               options={roomStyleChipOptions}
               selectedValue={roomStyle}
               onSelect={setRoomStyle}
+            />
+
+            <Text style={styles.fieldLabel}>
+              {t('aiDesign.roomAreaLabel', { defaultValue: 'Room area (m²)' })}
+            </Text>
+            <TextInput
+              style={styles.textInput}
+              value={roomArea}
+              onChangeText={setRoomArea}
+              keyboardType={Platform.OS === 'ios' ? 'decimal-pad' : 'numeric'}
+              placeholder={t('aiDesign.roomAreaPlaceholder', {
+                defaultValue: 'Optional',
+              })}
+              placeholderTextColor={COLORS.textLight}
+            />
+
+            <Text style={styles.fieldLabel}>
+              {t('aiDesign.lightDirectionLabel', { defaultValue: 'Light direction' })}
+            </Text>
+            <DynamicOptionChipGroup
+              options={lightDirectionChipOptions}
+              selectedValue={lightDirection}
+              onSelect={setLightDirection}
+            />
+
+            <Text style={styles.fieldLabel}>
+              {t('aiDesign.dominantDirectionLabel', { defaultValue: 'Dominant direction' })}
+            </Text>
+            <DynamicOptionChipGroup
+              options={dominantDirectionChipOptions}
+              selectedValue={dominantDirection}
+              onSelect={setDominantDirection}
+            />
+
+            <Text style={styles.fieldLabel}>
+              {t('aiDesign.naturalLightLevelLabel', { defaultValue: 'Natural light level' })}
+            </Text>
+            <DynamicOptionChipGroup
+              options={naturalLightLevelChipOptions}
+              selectedValue={naturalLightLevel}
+              onSelect={setNaturalLightLevel}
             />
 
             <Text style={styles.fieldLabel}>
@@ -1482,10 +1858,10 @@ export default function AIDesignScreen() {
           <TouchableOpacity
             style={[
               styles.primaryActionButton,
-              (isAnalyzing || !selectedImage) && styles.primaryActionButtonDisabled,
+              isAnalyzing && styles.primaryActionButtonDisabled,
             ]}
             onPress={() => void handleAnalyzeRoom()}
-            disabled={isAnalyzing || !selectedImage}
+            disabled={isAnalyzing}
           >
             {isAnalyzing ? (
               <ActivityIndicator size="small" color={COLORS.white} />
@@ -1558,12 +1934,17 @@ export default function AIDesignScreen() {
                     contentContainerStyle={styles.analysisImageList}
                   >
                     {analysisPreviewImages.map((imageUrl) => (
-                      <Image
+                      <TouchableOpacity
                         key={imageUrl}
-                        source={{ uri: imageUrl }}
-                        style={styles.analysisPreviewImage}
-                        resizeMode="cover"
-                      />
+                        onPress={() => setFullScreenImage(imageUrl)}
+                        activeOpacity={0.85}
+                      >
+                        <Image
+                          source={{ uri: imageUrl }}
+                          style={styles.analysisPreviewImage}
+                          resizeMode="cover"
+                        />
+                      </TouchableOpacity>
                     ))}
                   </ScrollView>
                 ) : null}
@@ -1573,10 +1954,11 @@ export default function AIDesignScreen() {
                 title={t('aiDesign.generatedImagesTitle', {
                   defaultValue: 'Generated layout images',
                 })}
-                subtitle={t('aiDesign.generatedImagesSubtitle', {
+                subtitle={t('aiDesign.generatedImagesSubtitle', { 
                   defaultValue:
-                    'Generate images after analysis to see prompts and visual layout outputs.',
+                    'Generate images after analysis to visualize the recommendations in your room. Generated images are based on the layout design created by AI, which may take a few minutes to be ready after analysis.',
                 })}
+                collapsible
               >
                 <TouchableOpacity
                   style={[
@@ -1633,31 +2015,85 @@ export default function AIDesignScreen() {
 
                 {generatedImages.length > 0 ? (
                   <View style={styles.generatedImageList}>
-                    {generatedImages.map((item) => (
-                      <View key={item.id} style={styles.generatedImageCard}>
-                        <Image
-                          source={{ uri: item.imageUrl }}
-                          style={styles.generatedImage}
-                          resizeMode="cover"
-                        />
-                        <View style={styles.generatedImageMeta}>
-                          {item.prompt ? (
-                            <Text style={styles.generatedImagePrompt}>
-                              {`${t('aiDesign.promptLabel', {
-                                defaultValue: 'Prompt',
-                              })}: ${item.prompt}`}
-                            </Text>
-                          ) : null}
-                          {item.source ? (
-                            <Text style={styles.generatedImageSource}>
-                              {`${t('aiDesign.sourceLabel', {
-                                defaultValue: 'Source',
-                              })}: ${item.source}`}
-                            </Text>
+                    {generatedImages.map((item) => {
+                      const isAddingToCart =
+                        activeRecommendationActionId === `cart-${item.id}`;
+                      const isBuyingNow =
+                        activeRecommendationActionId === `buy-${item.id}`;
+                      const canAddToCart =
+                        typeof item.commonPlantId === 'number' && item.commonPlantId > 0;
+                      const canBuyNow =
+                        typeof item.plantInstanceId === 'number' && item.plantInstanceId > 0;
+
+                      return (
+                        <View key={item.id} style={styles.generatedImageCard}>
+                          <TouchableOpacity
+                            onPress={() => setFullScreenImage(item.imageUrl)}
+                            activeOpacity={0.85}
+                          >
+                            <Image
+                              source={{ uri: item.imageUrl }}
+                              style={styles.generatedImage}
+                              resizeMode="cover"
+                            />
+                          </TouchableOpacity>
+
+                          {(item.placementPosition || canAddToCart || canBuyNow) ? (
+                            <View style={styles.recommendationBody}>
+                              {item.placementPosition ? (
+                                <Text style={styles.recommendationMeta}>
+                                  {`${t('aiDesign.placementPositionLabel', {
+                                    defaultValue: 'Placement',
+                                  })}: ${item.placementPosition}`}
+                                </Text>
+                              ) : null}
+
+                              <View style={styles.recommendationActions}>
+                                {canAddToCart ? (
+                                  <TouchableOpacity
+                                    style={[
+                                      styles.secondaryActionButton,
+                                      isAddingToCart && styles.secondaryActionButtonDisabled,
+                                    ]}
+                                    onPress={() => void handleAddRecommendationToCart(item, true)}
+                                    disabled={isAddingToCart}
+                                  >
+                                    {isAddingToCart ? (
+                                      <ActivityIndicator size="small" color={COLORS.primary} />
+                                    ) : null}
+                                    <Text style={styles.secondaryActionButtonText}>
+                                      {t('plantDetail.addToCart', {
+                                        defaultValue: 'Add to cart',
+                                      })}
+                                    </Text>
+                                  </TouchableOpacity>
+                                ) : null}
+
+                                {canBuyNow ? (
+                                  <TouchableOpacity
+                                    style={[
+                                      styles.primaryCompactButton,
+                                      isBuyingNow && styles.primaryCompactButtonDisabled,
+                                    ]}
+                                    onPress={() => void handleBuyRecommendationNow(item, true)}
+                                    disabled={isBuyingNow}
+                                  >
+                                    {isBuyingNow ? (
+                                      <ActivityIndicator size="small" color={COLORS.white} />
+                                    ) : null}
+                                    <Text style={styles.primaryCompactButtonText}>
+                                      {t('plantDetail.buyNow', {
+                                        defaultValue: 'Buy now',
+                                      })}
+                                    </Text>
+                                  </TouchableOpacity>
+                                ) : null}
+                              </View>
+                            </View>
                           ) : null}
                         </View>
-                      </View>
-                    ))}
+                      );
+                    })}
                   </View>
                 ) : null}
               </SectionCard>
@@ -1700,11 +2136,17 @@ export default function AIDesignScreen() {
                           style={styles.recommendationCard}
                         >
                           {recommendation.imageUrl ? (
-                            <Image
-                              source={{ uri: recommendation.imageUrl }}
-                              style={styles.recommendationImage}
-                              resizeMode="cover"
-                            />
+                            <TouchableOpacity
+                              activeOpacity={0.85}
+                              onPress={() => setFullScreenImage(recommendation.imageUrl!)}
+                              style={{ width: '100%' }}
+                            >
+                              <Image
+                                source={{ uri: recommendation.imageUrl }}
+                                style={styles.recommendationImage}
+                                resizeMode="cover"
+                              />
+                            </TouchableOpacity>
                           ) : (
                             <View style={styles.recommendationImagePlaceholder}>
                               <Ionicons
@@ -1821,6 +2263,30 @@ export default function AIDesignScreen() {
           ) : null}
         </ScrollView>
       )}
+
+      <Modal
+        visible={Boolean(fullScreenImage)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setFullScreenImage(null)}
+      >
+        <View style={styles.fullImageModalOverlay}>
+          <TouchableOpacity
+            style={styles.fullImageCloseButton}
+            onPress={() => setFullScreenImage(null)}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="close" size={28} color={COLORS.white} />
+          </TouchableOpacity>
+          {fullScreenImage ? (
+            <Image
+              source={{ uri: fullScreenImage }}
+              style={styles.fullImagePreview}
+              resizeMode="contain"
+            />
+          ) : null}
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1872,6 +2338,13 @@ const styles = StyleSheet.create({
     padding: SPACING.lg,
     ...SHADOWS.sm,
   },
+  sectionHeader: {
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   sectionTitle: {
     fontSize: FONTS.sizes.lg,
     fontWeight: '700',
@@ -1913,6 +2386,20 @@ const styles = StyleSheet.create({
     gap: SPACING.xs,
     paddingHorizontal: SPACING.md,
   },
+  imageSecondaryButtonSmall: {
+    flex: 0,
+    minWidth: 84,
+    height: 36,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.secondaryLight,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.sm,
+  },
   imageSecondaryButtonText: {
     color: COLORS.primary,
     fontSize: FONTS.sizes.sm,
@@ -1921,6 +2408,18 @@ const styles = StyleSheet.create({
   imagePickerRow: {
     flexDirection: 'row',
     gap: SPACING.md,
+  },
+  imageGrid: {
+    gap: SPACING.md,
+  },
+  imageGridRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: SPACING.md,
+    marginBottom: SPACING.md,
+  },
+  imageGridCard: {
+    flexBasis: '48%',
   },
   imagePickerCard: {
     flex: 1,
@@ -2274,5 +2773,29 @@ const styles = StyleSheet.create({
   generatedImageSource: {
     fontSize: FONTS.sizes.sm,
     color: COLORS.textSecondary,
+  },
+  fullImageModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.lg,
+  },
+  fullImageCloseButton: {
+    position: 'absolute',
+    top: SPACING['3xl'],
+    right: SPACING.lg,
+    width: 36,
+    height: 36,
+    borderRadius: RADIUS.full,
+    backgroundColor: 'rgba(17, 24, 39, 0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+  },
+  fullImagePreview: {
+    width: '100%',
+    height: '100%',
   },
 });
