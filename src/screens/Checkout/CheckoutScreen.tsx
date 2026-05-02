@@ -36,7 +36,7 @@ const mapApiCartItems = (
   fallbackSize: string
 ): CheckoutItem[] =>
   items.map((item) => ({
-    id: String(item.id),
+    id: item.id,
     name: item.productName,
     size: fallbackSize,
     image: undefined,

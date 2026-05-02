@@ -11,6 +11,7 @@ import {
   SupportRealtimeIncomingMessage,
   SupportMessage,
   SupportRealtimeConnectionState,
+  SupportTypingPayload,
 } from '../types';
 
 type MessageHandler = (message: SupportMessage) => void;
@@ -20,6 +21,7 @@ type ConversationHandler = (
 type ConnectionStateHandler = (
   state: SupportRealtimeConnectionState
 ) => void;
+type TypingHandler = (payload: SupportTypingPayload) => void;
 
 class SupportRealtimeService {
   private connection: HubConnection | null = null;
@@ -27,6 +29,8 @@ class SupportRealtimeService {
   private messageHandlers = new Set<MessageHandler>();
   private conversationHandlers = new Set<ConversationHandler>();
   private connectionStateHandlers = new Set<ConnectionStateHandler>();
+  private typingHandlers = new Set<TypingHandler>();
+  private stoppedTypingHandlers = new Set<TypingHandler>();
   private registeredEventNames = new Set<string>();
 
   async connect(): Promise<void> {
@@ -114,6 +118,29 @@ class SupportRealtimeService {
     throw lastError ?? new Error('Failed to send support chat message');
   }
 
+  async sendUserTyping(conversationId: number): Promise<void> {
+    await this.connect();
+
+    if (!this.connection || this.connection.state !== HubConnectionState.Connected) {
+      return;
+    }
+
+    await this.tryInvoke(SUPPORT_CHAT_REALTIME.METHODS.USER_TYPING, conversationId);
+  }
+
+  async sendUserStoppedTyping(conversationId: number): Promise<void> {
+    await this.connect();
+
+    if (!this.connection || this.connection.state !== HubConnectionState.Connected) {
+      return;
+    }
+
+    await this.tryInvoke(
+      SUPPORT_CHAT_REALTIME.METHODS.USER_STOPPED_TYPING,
+      conversationId
+    );
+  }
+
   async leaveConversation(conversationId: number): Promise<void> {
     if (!this.connection || this.connection.state !== HubConnectionState.Connected) {
       if (this.currentConversationId === conversationId) {
@@ -153,6 +180,20 @@ class SupportRealtimeService {
     handler(this.getConnectionState());
     return () => {
       this.connectionStateHandlers.delete(handler);
+    };
+  }
+
+  onUserTyping(handler: TypingHandler): () => void {
+    this.typingHandlers.add(handler);
+    return () => {
+      this.typingHandlers.delete(handler);
+    };
+  }
+
+  onUserStoppedTyping(handler: TypingHandler): () => void {
+    this.stoppedTypingHandlers.add(handler);
+    return () => {
+      this.stoppedTypingHandlers.delete(handler);
     };
   }
 
@@ -234,6 +275,24 @@ class SupportRealtimeService {
             endedAt: update.endedAt ?? new Date().toISOString(),
           })
         );
+      }
+    );
+
+    this.registerEventNames(
+      connection,
+      SUPPORT_CHAT_REALTIME.EVENTS.USER_TYPING,
+      (payload: SupportTypingPayload) => {
+        if (!payload) return;
+        this.typingHandlers.forEach((handler) => handler(payload));
+      }
+    );
+
+    this.registerEventNames(
+      connection,
+      SUPPORT_CHAT_REALTIME.EVENTS.USER_STOPPED_TYPING,
+      (payload: SupportTypingPayload) => {
+        if (!payload) return;
+        this.stoppedTypingHandlers.forEach((handler) => handler(payload));
       }
     );
   }

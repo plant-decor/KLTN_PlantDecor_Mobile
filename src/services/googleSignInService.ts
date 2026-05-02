@@ -5,8 +5,7 @@ type GoogleSignInModule = typeof import('@react-native-google-signin/google-sign
 let hasConfiguredGoogleSignIn = false;
 let cachedGoogleSignInModule: GoogleSignInModule | null = null;
 const APP_PACKAGE_NAME = 'com.plantdecor.mobile';
-const DEBUG_SHA1 = '5E:8F:16:06:2E:A3:CD:2C:4A:0D:54:78:76:BA:A6:F3:8C:AB:F6:25';
-const RELEASE_SHA1 = '1C:CF:B3:44:D8:18:51:4D:C7:E4:AE:1F:96:D2:43:AE:2A:ED:02:B4';
+const RELEASE_SHA1 = 'F9:1D:0F:87:C6:42:01:94:AD:74:38:F3:E3:44:D2:04:2A:2E:C6:BE';
 
 const resolveErrorMessage = (error: unknown): string => {
   if (typeof error === 'string') {
@@ -84,7 +83,6 @@ const getGoogleSignInErrorMessage = (error: unknown) => {
         return [
           'Google Sign-In configuration mismatch (DEVELOPER_ERROR).',
           `Package: ${APP_PACKAGE_NAME}`,
-          `Debug SHA-1: ${DEBUG_SHA1}`,
           `Release SHA-1: ${RELEASE_SHA1}`,
           'Ensure the Android OAuth client in Google Cloud uses this package + SHA-1 for the build variant you are running.',
           'If EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID is set, it must be a Web client ID (not Android).',

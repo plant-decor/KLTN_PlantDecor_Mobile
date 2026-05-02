@@ -1,7 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   FlatList,
+  Image,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -12,26 +15,33 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-} from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
-import { useTranslation } from 'react-i18next';
-import { format } from 'date-fns';
-import { aiChatService } from '../../services';
-import { COLORS, FONTS, RADIUS, SHADOWS, SPACING } from '../../constants';
+} from "react-native";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { RouteProp, useNavigation, useRoute } from "@react-navigation/native";
+import { useTranslation } from "react-i18next";
+import { aiChatService } from "../../services";
+import { COLORS, FONTS, RADIUS, SHADOWS, SPACING } from "../../constants";
+import { BrandMark } from "../../components/branding";
+import { useAuthStore } from "../../stores";
 import {
   AIChatEnumGroup,
+  AIChatHistoryMessage,
   AIChatMessage,
   AIChatSessionSummary,
   AIChatSuggestedPlant,
   RootStackParamList,
   SystemEnumValue,
-} from '../../types';
+} from "../../types";
+import { formatVietnamDateTime, toVietnamTimestamp } from "../../utils";
+import { resolveImageUri } from "../../utils/image";
 
-type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'AIChat'>;
-type RouteProps = RouteProp<RootStackParamList, 'AIChat'>;
+type NavigationProp = NativeStackNavigationProp<RootStackParamList, "AIChat">;
+type RouteProps = RouteProp<RootStackParamList, "AIChat">;
 
 type FilterState = {
   preferredRoom?: string | null;
@@ -40,20 +50,26 @@ type FilterState = {
   limit: string;
   petSafe: boolean;
   childSafe: boolean;
+  onlyPurchasable: boolean;
+  roomDescription?: string | null;
 };
 
 const DEFAULT_FILTERS: FilterState = {
   preferredRoom: null,
   fengShuiElement: null,
-  maxBudget: '',
-  limit: '',
+  maxBudget: "",
+  limit: "",
   petSafe: false,
   childSafe: false,
+  onlyPurchasable: true,
+  roomDescription: "",
 };
+
+const TYPING_MESSAGE_ID = "assistant-typing";
 
 const upsertMessages = (
   current: AIChatMessage[],
-  incoming: AIChatMessage[]
+  incoming: AIChatMessage[],
 ): AIChatMessage[] => {
   const map = new Map<string, AIChatMessage>();
 
@@ -69,44 +85,47 @@ const upsertMessages = (
   });
 
   return [...map.values()].sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    (a, b) => toVietnamTimestamp(b.createdAt) - toVietnamTimestamp(a.createdAt),
   );
 };
 
-const normalizeStatusLabel = (status: AIChatSessionSummary['status']) => {
-  if (status === 1 || String(status).toLowerCase() === 'active') {
-    return 'Active';
+const normalizeStatusLabel = (status: AIChatSessionSummary["status"]) => {
+  if (status === 1 || String(status).toLowerCase() === "active") {
+    return "Active";
   }
 
-  if (status === 2 || String(status).toLowerCase() === 'closed') {
-    return 'Closed';
+  if (status === 2 || String(status).toLowerCase() === "closed") {
+    return "Closed";
   }
 
   return String(status);
 };
 
 const formatCurrency = (value?: number | null) => {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
     return null;
   }
 
-  return `${value.toLocaleString('vi-VN')} VND`;
+  return `${value.toLocaleString("vi-VN")} VND`;
 };
 
-const formatRelativeTime = (value?: string | null) => {
+const formatRelativeTime = (
+  value: string | null | undefined,
+  locale: string,
+) => {
   if (!value) {
-    return '';
+    return "";
   }
 
-  try {
-    return format(new Date(value), 'dd/MM HH:mm');
-  } catch {
-    return value;
-  }
+  const formatted = formatVietnamDateTime(value, locale, {
+    empty: "",
+    hour12: false,
+  });
+  return formatted || value;
 };
 
 const parsePositiveNumber = (value: string): number | null => {
-  const normalized = Number(value.replace(/[^0-9]/g, ''));
+  const normalized = Number(value.replace(/[^0-9]/g, ""));
   if (!Number.isFinite(normalized) || normalized <= 0) {
     return null;
   }
@@ -116,32 +135,89 @@ const parsePositiveNumber = (value: string): number | null => {
 
 const buildSessionTitle = (message: string) => message.trim().slice(0, 60);
 
+const resolveInitial = (value?: string | null) => {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return "?";
+  }
+
+  return trimmed[0]?.toUpperCase() ?? "?";
+};
+
+const mapHistoryMessageToChatMessage = (
+  message: AIChatHistoryMessage,
+): AIChatMessage => ({
+  id: message.messageId,
+  role: message.role,
+  content: message.content,
+  intent: message.intent,
+  isFallback: message.isFallback,
+  isPolicyResponse: message.isPolicyResponse,
+  createdAt: message.createdAt,
+  suggestedPlants: message.suggestedPlants,
+  careTips: message.careTips,
+});
+
 export default function AIChatScreen() {
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<RouteProps>();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const locale = i18n.language?.startsWith("vi") ? "vi-VN" : "en-US";
   const insets = useSafeAreaInsets();
   const flatListRef = useRef<FlatList>(null);
-  const keyboardVerticalOffset = Platform.OS === 'ios' ? insets.top : 0;
+  const skipNextSessionLoadRef = useRef(false);
+  const user = useAuthStore((state) => state.user);
 
-  const [activeSession, setActiveSession] = useState<AIChatSessionSummary | null>(null);
+  const [activeSession, setActiveSession] =
+    useState<AIChatSessionSummary | null>(null);
   const [messages, setMessages] = useState<AIChatMessage[]>([]);
-  const [text, setText] = useState('');
+  const [text, setText] = useState("");
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [sending, setSending] = useState(false);
   const [headerLoading, setHeaderLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
+  const [filters, setFilters] = useState<FilterState>({ ...DEFAULT_FILTERS });
   const [filtersVisible, setFiltersVisible] = useState(false);
   const [enumGroups, setEnumGroups] = useState<AIChatEnumGroup[]>([]);
+  const [expandedSuggested, setExpandedSuggested] = useState<
+    Record<string, boolean>
+  >({});
+  const [expandedCareTips, setExpandedCareTips] = useState<
+    Record<string, boolean>
+  >({});
+
+  const userAvatarUri = useMemo(
+    () => resolveImageUri(user?.avatar ?? user?.avatarUrl),
+    [user?.avatar, user?.avatarUrl],
+  );
+  const userInitial = useMemo(
+    () =>
+      resolveInitial(
+        user?.fullName ?? user?.username ?? user?.email ?? user?.phone ?? null,
+      ),
+    [user?.fullName, user?.username, user?.email, user?.phone],
+  );
+  const typingDots = useRef([
+    new Animated.Value(0.3),
+    new Animated.Value(0.3),
+    new Animated.Value(0.3),
+  ]).current;
+  const typingLoopsRef = useRef<Animated.CompositeAnimation[]>([]);
+  const hasTypingMessage = useMemo(
+    () => messages.some((message) => String(message.id) === TYPING_MESSAGE_ID),
+    [messages],
+  );
 
   const roomTypeOptions = useMemo(
-    () => enumGroups.find((group) => group.enumName === 'RoomType')?.values ?? [],
-    [enumGroups]
+    () =>
+      enumGroups.find((group) => group.enumName === "RoomType")?.values ?? [],
+    [enumGroups],
   );
   const fengShuiOptions = useMemo(
-    () => enumGroups.find((group) => group.enumName === 'FengShuiElement')?.values ?? [],
-    [enumGroups]
+    () =>
+      enumGroups.find((group) => group.enumName === "FengShuiElement")
+        ?.values ?? [],
+    [enumGroups],
   );
 
   const loadSessionHistory = async (sessionId: number) => {
@@ -156,9 +232,14 @@ export default function AIChatScreen() {
       status: response.payload.status,
       startedAt: response.payload.startedAt,
       endedAt: response.payload.endedAt,
-      updatedAt: response.payload.messages[0]?.createdAt ?? response.payload.startedAt,
+      updatedAt:
+        response.payload.messages[0]?.createdAt ?? response.payload.startedAt,
     });
-    setMessages(response.payload.messages);
+    setMessages(
+      response.payload.messages.map((message) =>
+        mapHistoryMessageToChatMessage(message),
+      ),
+    );
   };
 
   const loadEnums = async () => {
@@ -166,7 +247,7 @@ export default function AIChatScreen() {
       const response = await aiChatService.getEnums();
       setEnumGroups(response);
     } catch (loadError) {
-      console.error('Failed to load AI chat enums:', loadError);
+      console.error("Failed to load AI chat enums:", loadError);
     }
   };
 
@@ -186,7 +267,10 @@ export default function AIChatScreen() {
         return;
       }
 
-      const response = await aiChatService.getSessions({ pageNumber: 1, pageSize: 20 });
+      const response = await aiChatService.getSessions({
+        pageNumber: 1,
+        pageSize: 20,
+      });
       const nextSession = response.payload.items[0] ?? null;
 
       if (!nextSession) {
@@ -200,7 +284,7 @@ export default function AIChatScreen() {
       setError(
         loadError?.response?.data?.message ??
           loadError?.message ??
-          t('common.error', { defaultValue: 'Something went wrong.' })
+          t("common.error", { defaultValue: "Something went wrong." }),
       );
       setActiveSession(null);
       setMessages([]);
@@ -211,8 +295,57 @@ export default function AIChatScreen() {
 
   useEffect(() => {
     void loadEnums();
+  }, []);
+
+  useEffect(() => {
+    if (skipNextSessionLoadRef.current) {
+      skipNextSessionLoadRef.current = false;
+      return;
+    }
+
     void loadInitialSession();
   }, [route.params?.sessionId, route.params?.createNew]);
+
+  useEffect(() => {
+    typingLoopsRef.current.forEach((loop) => loop.stop());
+    typingLoopsRef.current = [];
+
+    if (!hasTypingMessage) {
+      typingDots.forEach((dot) => dot.setValue(0.3));
+      return;
+    }
+
+    typingDots.forEach((dot, index) => {
+      dot.setValue(0.3);
+
+      const loop = Animated.loop(
+        Animated.sequence([
+          Animated.delay(index * 160),
+          Animated.timing(dot, {
+            toValue: 1,
+            duration: 240,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(dot, {
+            toValue: 0.3,
+            duration: 240,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.delay(360),
+        ]),
+      );
+
+      typingLoopsRef.current.push(loop);
+      loop.start();
+    });
+
+    return () => {
+      typingLoopsRef.current.forEach((loop) => loop.stop());
+      typingLoopsRef.current = [];
+    };
+  }, [hasTypingMessage, typingDots]);
 
   const createNewDraftSession = () => {
     setActiveSession(null);
@@ -222,7 +355,7 @@ export default function AIChatScreen() {
   };
 
   const handleOpenSessions = () => {
-    navigation.navigate('AIChatSessions', {
+    navigation.navigate("AIChatSessions", {
       selectedSessionId: activeSession?.sessionId,
     });
   };
@@ -231,8 +364,22 @@ export default function AIChatScreen() {
     void loadInitialSession();
   };
 
-  const handleSend = async () => {
-    const trimmedText = text.trim();
+  const buildTypingMessage = (): AIChatMessage => ({
+    id: TYPING_MESSAGE_ID,
+    role: "assistant",
+    content: "",
+    createdAt: new Date(Date.now() + 1).toISOString(),
+    pending: true,
+  });
+
+  const removeTypingMessage = (items: AIChatMessage[]) =>
+    items.filter((message) => String(message.id) !== TYPING_MESSAGE_ID);
+
+  const sendMessage = async (
+    rawText: string,
+    options?: { clearInput?: boolean },
+  ) => {
+    const trimmedText = rawText.trim();
     if (!trimmedText || sending) {
       return;
     }
@@ -243,33 +390,46 @@ export default function AIChatScreen() {
 
     const optimisticUserMessage: AIChatMessage = {
       id: `local-user-${Date.now()}`,
-      role: 'user',
+      role: "user",
       content: trimmedText,
       createdAt: new Date().toISOString(),
-      pending: true,
     };
 
     const currentMessages = upsertMessages(messages, [optimisticUserMessage]);
-    setMessages(currentMessages);
-    setText('');
+    const messagesWithTyping = upsertMessages(currentMessages, [
+      buildTypingMessage(),
+    ]);
+    setMessages(messagesWithTyping);
+    if (options?.clearInput ?? true) {
+      setText("");
+    }
     flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
 
     try {
       let session = activeSession;
 
       if (!session) {
-        setHeaderLoading(true);
+        setHeaderLoading(false);
         const sessionResponse = await aiChatService.createSession({
           title: buildSessionTitle(trimmedText),
         });
         session = sessionResponse.payload;
         setActiveSession(session);
-        navigation.setParams?.({ sessionId: session.sessionId, createNew: false });
+        skipNextSessionLoadRef.current = true;
+        navigation.setParams?.({
+          sessionId: session.sessionId,
+          createNew: false,
+        });
       }
 
       const conversationHistory = currentMessages
-        .filter((message) => !message.failed && message.content.trim().length > 0)
-        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+        .filter(
+          (message) => !message.failed && message.content.trim().length > 0,
+        )
+        .sort(
+          (a, b) =>
+            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+        )
         .map((message) => ({
           role: message.role,
           content: message.content,
@@ -278,38 +438,42 @@ export default function AIChatScreen() {
       const response = await aiChatService.sendMessage({
         sessionId: session.sessionId,
         message: trimmedText,
-        preferredRooms: filters.preferredRoom ? [filters.preferredRoom] : undefined,
+        preferredRooms: filters.preferredRoom
+          ? [filters.preferredRoom]
+          : undefined,
+        roomDescription: filters.roomDescription ?? undefined,
         fengShuiElement: filters.fengShuiElement ?? undefined,
         maxBudget: parsePositiveNumber(filters.maxBudget),
         limit: parsePositiveNumber(filters.limit),
         petSafe: filters.petSafe ? true : null,
         childSafe: filters.childSafe ? true : null,
-        onlyPurchasable: true,
+        onlyPurchasable: filters.onlyPurchasable,
         conversationHistory,
       });
 
       const assistantMessage: AIChatMessage = {
         id: `assistant-${Date.now()}`,
-        role: 'assistant',
+        role: "assistant",
         content: response.payload.reply,
         intent: response.payload.intent,
         isFallback: response.payload.usedFallback ?? false,
         isPolicyResponse: false,
         createdAt: new Date().toISOString(),
         suggestedPlants: response.payload.suggestedPlants ?? [],
+        careTips: response.payload.careTips ?? [],
         followUpQuestions: response.payload.followUpQuestions ?? [],
         disclaimer: response.payload.disclaimer ?? null,
       };
 
       setMessages((previousMessages) =>
         upsertMessages(
-          previousMessages.map((message) =>
+          removeTypingMessage(previousMessages).map((message) =>
             String(message.id) === String(optimisticUserMessage.id)
               ? { ...message, pending: false }
-              : message
+              : message,
           ),
-          [assistantMessage]
-        )
+          [assistantMessage],
+        ),
       );
 
       setActiveSession((previousSession) =>
@@ -319,25 +483,25 @@ export default function AIChatScreen() {
               title: previousSession.title ?? buildSessionTitle(trimmedText),
               updatedAt: assistantMessage.createdAt,
             }
-          : previousSession
+          : previousSession,
       );
     } catch (sendError: any) {
-      console.error('Failed to send AI chat message:', sendError);
+      console.error("Failed to send AI chat message:", sendError);
       setMessages((previousMessages) =>
-        previousMessages.map((message) =>
+        removeTypingMessage(previousMessages).map((message) =>
           String(message.id) === String(optimisticUserMessage.id)
             ? {
                 ...message,
                 pending: false,
                 failed: true,
               }
-            : message
-        )
+            : message,
+        ),
       );
       setError(
         sendError?.response?.data?.message ??
           sendError?.message ??
-          t('common.error', { defaultValue: 'Something went wrong.' })
+          t("common.error", { defaultValue: "Something went wrong." }),
       );
     } finally {
       setSending(false);
@@ -345,17 +509,41 @@ export default function AIChatScreen() {
     }
   };
 
+  const handleSend = async () => {
+    await sendMessage(text, { clearInput: true });
+  };
+
+  const handleFollowUpPress = (question: string) => {
+    void sendMessage(question, { clearInput: false });
+  };
+
+  const isSectionExpanded = (map: Record<string, boolean>, key: string) =>
+    map[key] !== false;
+
+  const toggleSection = (
+    setter: React.Dispatch<React.SetStateAction<Record<string, boolean>>>,
+    key: string,
+  ) => {
+    setter((current) => {
+      const isExpanded = current[key] !== false;
+      return { ...current, [key]: !isExpanded };
+    });
+  };
+
   const renderFilterOption = (
     label: string,
     options: SystemEnumValue[],
     selectedValue: string | null | undefined,
-    onSelect: (value: string | null) => void
+    onSelect: (value: string | null) => void,
   ) => (
     <View style={styles.filterSection}>
       <Text style={styles.filterLabel}>{label}</Text>
       <View style={styles.filterChips}>
         <TouchableOpacity
-          style={[styles.filterChip, !selectedValue && styles.filterChipSelected]}
+          style={[
+            styles.filterChip,
+            !selectedValue && styles.filterChipSelected,
+          ]}
           onPress={() => onSelect(null)}
         >
           <Text
@@ -364,7 +552,7 @@ export default function AIChatScreen() {
               !selectedValue && styles.filterChipTextSelected,
             ]}
           >
-            {t('common.all', { defaultValue: 'All' })}
+            {t("common.all", { defaultValue: "All" })}
           </Text>
         </TouchableOpacity>
         {options.map((option) => {
@@ -393,99 +581,334 @@ export default function AIChatScreen() {
   );
 
   const renderSuggestedPlant = (plant: AIChatSuggestedPlant) => {
-    const isCommonPlant = plant.entityType === 'CommonPlant';
+    const isPlantInstance = plant.entityType === "PlantInstance";
     const priceLabel = formatCurrency(plant.price);
 
     return (
       <TouchableOpacity
         key={`${plant.entityType}-${plant.entityId}`}
         style={styles.suggestedCard}
-        disabled={!isCommonPlant}
-        onPress={() =>
-          navigation.navigate('PlantDetail', {
-            plantId: String(plant.entityId),
-          })
-        }
+        disabled={false}
+        onPress={() => {
+          // Navigate based on available IDs
+          if (isPlantInstance && plant.plantId) {
+            navigation.navigate("PlantInstanceDetail", {
+              plantId: plant.plantId,
+              plantInstanceId: plant.entityId,
+            });
+            return;
+          }
+
+          if (plant.plantId) {
+            navigation.navigate("PlantDetail", { plantId: plant.plantId });
+            return;
+          }
+
+          if (plant.plantComboId) {
+            navigation.navigate("ComboDetail", {
+              comboId: plant.plantComboId,
+            });
+            return;
+          }
+
+          if (plant.materialId) {
+            navigation.navigate("MaterialDetail", {
+              materialId: plant.materialId,
+            });
+            return;
+          }
+        }}
       >
-        <View style={styles.suggestedHeader}>
-          <Text style={styles.suggestedName}>{plant.name}</Text>
-          {plant.isPurchasable ? (
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>
-                {t('chat.purchasable', { defaultValue: 'Purchasable' })}
+        {/* Row 1: Thumbnail + Name & Description */}
+        <View style={styles.suggestedRow}>
+          {plant.imageUrl ? (
+            <Image
+              source={{
+                uri: resolveImageUri(plant.imageUrl) as string | undefined,
+              }}
+              style={styles.suggestedThumb}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={styles.suggestedThumbPlaceholder} />
+          )}
+
+          <View style={styles.suggestedContent}>
+            <Text style={styles.suggestedName}>{plant.name}</Text>
+            {plant.description ? (
+              <Text style={styles.suggestedDescription} numberOfLines={2}>
+                {plant.description}
               </Text>
+            ) : null}
+          </View>
+        </View>
+
+        {/* Divider */}
+        <View style={styles.suggestedDivider} />
+
+        {/* Row 2: Nursery Info & Price */}
+        <View style={styles.suggestedFooterRow}>
+          {plant.nurseryName || plant.nurseryAddress ? (
+            <View style={styles.nurseryInfo}>
+              <View style={styles.nurseryNameRow}>
+                {plant.nurseryName ? (
+                  <Text style={styles.nurseryName} numberOfLines={1}>
+                    {plant.nurseryName}
+                  </Text>
+                ) : null}
+                {plant.isPurchasable ? (
+                  <View style={styles.badgeCompact}>
+                    <Text style={styles.badgeCompactText}>
+                      {t("chat.Purchasable", { defaultValue: "Purchasable" })}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+              {plant.nurseryAddress ? (
+                <Text style={styles.nurseryAddress} numberOfLines={1}>
+                  {plant.nurseryAddress}
+                </Text>
+              ) : null}
             </View>
           ) : null}
-        </View>
-        {plant.description ? (
-          <Text style={styles.suggestedDescription}>{plant.description}</Text>
-        ) : null}
-        <View style={styles.suggestedFooter}>
-          <Text style={styles.suggestedMeta}>
-            {priceLabel ?? t('chat.priceUnavailable', { defaultValue: 'Price unavailable' })}
-          </Text>
-          {isCommonPlant ? (
-            <Text style={styles.suggestedLink}>
-              {t('chat.viewPlant', { defaultValue: 'View plant' })}
+          <View style={styles.suggestedFooterSpacer}>
+            <Text style={styles.suggestedMeta}>
+              {priceLabel ??
+                t("chat.priceUnavailable", {
+                  defaultValue: "Price unavailable",
+                })}
             </Text>
-          ) : null}
+            <Text style={styles.suggestedMetaText}>View details</Text>
+          </View>
         </View>
       </TouchableOpacity>
     );
   };
 
   const renderItem = ({ item }: { item: AIChatMessage }) => {
-    const mine = item.role === 'user';
+    const mine = item.role === "user";
+    const isTyping = !mine && item.pending && item.content.trim().length === 0;
+    const suggestedKey = `${item.id}-suggested`;
+    const careTipsKey = `${item.id}-caretips`;
+    const suggestedExpanded = isSectionExpanded(
+      expandedSuggested,
+      suggestedKey,
+    );
+    const careTipsExpanded = isSectionExpanded(expandedCareTips, careTipsKey);
+    const sectionTitleStyle = [
+      styles.sectionTitle,
+      mine ? styles.sectionTitleOnDark : styles.sectionTitleOnLight,
+    ];
+    const sectionTextStyle = [
+      styles.sectionText,
+      mine ? styles.sectionTextOnDark : styles.sectionTextOnLight,
+    ];
 
     return (
-      <View style={[styles.messageRow, mine ? styles.myMessageRow : styles.otherMessageRow]}>
+      <View
+        style={[
+          styles.messageRow,
+          mine ? styles.myMessageRow : styles.otherMessageRow,
+        ]}
+      >
+        {!mine ? (
+          <View style={styles.avatarColumn}>
+            <View style={[styles.avatarCircle, styles.botAvatarCircle]}>
+              <BrandMark variant="logo" size="compactHeader" />
+            </View>
+          </View>
+        ) : null}
+
         <View
           style={[
-            styles.messageBubble,
-            mine ? styles.myBubble : styles.otherBubble,
-            item.failed && styles.failedBubble,
+            styles.bubbleStack,
+            mine ? styles.bubbleStackRight : styles.bubbleStackLeft,
           ]}
         >
-          <Text style={[styles.messageText, mine ? styles.myText : styles.otherText]}>
-            {item.content}
-          </Text>
-          {item.suggestedPlants && item.suggestedPlants.length > 0 ? (
-            <View style={styles.suggestedList}>
-              {item.suggestedPlants.map((plant) => renderSuggestedPlant(plant))}
+          {isTyping ? (
+            <View
+              style={[
+                styles.messageBubble,
+                styles.otherBubble,
+                styles.typingBubble,
+              ]}
+            >
+              <View style={styles.typingDots}>
+                {typingDots.map((dot, index) => (
+                  <Animated.View
+                    key={`typing-dot-${index}`}
+                    style={[
+                      styles.typingDot,
+                      {
+                        opacity: dot,
+                        transform: [
+                          {
+                            scale: dot.interpolate({
+                              inputRange: [0.3, 1],
+                              outputRange: [0.7, 1.25],
+                            }),
+                          },
+                        ],
+                      },
+                    ]}
+                  />
+                ))}
+              </View>
             </View>
-          ) : null}
-          {item.followUpQuestions && item.followUpQuestions.length > 0 ? (
-            <View style={styles.followUpContainer}>
-              {item.followUpQuestions.map((question, index) => (
-                <Text key={`${item.id}-question-${index}`} style={styles.followUpText}>
-                  - {question}
+          ) : mine ? (
+            <View
+              style={[
+                styles.messageBubble,
+                styles.myBubble,
+                item.failed && styles.failedBubble,
+              ]}
+            >
+              <Text style={[styles.messageText, styles.myText]}>
+                {item.content}
+              </Text>
+              <View style={styles.messageMetaRow}>
+                <Text style={[styles.messageTime, styles.myTime]}>
+                  {formatRelativeTime(item.createdAt, locale)}
                 </Text>
-              ))}
+              </View>
             </View>
-          ) : null}
-          {item.disclaimer ? (
-            <Text style={styles.disclaimerText}>{item.disclaimer}</Text>
-          ) : null}
-          <View style={styles.messageMetaRow}>
-            {item.isFallback ? (
-              <Text
+          ) : (
+            <>
+              <View
                 style={[
-                  styles.messageMetaText,
-                  mine ? styles.myMetaText : styles.otherMetaText,
+                  styles.messageBubble,
+                  styles.otherBubble,
+                  item.failed && styles.failedBubble,
                 ]}
               >
-                {t('chat.fallback', { defaultValue: 'Fallback reply' })}
-              </Text>
-            ) : null}
-            {item.pending ? (
-              <ActivityIndicator size="small" color={mine ? COLORS.white : COLORS.primary} />
-            ) : (
-              <Text style={[styles.messageTime, mine ? styles.myTime : styles.otherTime]}>
-                {formatRelativeTime(item.createdAt)}
-              </Text>
-            )}
-          </View>
+                <Text style={[styles.messageText, styles.otherText]}>
+                  {item.content}
+                </Text>
+                {item.suggestedPlants && item.suggestedPlants.length > 0 ? (
+                  <View style={styles.sectionToggleWrap}>
+                    <TouchableOpacity
+                      style={styles.sectionToggle}
+                      onPress={() =>
+                        toggleSection(setExpandedSuggested, suggestedKey)
+                      }
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.sectionToggleText}>
+                        {t("chat.suggestedPlants", {
+                          defaultValue: "Suggested plants",
+                        })}
+                      </Text>
+                      <Ionicons
+                        name={suggestedExpanded ? "chevron-up" : "chevron-down"}
+                        size={16}
+                        color={COLORS.textSecondary}
+                      />
+                    </TouchableOpacity>
+                    {suggestedExpanded ? (
+                      <View style={styles.suggestedList}>
+                        {item.suggestedPlants.map((plant) =>
+                          renderSuggestedPlant(plant),
+                        )}
+                      </View>
+                    ) : null}
+                  </View>
+                ) : null}
+                {item.disclaimer ? (
+                  <Text style={styles.disclaimerText}>{item.disclaimer}</Text>
+                ) : null}
+                <View style={styles.messageMetaRow}>
+                  {item.isFallback ? (
+                    <Text
+                      style={[styles.messageMetaText, styles.otherMetaText]}
+                    >
+                      {t("chat.fallback", { defaultValue: "Fallback reply" })}
+                    </Text>
+                  ) : null}
+                  <Text style={[styles.messageTime, styles.otherTime]}>
+                    {formatRelativeTime(item.createdAt, locale)}
+                  </Text>
+                </View>
+              </View>
+
+              {item.careTips && item.careTips.length > 0 ? (
+                <View style={[styles.sectionBubble, styles.careTipsBubble]}>
+                  <TouchableOpacity
+                    style={styles.sectionToggle}
+                    onPress={() =>
+                      toggleSection(setExpandedCareTips, careTipsKey)
+                    }
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[sectionTitleStyle, styles.careTipsTitle]}>
+                      {t("chat.careTips", { defaultValue: "Care tips" })}
+                    </Text>
+                    <Ionicons
+                      name={careTipsExpanded ? "chevron-up" : "chevron-down"}
+                      size={16}
+                      color={COLORS.primary}
+                    />
+                  </TouchableOpacity>
+                  {careTipsExpanded ? (
+                    <View style={styles.sectionList}>
+                      {item.careTips.map((tip, index) => (
+                        <Text
+                          key={`${item.id}-caretip-${index}`}
+                          style={[sectionTextStyle, styles.careTipsText]}
+                        >
+                          - {tip}
+                        </Text>
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
+
+              {item.followUpQuestions && item.followUpQuestions.length > 0 ? (
+                <View style={styles.followUpSection}>
+                  <Text style={[sectionTitleStyle, styles.followUpTitle]}>
+                    {t("chat.followUpQuestions", {
+                      defaultValue: "Follow-up questions",
+                    })}
+                  </Text>
+                  <View style={styles.sectionList}>
+                    {item.followUpQuestions.map((question, index) => (
+                      <TouchableOpacity
+                        key={`${item.id}-question-${index}`}
+                        style={[
+                          styles.followUpButton,
+                          styles.followUpButtonOnLight,
+                          sending && styles.followUpButtonDisabled,
+                        ]}
+                        onPress={() => handleFollowUpPress(question)}
+                        disabled={sending}
+                        activeOpacity={0.75}
+                      >
+                        <Text style={[sectionTextStyle, styles.followUpText]}>
+                          {question}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              ) : null}
+            </>
+          )}
         </View>
+
+        {mine ? (
+          <View style={styles.avatarColumn}>
+            <View style={styles.avatarCircle}>
+              {userAvatarUri ? (
+                <Image
+                  source={{ uri: userAvatarUri }}
+                  style={styles.avatarImage}
+                />
+              ) : (
+                <Text style={styles.avatarInitial}>{userInitial}</Text>
+              )}
+            </View>
+          </View>
+        ) : null}
       </View>
     );
   };
@@ -493,26 +916,29 @@ export default function AIChatScreen() {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={keyboardVerticalOffset}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
-      <SafeAreaView style={styles.flex1} edges={['top']}>
+      <SafeAreaView style={styles.flex1} edges={["top"]}>
         <View style={styles.header}>
-          <TouchableOpacity style={styles.iconButton} onPress={() => navigation.goBack()}>
+          <TouchableOpacity
+            style={styles.iconButton}
+            onPress={() => navigation.goBack()}
+          >
             <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
           </TouchableOpacity>
 
           <View style={styles.headerTitleContainer}>
             <Text style={styles.headerTitle}>
-              {t('profile.aiAssistant', { defaultValue: 'AI Assistant' })}
+              {t("profile.aiAssistant", { defaultValue: "AI Assistant" })}
             </Text>
             <Text style={styles.headerSubtitle}>
               {activeSession
                 ? `${normalizeStatusLabel(activeSession.status)} | ${formatRelativeTime(
-                    activeSession.updatedAt ?? activeSession.startedAt
+                    activeSession.updatedAt ?? activeSession.startedAt,
+                    locale,
                   )}`
-                : t('chat.aiSubtitle', {
-                    defaultValue: 'Plant selection and care guidance',
+                : t("chat.aiSubtitle", {
+                    defaultValue: "Plant selection and care guidance",
                   })}
             </Text>
           </View>
@@ -521,14 +947,35 @@ export default function AIChatScreen() {
             {headerLoading ? (
               <ActivityIndicator size="small" color={COLORS.primary} />
             ) : null}
-            <TouchableOpacity style={styles.iconButton} onPress={() => setFiltersVisible(true)}>
-              <Ionicons name="options-outline" size={22} color={COLORS.textPrimary} />
+            <TouchableOpacity
+              style={styles.iconButton}
+              onPress={() => setFiltersVisible(true)}
+            >
+              <Ionicons
+                name="options-outline"
+                size={22}
+                color={COLORS.textPrimary}
+              />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.iconButton} onPress={handleOpenSessions}>
-              <Ionicons name="time-outline" size={22} color={COLORS.textPrimary} />
+            <TouchableOpacity
+              style={styles.iconButton}
+              onPress={handleOpenSessions}
+            >
+              <Ionicons
+                name="time-outline"
+                size={22}
+                color={COLORS.textPrimary}
+              />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.iconButton} onPress={createNewDraftSession}>
-              <Ionicons name="add-outline" size={22} color={COLORS.textPrimary} />
+            <TouchableOpacity
+              style={styles.iconButton}
+              onPress={createNewDraftSession}
+            >
+              <Ionicons
+                name="add-outline"
+                size={22}
+                color={COLORS.textPrimary}
+              />
             </TouchableOpacity>
           </View>
         </View>
@@ -540,24 +987,37 @@ export default function AIChatScreen() {
             </View>
           ) : error && messages.length === 0 ? (
             <View style={styles.centerContainer}>
-              <Ionicons name="alert-circle-outline" size={48} color={COLORS.error} />
+              <Ionicons
+                name="alert-circle-outline"
+                size={48}
+                color={COLORS.error}
+              />
               <Text style={styles.emptyText}>{error}</Text>
-              <TouchableOpacity style={styles.primaryButton} onPress={handleRetryHistory}>
+              <TouchableOpacity
+                style={styles.primaryButton}
+                onPress={handleRetryHistory}
+              >
                 <Text style={styles.primaryButtonText}>
-                  {t('common.retry', { defaultValue: 'Retry' })}
+                  {t("common.retry", { defaultValue: "Retry" })}
                 </Text>
               </TouchableOpacity>
             </View>
           ) : messages.length === 0 ? (
             <View style={styles.centerContainer}>
-              <Ionicons name="sparkles-outline" size={64} color={COLORS.gray400} />
+              <Ionicons
+                name="sparkles-outline"
+                size={64}
+                color={COLORS.gray400}
+              />
               <Text style={styles.emptyTitle}>
-                {t('chat.aiEmptyTitle', { defaultValue: 'Ask about plants, rooms, or care.' })}
+                {t("chat.aiEmptyTitle", {
+                  defaultValue: "Ask about plants, rooms, or care.",
+                })}
               </Text>
               <Text style={styles.emptyText}>
-                {t('chat.aiEmptyPrompt', {
+                {t("chat.aiEmptyPrompt", {
                   defaultValue:
-                    'Describe your room, budget, or plant-care needs and the AI assistant will help.',
+                    "Describe your room, budget, or plant-care needs and the AI assistant will help.",
                 })}
               </Text>
             </View>
@@ -588,7 +1048,9 @@ export default function AIChatScreen() {
           >
             <TextInput
               style={styles.input}
-              placeholder={t('chat.placeholder', { defaultValue: 'Type a message...' })}
+              placeholder={t("chat.placeholder", {
+                defaultValue: "Type a message...",
+              })}
               placeholderTextColor={COLORS.gray400}
               value={text}
               onChangeText={setText}
@@ -596,7 +1058,10 @@ export default function AIChatScreen() {
               maxLength={800}
             />
             <TouchableOpacity
-              style={[styles.sendBtn, (!text.trim() || sending) && styles.sendBtnDisabled]}
+              style={[
+                styles.sendBtn,
+                (!text.trim() || sending) && styles.sendBtnDisabled,
+              ]}
               onPress={handleSend}
               disabled={!text.trim() || sending}
             >
@@ -620,7 +1085,7 @@ export default function AIChatScreen() {
           <View style={styles.modalSheet}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
-                {t('chat.filters', { defaultValue: 'Chat filters' })}
+                {t("chat.filters", { defaultValue: "Chat filters" })}
               </Text>
               <TouchableOpacity onPress={() => setFiltersVisible(false)}>
                 <Ionicons name="close" size={24} color={COLORS.textPrimary} />
@@ -628,23 +1093,53 @@ export default function AIChatScreen() {
             </View>
             <ScrollView showsVerticalScrollIndicator={false}>
               {renderFilterOption(
-                t('chat.roomType', { defaultValue: 'Room type' }),
+                t("chat.roomType", { defaultValue: "Room type" }),
                 roomTypeOptions,
                 filters.preferredRoom,
-                (value) => setFilters((current) => ({ ...current, preferredRoom: value }))
-              )}
-
-              {renderFilterOption(
-                t('chat.fengShuiElement', { defaultValue: 'Feng shui element' }),
-                fengShuiOptions,
-                filters.fengShuiElement,
                 (value) =>
-                  setFilters((current) => ({ ...current, fengShuiElement: value }))
+                  setFilters((current) => ({
+                    ...current,
+                    preferredRoom: value,
+                  })),
               )}
 
               <View style={styles.filterSection}>
                 <Text style={styles.filterLabel}>
-                  {t('chat.maxBudget', { defaultValue: 'Max budget' })}
+                  {t("chat.roomDescription", {
+                    defaultValue: "Room description",
+                  })}
+                </Text>
+                <TextInput
+                  style={styles.filterInput}
+                  value={filters.roomDescription ?? ""}
+                  onChangeText={(value) =>
+                    setFilters((current) => ({
+                      ...current,
+                      roomDescription: value,
+                    }))
+                  }
+                  placeholder={t("chat.roomDescriptionPlaceholder", {
+                    defaultValue: "e.g. bright living room with large windows",
+                  })}
+                />
+              </View>
+
+              {renderFilterOption(
+                t("chat.fengShuiElement", {
+                  defaultValue: "Feng shui element",
+                }),
+                fengShuiOptions,
+                filters.fengShuiElement,
+                (value) =>
+                  setFilters((current) => ({
+                    ...current,
+                    fengShuiElement: value,
+                  })),
+              )}
+
+              <View style={styles.filterSection}>
+                <Text style={styles.filterLabel}>
+                  {t("chat.maxBudget", { defaultValue: "Max budget" })}
                 </Text>
                 <TextInput
                   style={styles.filterInput}
@@ -659,7 +1154,7 @@ export default function AIChatScreen() {
 
               <View style={styles.filterSection}>
                 <Text style={styles.filterLabel}>
-                  {t('chat.resultLimit', { defaultValue: 'Result limit' })}
+                  {t("chat.resultLimit", { defaultValue: "Result limit" })}
                 </Text>
                 <TextInput
                   style={styles.filterInput}
@@ -675,14 +1170,17 @@ export default function AIChatScreen() {
               <TouchableOpacity
                 style={styles.toggleRow}
                 onPress={() =>
-                  setFilters((current) => ({ ...current, petSafe: !current.petSafe }))
+                  setFilters((current) => ({
+                    ...current,
+                    petSafe: !current.petSafe,
+                  }))
                 }
               >
                 <Text style={styles.toggleLabel}>
-                  {t('chat.petSafe', { defaultValue: 'Pet safe' })}
+                  {t("chat.petSafe", { defaultValue: "Pet safe" })}
                 </Text>
                 <Ionicons
-                  name={filters.petSafe ? 'checkbox' : 'square-outline'}
+                  name={filters.petSafe ? "checkbox" : "square-outline"}
                   size={22}
                   color={filters.petSafe ? COLORS.primary : COLORS.gray500}
                 />
@@ -691,16 +1189,42 @@ export default function AIChatScreen() {
               <TouchableOpacity
                 style={styles.toggleRow}
                 onPress={() =>
-                  setFilters((current) => ({ ...current, childSafe: !current.childSafe }))
+                  setFilters((current) => ({
+                    ...current,
+                    childSafe: !current.childSafe,
+                  }))
                 }
               >
                 <Text style={styles.toggleLabel}>
-                  {t('chat.childSafe', { defaultValue: 'Child safe' })}
+                  {t("chat.childSafe", { defaultValue: "Child safe" })}
                 </Text>
                 <Ionicons
-                  name={filters.childSafe ? 'checkbox' : 'square-outline'}
+                  name={filters.childSafe ? "checkbox" : "square-outline"}
                   size={22}
                   color={filters.childSafe ? COLORS.primary : COLORS.gray500}
+                />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.toggleRow}
+                onPress={() =>
+                  setFilters((current) => ({
+                    ...current,
+                    onlyPurchasable: !current.onlyPurchasable,
+                  }))
+                }
+              >
+                <Text style={styles.toggleLabel}>
+                  {t("chat.onlyPurchasable", {
+                    defaultValue: "Only purchasable",
+                  })}
+                </Text>
+                <Ionicons
+                  name={filters.onlyPurchasable ? "checkbox" : "square-outline"}
+                  size={22}
+                  color={
+                    filters.onlyPurchasable ? COLORS.primary : COLORS.gray500
+                  }
                 />
               </TouchableOpacity>
             </ScrollView>
@@ -711,7 +1235,7 @@ export default function AIChatScreen() {
                 onPress={() => setFilters(DEFAULT_FILTERS)}
               >
                 <Text style={styles.secondaryButtonText}>
-                  {t('common.reset', { defaultValue: 'Reset' })}
+                  {t("common.reset", { defaultValue: "Reset" })}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -719,7 +1243,7 @@ export default function AIChatScreen() {
                 onPress={() => setFiltersVisible(false)}
               >
                 <Text style={styles.primaryButtonText}>
-                  {t('common.apply', { defaultValue: 'Apply' })}
+                  {t("common.apply", { defaultValue: "Apply" })}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -739,8 +1263,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
     backgroundColor: COLORS.surface,
@@ -752,7 +1276,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: FONTS.sizes.lg,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.textPrimary,
   },
   headerSubtitle: {
@@ -761,54 +1285,113 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: SPACING.xs,
   },
   iconButton: {
     width: 36,
     height: 36,
     borderRadius: RADIUS.full,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   centerContainer: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: SPACING['3xl'],
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: SPACING["3xl"],
   },
   emptyTitle: {
     marginTop: SPACING.md,
     fontSize: FONTS.sizes.xl,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.textPrimary,
-    textAlign: 'center',
+    textAlign: "center",
   },
   emptyText: {
     marginTop: SPACING.sm,
     fontSize: FONTS.sizes.md,
     color: COLORS.textSecondary,
-    textAlign: 'center',
+    textAlign: "center",
   },
   listContent: {
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
   },
   messageRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     marginBottom: SPACING.md,
+    alignItems: "flex-end",
   },
   myMessageRow: {
-    justifyContent: 'flex-end',
+    justifyContent: "flex-end",
   },
   otherMessageRow: {
-    justifyContent: 'flex-start',
+    justifyContent: "flex-start",
+  },
+  avatarColumn: {
+    width: 36,
+    alignItems: "center",
+    justifyContent: "flex-end",
+  },
+  avatarCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.gray100,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  botAvatarCircle: {
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  avatarImage: {
+    width: "100%",
+    height: "100%",
+    resizeMode: "cover",
+  },
+  avatarInitial: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: "700",
+    color: COLORS.textSecondary,
+  },
+  bubbleStack: {
+    maxWidth: "74%",
+    flexShrink: 1,
+    gap: SPACING.sm,
+  },
+  bubbleStackLeft: {
+    marginLeft: SPACING.xs,
+    alignItems: "flex-start",
+  },
+  bubbleStackRight: {
+    marginRight: SPACING.xs,
+    alignItems: "flex-end",
+    maxWidth: "66%",
   },
   messageBubble: {
-    maxWidth: '88%',
+    width: "100%",
     padding: SPACING.md,
     borderRadius: RADIUS.xl,
+  },
+  typingBubble: {
+    paddingVertical: SPACING.sm,
+  },
+  typingDots: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: SPACING.xs,
+  },
+  typingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.gray400,
   },
   myBubble: {
     backgroundColor: COLORS.primary,
@@ -834,9 +1417,9 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
   },
   messageMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: SPACING.sm,
     marginTop: SPACING.sm,
   },
@@ -844,7 +1427,7 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.xs,
   },
   myMetaText: {
-    color: 'rgba(255,255,255,0.78)',
+    color: "rgba(255,255,255,0.78)",
   },
   otherMetaText: {
     color: COLORS.warning,
@@ -853,7 +1436,7 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.xs,
   },
   myTime: {
-    color: 'rgba(255,255,255,0.78)',
+    color: "rgba(255,255,255,0.78)",
   },
   otherTime: {
     color: COLORS.textLight,
@@ -862,6 +1445,20 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
     gap: SPACING.sm,
   },
+  sectionToggleWrap: {
+    marginTop: SPACING.sm,
+  },
+  sectionToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: SPACING.sm,
+  },
+  sectionToggleText: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+  },
   suggestedCard: {
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -869,17 +1466,92 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
     backgroundColor: COLORS.gray50,
   },
-  suggestedHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: SPACING.sm,
+  suggestedRow: {
+    flexDirection: "row",
+    gap: SPACING.md,
+    alignItems: "flex-start",
+  },
+  suggestedDivider: {
+    height: 1,
+    backgroundColor: COLORS.border,
+    marginVertical: SPACING.sm,
+  },
+  suggestedThumb: {
+    width: 72,
+    height: 72,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.gray100,
+  },
+  suggestedThumbPlaceholder: {
+    width: 72,
+    height: 72,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.border,
+  },
+  suggestedContent: {
+    flex: 1,
   },
   suggestedName: {
-    flex: 1,
     fontSize: FONTS.sizes.md,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.textPrimary,
+  },
+  suggestedDescription: {
+    marginTop: SPACING.xs,
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+    lineHeight: FONTS.sizes.sm * FONTS.lineHeights.normal,
+  },
+  suggestedFooterRow: {
+    flexDirection: "column",
+    gap: SPACING.xs,
+  },
+  nurseryInfo: {
+    marginBottom: SPACING.xs,
+  },
+  nurseryNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: SPACING.sm,
+  },
+  nurseryName: {
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.textPrimary,
+    fontWeight: "600",
+  },
+  nurseryAddress: {
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+  suggestedFooterSpacer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  suggestedMeta: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.primaryDark,
+    fontWeight: "600",
+  },
+  suggestedMetaText: {
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.primary,
+    fontWeight: "700",
+    marginRight: SPACING.sm,
+  },
+  badgeCompact: {
+    backgroundColor: COLORS.secondaryLight,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 3,
+    borderRadius: RADIUS.full,
+    flexShrink: 0,
+  },
+  badgeCompactText: {
+    color: COLORS.primaryDark,
+    fontSize: FONTS.sizes.xs,
+    fontWeight: "700",
   },
   badge: {
     backgroundColor: COLORS.secondaryLight,
@@ -890,49 +1562,91 @@ const styles = StyleSheet.create({
   badgeText: {
     color: COLORS.primaryDark,
     fontSize: FONTS.sizes.xs,
-    fontWeight: '700',
-  },
-  suggestedDescription: {
-    marginTop: SPACING.xs,
-    fontSize: FONTS.sizes.sm,
-    color: COLORS.textSecondary,
-  },
-  suggestedFooter: {
-    marginTop: SPACING.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: SPACING.sm,
-  },
-  suggestedMeta: {
-    fontSize: FONTS.sizes.sm,
-    color: COLORS.primaryDark,
-    fontWeight: '600',
+    fontWeight: "700",
   },
   suggestedLink: {
     fontSize: FONTS.sizes.sm,
     color: COLORS.primary,
-    fontWeight: '700',
+    fontWeight: "700",
   },
-  followUpContainer: {
-    marginTop: SPACING.sm,
+  sectionBubble: {
+    width: "100%",
+    padding: SPACING.md,
+    borderRadius: RADIUS.lg,
+    backgroundColor: COLORS.gray50,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  careTipsBubble: {
+    backgroundColor: COLORS.secondaryLight,
+    borderColor: COLORS.secondary,
+  },
+  followUpSection: {
+    width: "100%",
+  },
+  sectionList: {
+    marginTop: SPACING.xs,
     gap: SPACING.xs,
   },
+  followUpButton: {
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.sm,
+    borderWidth: 1,
+  },
+  followUpButtonOnDark: {
+    borderColor: "rgba(255,255,255,0.35)",
+    backgroundColor: "rgba(255,255,255,0.1)",
+  },
+  followUpButtonOnLight: {
+    borderColor: COLORS.info,
+    backgroundColor: "transparent",
+  },
+  followUpButtonDisabled: {
+    opacity: 0.6,
+  },
+  careTipsTitle: {
+    color: COLORS.primary,
+  },
+  careTipsText: {
+    color: COLORS.primaryDark,
+  },
+  followUpTitle: {
+    color: COLORS.info,
+  },
   followUpText: {
+    color: COLORS.info,
+  },
+  sectionTitle: {
     fontSize: FONTS.sizes.sm,
+    fontWeight: "700",
+  },
+  sectionTitleOnDark: {
+    color: "rgba(255,255,255,0.9)",
+  },
+  sectionTitleOnLight: {
+    color: COLORS.textPrimary,
+  },
+  sectionText: {
+    fontSize: FONTS.sizes.sm,
+  },
+  sectionTextOnDark: {
+    color: "rgba(255,255,255,0.82)",
+  },
+  sectionTextOnLight: {
     color: COLORS.textSecondary,
   },
   disclaimerText: {
     marginTop: SPACING.sm,
     fontSize: FONTS.sizes.sm,
     color: COLORS.warning,
-    fontStyle: 'italic',
+    fontStyle: "italic",
   },
   inlineErrorContainer: {
     marginHorizontal: SPACING.lg,
     marginBottom: SPACING.sm,
     padding: SPACING.md,
-    backgroundColor: '#FDECEC',
+    backgroundColor: "#FDECEC",
     borderRadius: RADIUS.lg,
   },
   inlineErrorText: {
@@ -940,8 +1654,8 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.sm,
   },
   inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
+    flexDirection: "row",
+    alignItems: "flex-end",
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.md,
     backgroundColor: COLORS.surface,
@@ -965,8 +1679,8 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: RADIUS.full,
     backgroundColor: COLORS.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginLeft: SPACING.md,
   },
   sendBtnDisabled: {
@@ -974,27 +1688,27 @@ const styles = StyleSheet.create({
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-    justifyContent: 'flex-end',
+    backgroundColor: "rgba(0, 0, 0, 0.3)",
+    justifyContent: "flex-end",
   },
   modalSheet: {
-    maxHeight: '88%',
+    maxHeight: "88%",
     backgroundColor: COLORS.surface,
-    borderTopLeftRadius: RADIUS['2xl'],
-    borderTopRightRadius: RADIUS['2xl'],
+    borderTopLeftRadius: RADIUS["2xl"],
+    borderTopRightRadius: RADIUS["2xl"],
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.lg,
     paddingBottom: SPACING.xl,
   },
   modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     marginBottom: SPACING.md,
   },
   modalTitle: {
     fontSize: FONTS.sizes.lg,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.textPrimary,
   },
   filterSection: {
@@ -1002,13 +1716,13 @@ const styles = StyleSheet.create({
   },
   filterLabel: {
     fontSize: FONTS.sizes.md,
-    fontWeight: '600',
+    fontWeight: "600",
     color: COLORS.textPrimary,
     marginBottom: SPACING.sm,
   },
   filterChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: SPACING.sm,
   },
   filterChip: {
@@ -1029,7 +1743,7 @@ const styles = StyleSheet.create({
   },
   filterChipTextSelected: {
     color: COLORS.white,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   filterInput: {
     borderWidth: 1,
@@ -1042,9 +1756,9 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
   },
   toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     marginBottom: SPACING.md,
     paddingVertical: SPACING.sm,
   },
@@ -1053,7 +1767,7 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
   },
   modalFooter: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: SPACING.md,
     marginTop: SPACING.md,
   },
@@ -1061,26 +1775,26 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: RADIUS.lg,
     backgroundColor: COLORS.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: SPACING.md,
   },
   primaryButtonText: {
     color: COLORS.white,
     fontSize: FONTS.sizes.md,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   secondaryButton: {
     flex: 1,
     borderRadius: RADIUS.lg,
     backgroundColor: COLORS.gray100,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: SPACING.md,
   },
   secondaryButtonText: {
     color: COLORS.textPrimary,
     fontSize: FONTS.sizes.md,
-    fontWeight: '700',
+    fontWeight: "700",
   },
 });

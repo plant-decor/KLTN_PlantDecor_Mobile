@@ -903,7 +903,7 @@ export default function CatalogScreen() {
 
       if (goToCheckout) {
         const checkoutItem: CheckoutItem = {
-          id: `buy_now_${pendingNurserySelection.mode}_${selectedNursery.actionId}`,
+          id: selectedNursery.actionId,
           name: pendingNurserySelection.displayName,
           image: pendingNurserySelection.image,
           price: selectedNursery.minPrice ?? pendingNurserySelection.unitPrice,
@@ -1306,7 +1306,7 @@ export default function CatalogScreen() {
       <TouchableOpacity
         style={styles.productCard}
         onPress={() =>
-          navigation.navigate("PlantDetail", { plantId: String(plant.id) })
+          navigation.navigate("PlantDetail", { plantId: plant.id })
         }
       >
         <View style={styles.productImageContainer}>
@@ -1378,7 +1378,6 @@ export default function CatalogScreen() {
         onPress={() =>
           navigation.navigate("MaterialDetail", {
             materialId,
-            nurseryMaterialId: material.id,
           })
         }
       >

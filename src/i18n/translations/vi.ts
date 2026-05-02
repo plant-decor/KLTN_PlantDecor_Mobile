@@ -55,6 +55,9 @@ const vi = {
     invalidCredentials: 'Email hoặc mật khẩu không đúng.',
     loginFailed: 'Đăng nhập thất bại. Vui lòng thử lại.',
     networkError: 'Không thể kết nối máy chủ. Vui lòng kiểm tra API URL và mạng.',
+    verifyEmailTitle: 'Cần xác minh email',
+    verifyEmailMessage: 'Email của bạn chưa được xác minh. Vui lòng xác minh để tiếp tục.',
+    verifyEmailAction: 'Xác minh ngay',
   },
   register: {
     title: 'Đăng ký tài khoản',

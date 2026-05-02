@@ -2,13 +2,17 @@ import { API } from '../constants';
 import {
   AIChatEnumGroup,
   AIChatHistoryPayload,
+  AIChatHistoryMessage,
   AIChatHistoryResponse,
   AIChatMessage,
   AIChatMessageRole,
   AIChatResponse,
   AIChatSessionCreateRequest,
   AIChatSessionCreateResponse,
+  AIChatSessionCloseResponse,
   AIChatSessionSummary,
+  AIChatSessionRenameRequest,
+  AIChatSessionRenameResponse,
   AIChatSessionsPayload,
   AIChatSessionsResponse,
   AIChatSuggestedPlant,
@@ -16,6 +20,7 @@ import {
   SystemEnumValue,
 } from '../types';
 import api from './api';
+import { toVietnamTimestamp } from '../utils';
 
 const asString = (value: unknown): string | null =>
   typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
@@ -124,34 +129,61 @@ const normalizeSuggestedPlant = (value: unknown): AIChatSuggestedPlant | null =>
       typeof (value as { relevanceScore?: unknown })?.relevanceScore === 'number'
         ? (value as { relevanceScore: number }).relevanceScore
         : null,
+    plantId: asNumber((value as { plantId?: unknown })?.plantId),
+    plantComboId: asNumber((value as { plantComboId?: unknown })?.plantComboId),
+    materialId: asNumber((value as { materialId?: unknown })?.materialId),
+    nurseryId: asNumber((value as { nurseryId?: unknown })?.nurseryId),
+    nurseryName: asString((value as { nurseryName?: unknown })?.nurseryName),
+    nurseryAddress: asString((value as { nurseryAddress?: unknown })?.nurseryAddress),
   };
 };
 
-const normalizeHistoryMessage = (value: unknown): AIChatMessage => ({
-  id:
-    asNumber((value as { messageId?: unknown })?.messageId) ??
-    String(
-      asString((value as { createdAt?: unknown })?.createdAt) ?? Math.random()
-    ),
-  role: normalizeRole((value as { role?: unknown })?.role),
-  content: asString((value as { content?: unknown })?.content) ?? '',
-  intent: asString((value as { intent?: unknown })?.intent),
-  isFallback:
-    typeof (value as { isFallback?: unknown })?.isFallback === 'boolean'
-      ? (value as { isFallback: boolean }).isFallback
-      : false,
-  isPolicyResponse:
-    typeof (value as { isPolicyResponse?: unknown })?.isPolicyResponse === 'boolean'
-      ? (value as { isPolicyResponse: boolean }).isPolicyResponse
-      : false,
-  createdAt:
-    asString((value as { createdAt?: unknown })?.createdAt) ??
-    new Date().toISOString(),
-});
+const normalizeStringList = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
 
-const sortMessagesNewestFirst = (items: AIChatMessage[]): AIChatMessage[] =>
+  return value
+    .filter((item): item is string => typeof item === 'string')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+};
+
+const normalizeHistoryMessage = (value: unknown): AIChatHistoryMessage => {
+  const suggestedPlants = Array.isArray((value as { suggestedPlants?: unknown[] })?.suggestedPlants)
+    ? (value as { suggestedPlants: unknown[] }).suggestedPlants
+        .map((item) => normalizeSuggestedPlant(item))
+        .filter((item): item is AIChatSuggestedPlant => Boolean(item))
+    : [];
+  const careTips = normalizeStringList((value as { careTips?: unknown })?.careTips);
+  const followUpQuestions = normalizeStringList(
+    (value as { followUpQuestions?: unknown })?.followUpQuestions
+  );
+
+  return {
+    messageId: asNumber((value as { messageId?: unknown })?.messageId) ?? 0,
+    role: normalizeRole((value as { role?: unknown })?.role),
+    content: asString((value as { content?: unknown })?.content) ?? '',
+    intent: asString((value as { intent?: unknown })?.intent),
+    isFallback:
+      typeof (value as { isFallback?: unknown })?.isFallback === 'boolean'
+        ? (value as { isFallback: boolean }).isFallback
+        : false,
+    isPolicyResponse:
+      typeof (value as { isPolicyResponse?: unknown })?.isPolicyResponse === 'boolean'
+        ? (value as { isPolicyResponse: boolean }).isPolicyResponse
+        : false,
+    createdAt:
+      asString((value as { createdAt?: unknown })?.createdAt) ??
+      new Date().toISOString(),
+    suggestedPlants: suggestedPlants.length > 0 ? suggestedPlants : undefined,
+    careTips: careTips.length > 0 ? careTips : undefined,
+  };
+};
+
+const sortMessagesNewestFirst = (items: AIChatHistoryMessage[]): AIChatHistoryMessage[] =>
   [...items].sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    (a, b) => toVietnamTimestamp(b.createdAt) - toVietnamTimestamp(a.createdAt)
   );
 
 const normalizeHistoryPayload = (payload: AIChatHistoryPayload): AIChatHistoryPayload => ({
@@ -214,6 +246,29 @@ export const aiChatService = {
     };
   },
 
+  renameSession: async (
+    sessionId: number,
+    data: AIChatSessionRenameRequest
+  ): Promise<AIChatSessionRenameResponse> => {
+    const response = await api.patch<AIChatSessionRenameResponse>(
+      API.ENDPOINTS.AI_CHAT_SESSION_TITLE(sessionId),
+      data
+    );
+
+    return {
+      ...response.data,
+      payload: normalizeSessionSummary(response.data.payload),
+    };
+  },
+
+  closeSession: async (sessionId: number): Promise<AIChatSessionCloseResponse> => {
+    const response = await api.delete<AIChatSessionCloseResponse>(
+      API.ENDPOINTS.AI_CHAT_SESSION_CLOSE(sessionId)
+    );
+
+    return response.data;
+  },
+
   getSessionHistory: async (
     sessionId: number,
     params?: {
@@ -245,13 +300,20 @@ export const aiChatService = {
     const response = await api.post<AIChatResponse>(API.ENDPOINTS.AI_CHAT_CHATBOT, data);
     const payload = response.data.payload;
 
+    const normalizedSuggestedPlants = (payload.suggestedPlants ?? [])
+      .map((item) => normalizeSuggestedPlant(item))
+      .filter((item): item is AIChatSuggestedPlant => Boolean(item));
+    const normalizedCareTips = normalizeStringList(payload.careTips);
+    const normalizedFollowUpQuestions = normalizeStringList(payload.followUpQuestions);
+
     return {
       ...response.data,
       payload: {
         ...payload,
-        suggestedPlants: (payload.suggestedPlants ?? [])
-          .map((item) => normalizeSuggestedPlant(item))
-          .filter((item): item is AIChatSuggestedPlant => Boolean(item)),
+        suggestedPlants: normalizedSuggestedPlants,
+        careTips: normalizedCareTips.length > 0 ? normalizedCareTips : undefined,
+        followUpQuestions:
+          normalizedFollowUpQuestions.length > 0 ? normalizedFollowUpQuestions : undefined,
       },
     };
   },

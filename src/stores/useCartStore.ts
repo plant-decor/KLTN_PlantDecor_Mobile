@@ -26,15 +26,15 @@ interface CartState {
   // Actions
   addCartItem: (request: AddCartItemRequest) => Promise<CartApiItem | null>;
   fetchCart: (params?: GetCartRequest) => Promise<void>;
-  removeFromCart: (plantId: string) => void;
-  updateQuantity: (plantId: string, quantity: number) => void;
+  removeFromCart: (plantId: number) => void;
+  updateQuantity: (plantId: number, quantity: number) => void;
   updateCartItem: (cartItemId: number, quantity: number) => Promise<void>;
   removeCartItem: (cartItemId: number) => Promise<void>;
-  incrementQuantity: (plantId: string) => void;
-  decrementQuantity: (plantId: string) => void;
+  incrementQuantity: (plantId: number) => void;
+  decrementQuantity: (plantId: number) => void;
   clearCart: () => Promise<void>;
   resetState: () => void;
-  getItemQuantity: (plantId: string) => number;
+  getItemQuantity: (plantId: number) => number;
 }
 
 export const useCartStore = create<CartState>((set, get) => ({

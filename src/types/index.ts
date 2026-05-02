@@ -236,7 +236,7 @@ export interface AuthJwtClaims {
 
 // ==================== Plant ====================
 export interface Plant {
-  id: string | number;
+  id: number;
   commonPlantId?: number | null;
   nurseryPlantComboId?: number | null;
   nurseryMaterialId?: number | null;
@@ -290,7 +290,7 @@ export interface Tag {
 }
 
 export interface Category {
-  id: string | number;
+  id: number;
   name: string;
   slug?: string;
   icon?: string;
@@ -939,7 +939,7 @@ export interface PlantDetailResponse {
 
 // ==================== Cart ====================
 export interface CartItem {
-  id: string;
+  id: number;
   plant: Plant;
   quantity: number;
 }
@@ -1028,7 +1028,7 @@ export interface ClearCartResponse {
 export type CheckoutSource = 'cart' | 'buy-now';
 
 export interface CheckoutItem {
-  id: string;
+  id: number;
   name: string;
   size?: string;
   image?: string;
@@ -1939,6 +1939,10 @@ export interface AIChatSessionCreateRequest {
   title?: string;
 }
 
+export interface AIChatSessionRenameRequest {
+  title: string;
+}
+
 export interface AIChatSessionSummary {
   sessionId: number;
   title: string | null;
@@ -1953,6 +1957,19 @@ export interface AIChatSessionCreateResponse {
   statusCode: number;
   message: string;
   payload: AIChatSessionSummary;
+}
+
+export interface AIChatSessionRenameResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: AIChatSessionSummary;
+}
+
+export interface AIChatSessionCloseResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
 }
 
 export interface AIChatSessionsPayload {
@@ -1979,6 +1996,9 @@ export interface AIChatHistoryMessage {
   intent?: string | null;
   isFallback?: boolean;
   isPolicyResponse?: boolean;
+  suggestedPlants?: AIChatSuggestedPlant[];
+  careTips?: string[];
+  followUpQuestions?: string[];
   createdAt: string;
 }
 
@@ -1992,7 +2012,7 @@ export interface AIChatHistoryPayload {
   pageNumber: number;
   pageSize: number;
   totalPages: number;
-  messages: AIChatMessage[];
+  messages: AIChatHistoryMessage[];
 }
 
 export interface AIChatHistoryResponse {
@@ -2016,6 +2036,12 @@ export interface AIChatSuggestedPlant {
   imageUrl?: string | null;
   isPurchasable?: boolean;
   relevanceScore?: number | null;
+  plantId?: number | null;
+  plantComboId?: number | null;
+  materialId?: number | null;
+  nurseryId?: number | null;
+  nurseryName?: string | null;
+  nurseryAddress?: string | null;
 }
 
 export interface AIChatbotRequest {
@@ -2065,6 +2091,7 @@ export interface AIChatMessage {
   isPolicyResponse?: boolean;
   createdAt: string;
   suggestedPlants?: AIChatSuggestedPlant[];
+  careTips?: string[];
   followUpQuestions?: string[];
   disclaimer?: string | null;
   pending?: boolean;
@@ -2123,6 +2150,12 @@ export interface SupportConversationRealtimeUpdate {
   conversation?: SupportConversation | null;
 }
 
+export interface SupportTypingPayload {
+  conversationId: number;
+  userId: number | string;
+  userName?: string;
+}
+
 export interface SupportRealtimeIncomingMessage {
   messageId: number;
   conversationId: number;
@@ -2151,18 +2184,16 @@ export type RootStackParamList = {
     registrationId: number;
     highlightedProgressId?: number;
   };
-  PlantDetail: { plantId: string };
+  PlantDetail: { plantId: number };
   PlantInstanceDetail: {
     plantInstanceId: number;
     plantId?: number;
   };
   MaterialDetail: {
     materialId: number;
-    nurseryMaterialId?: number;
   };
   ComboDetail: {
     comboId: number;
-    nurseryPlantComboId?: number;
   };
   AIDesign: undefined;
   AIDesignResult: { resultId: string };

@@ -101,3 +101,17 @@ export const resolveGoogleAuthErrorMessage = (error: unknown, t: TFunction): str
 
   return googleSignInService.getGoogleSignInErrorMessage(error);
 };
+
+export const isEmailVerificationRequiredError = (error: unknown): boolean => {
+  const apiMessage = resolveApiMessage(error);
+  if (apiMessage && apiMessage == 'Account email has not been verified') {
+    return true;
+  }
+
+  const plainErrorMessage = resolvePlainErrorMessage(error);
+  if (plainErrorMessage && plainErrorMessage == 'Account email has not been verified') {
+    return true;
+  }
+
+  return false;
+};

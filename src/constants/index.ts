@@ -161,7 +161,7 @@ export const API = {
     // Auth
     LOGIN: "/Authentication/login",
     LOGIN_GOOGLE: "/Authentication/login-google",
-    REGISTER: "/Authentication/register",
+    REGISTER: "/Authentication/register-mobile",
     REFRESH_TOKEN: "/Authentication/refreshToken",
     LOGOUT: "/Authentication/logout",
     LOGOUT_ALL: "/Authentication/logout-all",
@@ -240,6 +240,10 @@ export const API = {
     // AI Chat
     AI_CHAT_ENUMS: "/system/enums/AI-chat",
     AI_CHAT_SESSIONS: "/ai-search/chatbot/sessions",
+    AI_CHAT_SESSION_TITLE: (sessionId: number) =>
+      `/ai-search/chatbot/sessions/${sessionId}/title`,
+    AI_CHAT_SESSION_CLOSE: (sessionId: number) =>
+      `/ai-search/chatbot/sessions/${sessionId}`,
     AI_CHAT_SESSION_HISTORY: (sessionId: number) =>
       `/ai-search/chatbot/sessions/${sessionId}/history`,
     AI_CHAT_CHATBOT: "/ai-search/chatbot",
@@ -335,6 +339,14 @@ export const SUPPORT_CHAT_REALTIME = {
       "SupportConversationClosed",
       "ConversationClosed",
     ],
+    USER_TYPING: [
+      "userTyping",
+      "UserTyping",
+    ],
+    USER_STOPPED_TYPING: [
+      "userStoppedTyping",
+      "UserStoppedTyping",
+    ],
   },
   METHODS: {
     SEND_MESSAGE: [
@@ -347,6 +359,12 @@ export const SUPPORT_CHAT_REALTIME = {
     LEAVE_CONVERSATION: [
       "LeaveConversation",
       "LeaveSupportConversation",
+    ],
+    USER_TYPING: [
+      "UserTyping",
+    ],
+    USER_STOPPED_TYPING: [
+      "UserStoppedTyping",
     ],
   },
 } as const;

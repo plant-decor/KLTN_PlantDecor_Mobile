@@ -281,7 +281,7 @@ export default function PlantInstanceDetailScreen() {
     }
 
     const checkoutItem: CheckoutItem = {
-      id: `buy_now_instance_${instanceDetail.id}`,
+      id: instanceDetail.id,
       name: instanceDetail.plantName,
       size:
         instanceDetail.height != null

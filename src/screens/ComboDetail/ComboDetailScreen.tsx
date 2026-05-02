@@ -110,7 +110,7 @@ export default function ComboDetailScreen() {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<ScreenRouteProp>();
-  const { comboId, nurseryPlantComboId } = route.params;
+  const { comboId } = route.params;
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
   const insets = useSafeAreaInsets();
   const { isAuthenticated } = useAuthStore();
@@ -148,9 +148,7 @@ export default function ComboDetailScreen() {
     NurseryPlantComboAndMaterialAvailability[]
   >([]);
   const [showAllNurseries, setShowAllNurseries] = useState(false);
-  const [selectedNurseryPlantComboId, setSelectedNurseryPlantComboId] = useState<number | null>(
-    nurseryPlantComboId ?? null
-  );
+  const [selectedNurseryPlantComboId, setSelectedNurseryPlantComboId] = useState<number | null>(null);
 
   const wishlistItemId = comboId;
   const wishlistKey = getWishlistKey('PlantCombo', wishlistItemId);
@@ -252,9 +250,9 @@ export default function ComboDetailScreen() {
 
   useEffect(() => {
     setQuantity(1);
-    setSelectedNurseryPlantComboId(nurseryPlantComboId ?? null);
+    setSelectedNurseryPlantComboId(null);
     setShowAllNurseries(false);
-  }, [comboId, nurseryPlantComboId]);
+  }, [comboId]);
 
   useEffect(() => {
     let isMounted = true;
@@ -272,19 +270,13 @@ export default function ComboDetailScreen() {
 
         setAvailableNurseryOptions(normalizedOptions);
         setSelectedNurseryPlantComboId((current) => {
-          const preferredFromRoute =
-            nurseryPlantComboId &&
-            normalizedOptions.some((option) => option.nurseryPlantComboId === nurseryPlantComboId)
-              ? nurseryPlantComboId
-              : null;
-
           const preferredFromState =
             current &&
             normalizedOptions.some((option) => option.nurseryPlantComboId === current)
               ? current
               : null;
 
-          return preferredFromRoute ?? preferredFromState ?? normalizedOptions[0]?.nurseryPlantComboId ?? null;
+          return preferredFromState ?? normalizedOptions[0]?.nurseryPlantComboId ?? null;
         });
       } catch {
         if (!isMounted) {
@@ -305,7 +297,7 @@ export default function ComboDetailScreen() {
     return () => {
       isMounted = false;
     };
-  }, [comboId, fetchNurseriesGotPlantComboByPlantComboId, nurseryPlantComboId, refreshKey]);
+  }, [comboId, fetchNurseriesGotPlantComboByPlantComboId, refreshKey]);
 
   useEffect(() => {
     if (!combo) {
@@ -695,7 +687,7 @@ export default function ComboDetailScreen() {
       }
 
       navigation.push('PlantDetail', {
-        plantId: String(plantId),
+        plantId: plantId,
       });
     },
     [navigation]
@@ -727,7 +719,7 @@ export default function ComboDetailScreen() {
 
       if (goToCheckout) {
         const checkoutItem: CheckoutItem = {
-          id: `buy_now_combo_${selectedNursery.nurseryPlantComboId}`,
+          id: selectedNursery.nurseryPlantComboId,
           name: combo.comboName,
           image: getImageUri(combo.images?.[0]) ?? undefined,
           price: combo.comboPrice,

@@ -46,7 +46,7 @@ type CartImageFields = {
 };
 
 type CartDisplayItem = {
-  id: string;
+  id: number;
   plantId: number | null;
   materialId?: number | null;
   plantComboId?: number | null;
@@ -137,7 +137,7 @@ const mapCartItems = (
     };
 
     return {
-      id: String(item.id),
+      id: item.id,
       plantId: item.plantId ?? null,
       materialId: itemWithEntityIds.materialId ?? null,
       plantComboId: itemWithEntityIds.plantComboId ?? null,
@@ -280,7 +280,7 @@ export default function CartScreen() {
 
   const handleViewDetail = (item: CartDisplayItem) => {
     if (item.plantId != null) {
-      navigation.navigate('PlantDetail', { plantId: String(item.plantId) });
+      navigation.navigate('PlantDetail', { plantId: item.plantId });
       return;
     }
 
@@ -298,7 +298,7 @@ export default function CartScreen() {
     }
   };
 
-  const incrementQuantity = (id: string) => {
+  const incrementQuantity = (id: number) => {
     const nextQuantity = items.find((item) => item.id === id)?.quantity ?? 1;
     const quantity = nextQuantity + 1;
     setItems((prev) =>
@@ -313,7 +313,7 @@ export default function CartScreen() {
     });
   };
 
-  const decrementQuantity = (id: string) => {
+  const decrementQuantity = (id: number) => {
     const currentQuantity = items.find((item) => item.id === id)?.quantity ?? 1;
     const quantity = Math.max(1, currentQuantity - 1);
     setItems((prev) =>
@@ -327,7 +327,7 @@ export default function CartScreen() {
     });
   };
 
-  const removeItem = (id: string) => {
+  const removeItem = (id: number) => {
     setItems((prev) => prev.filter((item) => item.id !== id));
     void removeCartItem(Number(id)).catch(() => {
       void loadCartPage(currentPage).catch(() => {
@@ -551,7 +551,7 @@ export default function CartScreen() {
       <FlatList
         data={items}
         renderItem={renderCartItem}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => String(item.id)}
         contentContainerStyle={[styles.list, { paddingBottom: listBottomPadding }]}
         showsVerticalScrollIndicator={false}
         refreshControl={

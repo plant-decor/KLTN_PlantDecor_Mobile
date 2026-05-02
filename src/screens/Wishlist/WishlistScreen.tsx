@@ -368,7 +368,7 @@ export default function WishlistScreen() {
       if (pendingPlantAction === 'buy') {
         const normalizedImage = pendingPlantItem.itemImageUrl?.trim();
         const checkoutItem: CheckoutItem = {
-          id: `wishlist_buy_now_plant_${pendingPlantItem.itemId}_${selectedNursery.nurseryId}`,
+          id: selectedNursery.nurseryId,
           name: pendingPlantItem.itemName,
           image: normalizedImage ? normalizedImage : undefined,
           price: selectedNursery.minPrice || pendingPlantItem.price || 0,
@@ -489,7 +489,7 @@ export default function WishlistScreen() {
     (item: WishlistItem) => {
       switch (item.itemType) {
         case 'Plant':
-          navigation.navigate('PlantDetail', { plantId: String(item.itemId) });
+          navigation.navigate('PlantDetail', { plantId: item.itemId });
           return;
         case 'PlantInstance':
           navigation.navigate('PlantInstanceDetail', {
@@ -570,7 +570,7 @@ export default function WishlistScreen() {
       if (item.itemType === 'PlantInstance') {
         const normalizedImage = item.itemImageUrl?.trim();
         const checkoutItem: CheckoutItem = {
-          id: `wishlist_buy_now_instance_${item.itemId}`,
+          id: item.itemId,
           name: item.itemName,
           image: normalizedImage ? normalizedImage : undefined,
           price: item.price || 0,
@@ -606,7 +606,7 @@ export default function WishlistScreen() {
       }
 
       const checkoutItem: CheckoutItem = {
-        id: `wishlist_buy_now_${item.itemType}_${item.itemId}`,
+        id: item.itemId,
         name: item.itemName,
         image: normalizedImage ? normalizedImage : undefined,
         price: item.price || 0,

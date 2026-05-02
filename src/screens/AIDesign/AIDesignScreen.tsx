@@ -1230,7 +1230,7 @@ export default function AIDesignScreen() {
           source: 'buy-now',
           items: [
             {
-              id: `room_design_instance_${detail.id}`,
+              id: detail.id,
               name: fallbackName,
               size:
                 detail.height != null

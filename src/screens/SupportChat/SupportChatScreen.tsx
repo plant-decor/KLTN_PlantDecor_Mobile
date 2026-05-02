@@ -12,6 +12,8 @@ import {
   Alert,
   Keyboard,
   AppState,
+  Image,
+  Animated,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -28,7 +30,9 @@ import {
   SupportRealtimeConnectionState,
 } from '../../types';
 import { useAuthStore } from '../../stores';
+import { resolveImageUri } from '../../utils/image';
 import { format } from 'date-fns';
+import { BrandMark } from '../../components/branding';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -57,6 +61,33 @@ const upsertMessages = (
   return sortMessagesNewestFirst(Array.from(map.values()));
 };
 
+const AnimatedDot = ({ delay }: { delay: number }) => {
+  const animatedValue = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.delay(delay),
+        Animated.timing(animatedValue, {
+          toValue: 1,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+        Animated.timing(animatedValue, {
+          toValue: 0,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    animation.start();
+    return () => animation.stop();
+  }, [animatedValue, delay]);
+
+  return <Animated.View style={[styles.typingDot, { opacity: animatedValue }]} />;
+};
+
 export default function SupportChatScreen() {
   const navigation = useNavigation<NavigationProp>();
   const { t } = useTranslation();
@@ -71,10 +102,13 @@ export default function SupportChatScreen() {
   const [text, setText] = useState('');
   const [realtimeState, setRealtimeState] =
     useState<SupportRealtimeConnectionState>('disconnected');
+  const [typingUserIds, setTypingUserIds] = useState<Set<number | string>>(new Set());
 
   const flatListRef = useRef<FlatList>(null);
   const activeConversationIdRef = useRef<number | null>(null);
   const realtimeStateRef = useRef<SupportRealtimeConnectionState>('disconnected');
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastTypingSentRef = useRef<boolean>(false);
 
   useEffect(() => {
     const unsubscribeMessage = supportRealtimeService.onMessage((message) => {
@@ -113,6 +147,45 @@ export default function SupportChatScreen() {
       }
     );
 
+    const unsubscribeUserTyping = supportRealtimeService.onUserTyping((payload) => {
+      if (payload.conversationId !== activeConversationIdRef.current) {
+        return;
+      }
+
+      // Don't show own user as typing
+      if (String(payload.userId) === String(user?.id)) {
+        return;
+      }
+
+      setTypingUserIds((prev) => {
+        if (prev.has(payload.userId)) {
+          return prev;
+        }
+
+        const next = new Set(prev);
+        next.add(payload.userId);
+        return next;
+      });
+    });
+
+    const unsubscribeUserStoppedTyping = supportRealtimeService.onUserStoppedTyping(
+      (payload) => {
+        if (payload.conversationId !== activeConversationIdRef.current) {
+          return;
+        }
+
+        setTypingUserIds((prev) => {
+          if (!prev.has(payload.userId)) {
+            return prev;
+          }
+
+          const next = new Set(prev);
+          next.delete(payload.userId);
+          return next;
+        });
+      }
+    );
+
     fetchLatestConversation();
 
     const appStateSubscription = AppState.addEventListener('change', (nextState) => {
@@ -133,7 +206,13 @@ export default function SupportChatScreen() {
       unsubscribeMessage();
       unsubscribeConversation();
       unsubscribeConnection();
+      unsubscribeUserTyping();
+      unsubscribeUserStoppedTyping();
       appStateSubscription.remove();
+
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
 
       const activeConversationId = activeConversationIdRef.current;
       activeConversationIdRef.current = null;
@@ -185,6 +264,65 @@ export default function SupportChatScreen() {
       fetchMessages(activeConversationIdRef.current, true);
     }
   }, [realtimeState]);
+
+  useEffect(() => {
+    const conversationId = activeConversationIdRef.current;
+    if (!conversationId || text.trim().length === 0) {
+      return;
+    }
+
+    // Send UserTyping if not already sent
+    if (!lastTypingSentRef.current) {
+      supportRealtimeService.sendUserTyping(conversationId).catch((error) => {
+        console.error('Failed to send typing event:', error);
+      });
+      lastTypingSentRef.current = true;
+    }
+
+    // Clear existing timeout
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    // Set timeout to send UserStoppedTyping after 1 second of inactivity
+    typingTimeoutRef.current = setTimeout(() => {
+      supportRealtimeService.sendUserStoppedTyping(conversationId).catch((error) => {
+        console.error('Failed to send stopped typing event:', error);
+      });
+      lastTypingSentRef.current = false;
+      typingTimeoutRef.current = null;
+    }, 1000);
+
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+    };
+  }, [text]);
+
+  const getParticipantNameById = (userId: number | string): string => {
+    if (!conversation?.participants) {
+      return 'User';
+    }
+
+    const participant = conversation.participants.find(
+      (p) => String(p.userId) === String(userId)
+    );
+
+    return participant?.fullName || 'User';
+  };
+
+  const getParticipantAvatarUrl = (userId: number | string): string | null => {
+    if (!conversation?.participants) {
+      return null;
+    }
+
+    const participant = conversation.participants.find(
+      (p) => String(p.userId) === String(userId)
+    );
+
+    return participant?.avatarUrl || null;
+  };
 
   const fetchLatestConversation = async () => {
     try {
@@ -277,6 +415,14 @@ export default function SupportChatScreen() {
 
     try {
       setSending(true);
+
+      // Clear typing state
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
+      lastTypingSentRef.current = false;
+
       const res = await supportService.startConversation(text.trim());
       if (res.success && res.payload) {
         setConversation(res.payload);
@@ -304,6 +450,15 @@ export default function SupportChatScreen() {
     try {
       Keyboard.dismiss();
       setSending(true);
+
+      // Send stopped typing event and clear typing state
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
+      await supportRealtimeService.sendUserStoppedTyping(conversation.id);
+      lastTypingSentRef.current = false;
+
       await supportRealtimeService.sendMessage(conversation.id, text.trim());
       setText('');
       flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
@@ -323,11 +478,47 @@ export default function SupportChatScreen() {
     return String(msg.senderId) === String(user?.id);
   };
 
+  const renderAvatarForUser = (userId: number | string, isConsultant: boolean) => {
+    if (isConsultant) {
+      // Consultant avatar - use app logo
+      return <BrandMark variant="logo" size="compactHeader" />;
+    } else {
+      // User avatar
+      const avatarUrl = user?.avatarUrl || user?.avatar;
+      if (avatarUrl) {
+        return (
+          <Image
+            source={{ uri: resolveImageUri(avatarUrl) || undefined }}
+            style={styles.avatar}
+          />
+        );
+      }
+      // Fallback to initials
+      const initials = user?.fullName
+        ?.split(' ')
+        .map((n) => n[0])
+        .join('')
+        .substring(0, 2)
+        .toUpperCase() || 'U';
+      return (
+        <View style={[styles.avatar, styles.avatarPlaceholder]}>
+          <Text style={styles.avatarText}>{initials}</Text>
+        </View>
+      );
+    }
+  };
+
   const renderItem = ({ item }: { item: SupportMessage }) => {
     const mine = isMyMessage(item);
+    const isConsultant = !mine;
 
     return (
       <View style={[styles.messageRow, mine ? styles.myMessageRow : styles.otherMessageRow]}>
+        {!mine && (
+          <View style={styles.avatarContainer}>
+            {renderAvatarForUser(item.senderId, isConsultant)}
+          </View>
+        )}
         <View style={[styles.messageBubble, mine ? styles.myBubble : styles.otherBubble]}>
           <Text style={[styles.messageText, mine ? styles.myText : styles.otherText]}>
             {item.content}
@@ -336,7 +527,40 @@ export default function SupportChatScreen() {
             {item.createdAt ? format(new Date(item.createdAt), 'HH:mm') : ''}
           </Text>
         </View>
+        {mine && (
+          <View style={styles.avatarContainer}>
+            {renderAvatarForUser(user?.id ?? '', false)}
+          </View>
+        )}
       </View>
+    );
+  };
+
+  const renderTypingBubbles = () => {
+    if (typingUserIds.size === 0) {
+      return null;
+    }
+
+    const typingArray = Array.from(typingUserIds);
+
+    return (
+      <>
+        {typingArray.map((userId) => (
+          <View key={`typing-${userId}`} style={[styles.messageRow, styles.otherMessageRow]}>
+            <View style={styles.avatarContainer}>
+              {renderAvatarForUser(userId, true)}
+            </View>
+            <View style={[styles.messageBubble, styles.otherBubble, styles.typingBubble]}>
+              <View style={styles.typingDotsContainer}>
+                <AnimatedDot delay={0} />
+                <AnimatedDot delay={120} />
+                <AnimatedDot delay={240} />
+              </View>
+            </View>
+            <View style={styles.avatarContainer} />
+          </View>
+        ))}
+      </>
     );
   };
 
@@ -382,6 +606,7 @@ export default function SupportChatScreen() {
                   data={messages}
                   keyExtractor={(item) => String(item.id)}
                   renderItem={renderItem}
+                  ListHeaderComponent={renderTypingBubbles}
                   inverted
                   contentContainerStyle={styles.listContent}
                   showsVerticalScrollIndicator={false}
@@ -480,6 +705,7 @@ const styles = StyleSheet.create({
   messageRow: {
     flexDirection: 'row',
     marginBottom: SPACING.md,
+    alignItems: 'flex-end',
   },
   myMessageRow: {
     justifyContent: 'flex-end',
@@ -488,7 +714,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
   },
   messageBubble: {
-    maxWidth: '80%',
+    maxWidth: '68%',
     padding: SPACING.md,
     borderRadius: RADIUS.xl,
   },
@@ -500,6 +726,11 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     borderBottomLeftRadius: RADIUS.sm,
     ...SHADOWS.sm,
+  },
+  typingBubble: {
+    minWidth: 56,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
   },
   messageText: {
     fontSize: FONTS.sizes.md,
@@ -554,5 +785,41 @@ const styles = StyleSheet.create({
   },
   sendBtnDisabled: {
     backgroundColor: COLORS.gray400,
+  },
+  avatarContainer: {
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginHorizontal: SPACING.xs,
+  },
+  avatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.gray200,
+  },
+  avatarPlaceholder: {
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarText: {
+    color: COLORS.white,
+    fontSize: FONTS.sizes.xs,
+    fontWeight: '600',
+  },
+  typingDotsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: 18,
+  },
+  typingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.textSecondary,
   },
 });

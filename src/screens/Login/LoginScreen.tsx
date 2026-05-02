@@ -24,7 +24,11 @@ import { googleSignInService } from '../../services/googleSignInService';
 import { RootStackParamList } from '../../types';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { resolveDeviceId } from '../../utils/authFlow';
-import { resolveGoogleAuthErrorMessage, resolveLoginErrorMessage } from '../../utils/authErrors';
+import {
+  isEmailVerificationRequiredError,
+  resolveGoogleAuthErrorMessage,
+  resolveLoginErrorMessage,
+} from '../../utils/authErrors';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
 
@@ -71,6 +75,30 @@ export default function LoginScreen() {
     try {
       await login(normalizedEmail, password, deviceId || 'unknown-device');
     } catch (err) {
+      if (isEmailVerificationRequiredError(err)) {
+        Alert.alert(
+          t('login.verifyEmailTitle', { defaultValue: 'Email verification required' }),
+          t('login.verifyEmailMessage', {
+            defaultValue: 'Your email is not verified. Please verify it to continue.',
+          }),
+          [
+            {
+              text: t('common.cancel', { defaultValue: 'Cancel' }),
+              style: 'cancel',
+            },
+            {
+              text: t('login.verifyEmailAction', { defaultValue: 'Verify now' }),
+              onPress: () =>
+                navigation.navigate('VerifyCode', {
+                  email: normalizedEmail,
+                  password,
+                }),
+            },
+          ]
+        );
+        return;
+      }
+
       Alert.alert(
         t('common.error', { defaultValue: 'Error' }),
         resolveLoginErrorMessage(err, t)

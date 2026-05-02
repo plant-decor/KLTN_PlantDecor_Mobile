@@ -56,6 +56,9 @@ const en = {
     invalidCredentials: 'Invalid email or password.',
     loginFailed: 'Login failed. Please try again.',
     networkError: 'Cannot connect to server. Please check API URL and network.',
+    verifyEmailTitle: 'Email verification required',
+    verifyEmailMessage: 'Your email is not verified. Please verify it to continue.',
+    verifyEmailAction: 'Verify now',
   },
   register: {
     title: 'Create account',

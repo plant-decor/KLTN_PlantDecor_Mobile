@@ -1033,7 +1033,7 @@ export default function PlantDetailScreen() {
 
     const checkoutQuantity = Math.max(1, selectedQuantity);
     const checkoutItem: CheckoutItem = {
-      id: `buy_now_${plant.id}`,
+      id: plant.id,
       name: plant.name,
       size:
         plant.sizeName || t("common.updating", { defaultValue: "Updating" }),
@@ -2218,7 +2218,7 @@ export default function PlantDetailScreen() {
                       style={styles.relatedCard}
                       onPress={() =>
                         navigation.push("PlantDetail", {
-                          plantId: String(item.id),
+                          plantId: item.id,
                         })
                       }
                     >

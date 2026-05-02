@@ -42,10 +42,8 @@ type NavigationProp = CompositeNavigationProp<
   BottomTabNavigationProp<MainTabParamList, 'Home'>,
   NativeStackNavigationProp<RootStackParamList>
 >;
-
 type HomePlant = {
-  id: string;
-  numericId: number;
+  id: number;
   commonPlantId: number | null;
   name: string;
   subtitle: string;
@@ -158,7 +156,7 @@ const resolveEntityImage = (entity: {
 };
 
 const resolveHomePlantWishlistTarget = (plant: HomePlant): WishlistTarget | null => {
-  const entityId = plant.numericId;
+  const entityId = plant.id;
   if (!entityId) {
     return null;
   }
@@ -204,8 +202,7 @@ const mapRecommendationItemToHomePlant = (
     `Plant #${numericId}`;
 
   return {
-    id: String(numericId),
-    numericId,
+    id: numericId,
     commonPlantId: toPositiveInt(item.commonPlantId),
     name: displayName,
     subtitle,
@@ -410,8 +407,7 @@ export default function HomeScreen() {
     return plants
       .slice(0, 8)
       .map((item: Plant) => ({
-        id: String(item.id),
-        numericId: toPositiveInt(item.id) ?? 0,
+        id: toPositiveInt(item.id) ?? 0,
         commonPlantId: toPositiveInt(item.commonPlantId),
         name: item.name,
         subtitle,
@@ -425,7 +421,7 @@ export default function HomeScreen() {
           }
         ),
       }))
-      .filter((item) => item.numericId > 0);
+      .filter((item) => item.id > 0);
   }, [plants, t]);
 
   const wishlistTargets = useMemo(() => {
@@ -681,7 +677,7 @@ export default function HomeScreen() {
 
       if (goToCheckout) {
         const checkoutItem: CheckoutItem = {
-          id: `buy_now_${pendingNurserySelection.mode}_${selectedNursery.actionId}`,
+          id: selectedNursery.actionId,
           name: pendingNurserySelection.displayName,
           image: pendingNurserySelection.image,
           price: selectedNursery.minPrice ?? pendingNurserySelection.unitPrice,
@@ -752,7 +748,7 @@ export default function HomeScreen() {
           buyNowItemTypeName: 'CommonPlant',
         },
         async () => {
-          const options = await fetchNurseriesGotCommonPlantByPlantId(plant.numericId);
+          const options = await fetchNurseriesGotCommonPlantByPlantId(plant.id);
           return (options ?? []).map((option) => ({
             nurseryId: option.nurseryId,
             nurseryName: option.nurseryName,
@@ -984,8 +980,7 @@ export default function HomeScreen() {
         style={styles.featuredCard}
         onPress={() =>
           navigation.navigate('MaterialDetail', {
-            materialId,
-            nurseryMaterialId: item.id,
+            materialId
           })
         }
         activeOpacity={0.75}
