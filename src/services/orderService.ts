@@ -61,6 +61,33 @@ const EMPTY_NURSERY_ORDERS_PAYLOAD: GetNurseryOrdersPayload = {
   hasNext: false,
 };
 
+const appendDeliveryImage = (
+  formData: FormData,
+  deliveryImage?: {
+    uri: string;
+    fileName?: string;
+    mimeType?: string;
+  }
+) => {
+  const normalizedUri = deliveryImage?.uri?.trim();
+  if (!normalizedUri) {
+    return;
+  }
+
+  const inferredFileName = normalizedUri.split('/').pop() || `delivery-${Date.now()}.jpg`;
+  const fileName = deliveryImage?.fileName?.trim() || inferredFileName;
+  const mimeType = deliveryImage?.mimeType?.trim() || 'image/jpeg';
+
+  formData.append(
+    'DeliveryImage',
+    {
+      uri: normalizedUri,
+      name: fileName,
+      type: mimeType,
+    } as any
+  );
+};
+
 export const orderService = {
   createOrder: async (request: CreateOrderRequest): Promise<OrderPayload> => {
     try {
@@ -124,14 +151,9 @@ export const orderService = {
     orderId: number,
     request: MarkDeliveredRequest
   ): Promise<OrderNursery> => {
-    const normalizedUri = request.deliveryImage?.uri?.trim();
-    if (!normalizedUri) {
+    if (!request.deliveryImage?.uri?.trim()) {
       throw new Error('Invalid delivery image uri');
     }
-
-    const inferredFileName = normalizedUri.split('/').pop() || `delivery-${Date.now()}.jpg`;
-    const fileName = request.deliveryImage.fileName?.trim() || inferredFileName;
-    const mimeType = request.deliveryImage.mimeType?.trim() || 'image/jpeg';
 
     const formData = new FormData();
     const deliveryNote = typeof request.deliveryNote === 'string' ? request.deliveryNote.trim() : '';
@@ -140,14 +162,7 @@ export const orderService = {
       formData.append('DeliveryNote', deliveryNote);
     }
 
-    formData.append(
-      'DeliveryImage',
-      {
-        uri: normalizedUri,
-        name: fileName,
-        type: mimeType,
-      } as any
-    );
+    appendDeliveryImage(formData, request.deliveryImage);
 
     try {
       const response = await api.put<MarkDeliveredResponse>(
@@ -170,10 +185,22 @@ export const orderService = {
     orderId: number,
     request: MarkDeliveryFailedRequest
   ): Promise<OrderNursery> => {
+    const formData = new FormData();
+    const failureReason =
+      typeof request.failureReason === 'string' ? request.failureReason.trim() : '';
+
+    formData.append('FailureReason', failureReason);
+    appendDeliveryImage(formData, request.deliveryImage);
+
     try {
       const response = await api.put<MarkDeliveryFailedResponse>(
         API.ENDPOINTS.MARK_DELIVERY_FAILED(orderId),
-        request
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
       );
       return response.data.payload;
     } catch (error: any) {

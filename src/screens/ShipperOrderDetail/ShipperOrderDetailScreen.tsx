@@ -367,6 +367,7 @@ export default function ShipperOrderDetailScreen() {
       } else {
         await orderService.markDeliveryFailed(selectedOrder.id, {
           failureReason: trimmedNote,
+          deliveryImage: selectedDeliveryImage ?? undefined,
         });
       }
 
@@ -916,7 +917,7 @@ export default function ShipperOrderDetailScreen() {
               editable={!isSubmittingAction}
             />
 
-            {actionType === 'mark-delivered' ? (
+            {actionType === 'mark-delivered' || actionType === 'mark-delivery-failed' ? (
               <View style={styles.modalImageSection}>
                 <Text style={styles.modalImageLabel}>
                   {t('shippingList.deliveryImageLabel', {

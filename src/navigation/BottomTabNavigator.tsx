@@ -7,7 +7,7 @@ import { MainTabParamList } from '../types';
 import {
   HomeScreen,
   CatalogScreen,
-  CareServiceRegistrationScreen,
+  ServiceHubScreen,
   ProfileScreen,
   AIDesignScreen,
 } from '../screens';
@@ -83,10 +83,9 @@ export default function BottomTabNavigator() {
       />
       <Tab.Screen
         name="ServiceTab"
-        component={CareServiceRegistrationScreen}
+        component={ServiceHubScreen}
         options={{
           tabBarIcon: ({ color }) => <Ionicons name="construct-outline" size={24} color={color} />,
-          tabBarStyle: { display: 'none' },
         }}
       />
       <Tab.Screen

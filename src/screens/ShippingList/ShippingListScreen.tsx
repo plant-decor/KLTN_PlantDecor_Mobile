@@ -579,6 +579,7 @@ export default function ShippingListScreen() {
             })
           : await orderService.markDeliveryFailed(selectedOrder.id, {
               failureReason: trimmedNote,
+              deliveryImage: selectedDeliveryImage ?? undefined,
             });
 
       updateOrderOnCurrentPage(updatedOrder, activeFilter);
@@ -1191,7 +1192,7 @@ export default function ShippingListScreen() {
               editable={!isSubmittingAction}
             />
 
-            {actionType === 'mark-delivered' ? (
+            {actionType === 'mark-delivered' || actionType === 'mark-delivery-failed' ? (
               <View style={styles.modalImageSection}>
                 <Text style={styles.modalImageLabel}>
                   {t('shippingList.deliveryImageLabel', {

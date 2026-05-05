@@ -145,6 +145,27 @@ const FALLBACK_GROUPS: Record<string, SystemEnumValue[]> = {
     { value: 1, name: 'InReview' },
     { value: 2, name: 'Completed' },
   ],
+  DesignRegistrationStatus: [
+    { value: 1, name: 'PendingApproval' },
+    { value: 2, name: 'AwaitDeposit' },
+    { value: 3, name: 'DepositPaid' },
+    { value: 4, name: 'InProgress' },
+    { value: 5, name: 'AwaitFinalPayment' },
+    { value: 6, name: 'Completed' },
+    { value: 7, name: 'Rejected' },
+    { value: 8, name: 'Cancelled' },
+  ],
+  DesignTaskStatus: [
+    { value: 1, name: 'Pending' },
+    { value: 2, name: 'Assigned' },
+    { value: 3, name: 'Completed' },
+    { value: 4, name: 'Cancelled' },
+  ],
+  TaskType: [
+    { value: 1, name: 'Survey' },
+    { value: 2, name: 'Construction' },
+    { value: 3, name: 'Acceptance' },
+  ],
 };
 
 const GROUP_ALIASES: Record<string, string[]> = {
@@ -188,6 +209,13 @@ const GROUP_ALIASES: Record<string, string[]> = {
     'returnTicketAssignmentStatus',
     'returnTicketAssignment',
   ],
+  DesignRegistrationStatus: [
+    'DesignRegistrationStatus',
+    'designRegistrationStatus',
+    'design-registration-status',
+  ],
+  DesignTaskStatus: ['DesignTaskStatus', 'designTaskStatus', 'design-task-status'],
+  TaskType: ['TaskType', 'taskType', 'designTaskType'],
 };
 
 const RESOURCE_GROUPS: Record<string, string[]> = {
@@ -220,6 +248,7 @@ const RESOURCE_GROUPS: Record<string, string[]> = {
   returntickets: ['ReturnTicketStatus'],
   returnticketitems: ['ReturnTicketItemStatus'],
   returnticketassignments: ['ReturnTicketAssignmentStatus'],
+  designflow: ['DesignRegistrationStatus', 'DesignTaskStatus', 'TaskType'],
 };
 
 const normalizedAliasMap = Object.entries(GROUP_ALIASES).reduce<Record<string, string>>(

@@ -4,7 +4,9 @@ import {
   Alert,
   Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -220,6 +222,7 @@ export default function EditProfileScreen() {
     user?.receiveNotifications ?? user?.receiveNotification ?? false
   );
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [isImageSourceModalVisible, setIsImageSourceModalVisible] = useState(false);
   const [isResolvingLocation, setIsResolvingLocation] = useState(false);
   const [isGeocodingAddress, setIsGeocodingAddress] = useState(false);
   const [isAddressFocused, setIsAddressFocused] = useState(false);
@@ -244,28 +247,7 @@ export default function EditProfileScreen() {
       ? user.avatar.trim()
       : null;
 
-  const handleChangeAvatar = async () => {
-    if (isUploadingAvatar) {
-      return;
-    }
-
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert(
-        t('common.error', { defaultValue: 'Error' }),
-        t('aiDesign.mediaPermissionMessage', {
-          defaultValue: 'Please grant photo library access',
-        })
-      );
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
-
+  const handleImagePickerResult = async (result: ImagePicker.ImagePickerResult) => {
     if (result.canceled) {
       return;
     }
@@ -311,6 +293,57 @@ export default function EditProfileScreen() {
     } finally {
       setIsUploadingAvatar(false);
     }
+  };
+
+  const handleSelectCamera = async () => {
+    setIsImageSourceModalVisible(false);
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        t('profile.cameraPermissionMessage', {
+          defaultValue: 'Please grant camera access',
+        })
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    await handleImagePickerResult(result);
+  };
+
+  const handleSelectLibrary = async () => {
+    setIsImageSourceModalVisible(false);
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        t('aiDesign.mediaPermissionMessage', {
+          defaultValue: 'Please grant photo library access',
+        })
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    await handleImagePickerResult(result);
+  };
+
+  const handleChangeAvatar = () => {
+    if (isUploadingAvatar) {
+      return;
+    }
+    setIsImageSourceModalVisible(true);
   };
 
   useEffect(() => {
@@ -1073,7 +1106,7 @@ export default function EditProfileScreen() {
               </View>
             </View>
 
-            <TouchableOpacity
+            {/* <TouchableOpacity
               style={styles.notificationRow}
               onPress={() => setReceiveNotifications((prev) => !prev)}
               activeOpacity={0.8}
@@ -1098,7 +1131,7 @@ export default function EditProfileScreen() {
                   ]}
                 />
               </View>
-            </TouchableOpacity>
+            </TouchableOpacity> */}
           </View>
         </ScrollView>
 
@@ -1120,6 +1153,63 @@ export default function EditProfileScreen() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={isImageSourceModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setIsImageSourceModalVisible(false)}
+      >
+        <Pressable 
+          style={styles.modalOverlay}
+          onPress={() => setIsImageSourceModalVisible(false)}
+        >
+          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>
+              {t('profile.avatarSourceTitle', { defaultValue: 'Select Image Source' })}
+            </Text>
+            
+            <View style={styles.modalOptionsContainer}>
+              <TouchableOpacity 
+                style={styles.modalOption}
+                onPress={() => void handleSelectCamera()}
+                activeOpacity={0.7}
+              >
+                <View style={styles.modalOptionIcon}>
+                  <Ionicons name="camera" size={32} color={COLORS.primary} />
+                </View>
+                <Text style={styles.modalOptionText}>
+                  {t('profile.avatarSourceCamera', { defaultValue: 'Camera' })}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.modalOption}
+                onPress={() => void handleSelectLibrary()}
+                activeOpacity={0.7}
+              >
+                <View style={styles.modalOptionIcon}>
+                  <Ionicons name="image" size={32} color={COLORS.primary} />
+                </View>
+                <Text style={styles.modalOptionText}>
+                  {t('profile.avatarSourceLibrary', { defaultValue: 'Photo Library' })}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={styles.modalCancelButton}
+              onPress={() => setIsImageSourceModalVisible(false)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.modalCancelText}>
+                {t('common.cancel', { defaultValue: 'Cancel' })}
+              </Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1400,5 +1490,66 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.md,
     fontWeight: '700',
     color: COLORS.white,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: COLORS.white,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: SPACING.lg,
+    paddingBottom: Platform.OS === 'ios' ? 40 : SPACING.xl,
+  },
+  modalHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: COLORS.gray300,
+    borderRadius: RADIUS.full,
+    alignSelf: 'center',
+    marginBottom: SPACING.lg,
+  },
+  modalTitle: {
+    fontSize: FONTS.sizes.lg,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    textAlign: 'center',
+    marginBottom: SPACING.xl,
+  },
+  modalOptionsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: SPACING.xl,
+  },
+  modalOption: {
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  modalOptionIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.gray100,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...SHADOWS.sm,
+  },
+  modalOptionText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textPrimary,
+    fontWeight: '600',
+  },
+  modalCancelButton: {
+    backgroundColor: COLORS.gray100,
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.lg,
+    alignItems: 'center',
+  },
+  modalCancelText: {
+    fontSize: FONTS.sizes.md,
+    color: COLORS.textPrimary,
+    fontWeight: '700',
   },
 });

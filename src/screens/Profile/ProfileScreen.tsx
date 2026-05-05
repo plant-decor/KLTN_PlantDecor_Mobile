@@ -139,11 +139,6 @@ export default function ProfileScreen() {
       label: t('profile.aiAssistant', { defaultValue: 'AI Assistant' }),
       onPress: () => navigation.navigate('AIChat'),
     },
-    {
-      icon: 'settings-outline' as const,
-      label: t('profile.settings'),
-      onPress: () => {},
-    },
   ];
 
   return (

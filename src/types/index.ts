@@ -1314,6 +1314,11 @@ export interface MarkDeliveredResponse {
 
 export interface MarkDeliveryFailedRequest {
   failureReason: string;
+  deliveryImage?: {
+    uri: string;
+    fileName?: string;
+    mimeType?: string;
+  };
 }
 
 export interface MarkDeliveryFailedResponse {
@@ -1761,6 +1766,360 @@ export interface GetServiceRegistrationDetailResponse {
   payload: ServiceRegistration;
 }
 
+// ==================== Design Service ====================
+export interface DesignTemplateSpecialization {
+  id: number;
+  name: string;
+  description: string;
+}
+
+export interface DesignTemplateTierItem {
+  id: number;
+  designTemplateTierId: number;
+  materialId: number | null;
+  plantId: number | null;
+  itemType: number;
+  quantity: number;
+  createdAt: string;
+}
+
+export interface DesignTemplateTier {
+  id: number;
+  designTemplateId: number;
+  tierName: string;
+  minArea: number;
+  maxArea: number;
+  packagePrice: number;
+  scopedOfWork: string;
+  estimatedDays: number;
+  isActive: boolean;
+  createdAt: string;
+  items: DesignTemplateTierItem[];
+}
+
+export interface DesignTemplateNurseryOffering {
+  nurseryDesignTemplateId: number;
+  nurseryId: number;
+  nurseryName: string;
+  isActive: boolean;
+}
+
+export interface DesignTemplate {
+  id: number;
+  name: string;
+  description: string;
+  style: number;
+  roomTypes: number[];
+  imageUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
+  specializations: DesignTemplateSpecialization[];
+  tiers: DesignTemplateTier[];
+  nurseryOfferings: DesignTemplateNurseryOffering[];
+}
+
+export interface GetDesignTemplatesResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: DesignTemplate[];
+}
+
+export interface GetDesignTemplateTiersRequest {
+  designTemplateId?: number;
+  includeInactive?: boolean;
+}
+
+export interface GetDesignTemplateTiersResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: DesignTemplateTier[];
+}
+
+export interface GetDesignTemplateTierDetailResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: DesignTemplateTier;
+}
+
+export interface DesignTemplateTierNursery {
+  id: number;
+  nurseryId: number;
+  nurseryName: string;
+  designTemplateId: number;
+  designTemplateName: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface GetDesignTemplateTierNurseriesResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: DesignTemplateTierNursery[];
+}
+
+export interface DesignRegistrationCustomer {
+  id: number;
+  fullName: string;
+  email: string;
+  phone: string;
+  avatar: string | null;
+}
+
+export interface DesignRegistrationCaretaker {
+  id: number;
+  fullName: string;
+  email: string;
+  phone: string;
+  avatar: string | null;
+}
+
+export interface DesignRegistrationNursery {
+  id: number;
+  name: string;
+}
+
+export interface DesignRegistrationTemplateSummary {
+  id: number;
+  name: string;
+  description: string;
+  imageUrl: string | null;
+  style: number;
+  roomTypes: number[];
+}
+
+export interface DesignRegistrationTierSummary {
+  id: number;
+  tierName: string;
+  minArea: number;
+  maxArea: number;
+  packagePrice: number;
+  estimatedDays: number;
+  scopedOfWork: string;
+  designTemplate: DesignRegistrationTemplateSummary;
+}
+
+export interface DesignTaskAssignedStaff {
+  id: number;
+  fullName: string;
+  email: string;
+  phone: string;
+  avatar: string | null;
+}
+
+export interface DesignTaskRegistrationSummary {
+  id: number;
+  userId: number;
+  assignedCaretakerId: number | null;
+  nurseryId: number;
+  status: number;
+  statusName: string;
+  address: string;
+  phone: string;
+}
+
+export interface DesignTaskMaterialUsage {
+  id: number;
+  materialId: number;
+  materialName: string;
+  actualQuantity: number;
+  note: string | null;
+}
+
+export interface DesignTask {
+  id: number;
+  designRegistrationId: number;
+  assignedStaffId: number | null;
+  scheduledDate: string | null;
+  taskType: number;
+  taskTypeName: string;
+  reportImageUrl: string | null;
+  createdAt: string;
+  status: number;
+  statusName: string;
+  assignedStaff: DesignTaskAssignedStaff | null;
+  registration: DesignTaskRegistrationSummary | null;
+  taskMaterialUsages: DesignTaskMaterialUsage[];
+}
+
+export interface DesignRegistration {
+  id: number;
+  userId: number;
+  orderId: number | null;
+  nurseryId: number;
+  designTemplateTierId: number;
+  assignedCaretakerId: number | null;
+  totalPrice: number;
+  depositAmount: number;
+  latitude: number;
+  longitude: number;
+  width: number | null;
+  length: number | null;
+  currentStateImageUrl: string | null;
+  address: string;
+  phone: string;
+  customerNote: string | null;
+  cancelReason: string | null;
+  status: number;
+  statusName: string;
+  createdAt: string;
+  approvedAt: string | null;
+  customer: DesignRegistrationCustomer;
+  assignedCaretaker: DesignRegistrationCaretaker | null;
+  nursery: DesignRegistrationNursery;
+  designTemplateTier: DesignRegistrationTierSummary;
+  designTasks: DesignTask[];
+}
+
+export interface CreateDesignRegistrationRequest {
+  nurseryId: number | null;
+  designTemplateTierId: number;
+  latitude: number;
+  longitude: number;
+  address: string;
+  phone: string;
+  customerNote?: string;
+}
+
+export interface CreateDesignRegistrationResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: DesignRegistration;
+}
+
+export interface GetMyDesignRegistrationsRequest {
+  PageNumber?: number;
+  PageSize?: number;
+  Skip?: number;
+  Take?: number;
+  status?: number;
+}
+
+export interface GetMyDesignRegistrationsPayload {
+  items: DesignRegistration[];
+  totalCount: number;
+  pageNumber: number;
+  pageSize: number;
+  totalPages: number;
+  hasPrevious: boolean;
+  hasNext: boolean;
+}
+
+export interface GetMyDesignRegistrationsResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: GetMyDesignRegistrationsPayload;
+}
+
+export interface GetDesignRegistrationDetailResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: DesignRegistration;
+}
+
+export interface UpdateDesignSurveyInfoRequest {
+  Width: number;
+  Length: number;
+  currentStateImage?: {
+    uri: string;
+    fileName?: string;
+    mimeType?: string;
+  };
+}
+
+export interface GetMyDesignTasksRequest {
+  PageNumber?: number;
+  PageSize?: number;
+  Skip?: number;
+  Take?: number;
+  status?: number;
+  from?: string;
+  to?: string;
+}
+
+export interface GetMyDesignTasksPayload {
+  items: DesignTask[];
+  totalCount: number;
+  pageNumber: number;
+  pageSize: number;
+  totalPages: number;
+  hasPrevious: boolean;
+  hasNext: boolean;
+}
+
+export interface GetMyDesignTasksResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: GetMyDesignTasksPayload;
+}
+
+export interface GetDesignTaskDetailResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: DesignTask;
+}
+
+export interface GetDesignTasksByRegistrationResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: DesignTask[];
+}
+
+export interface ReportDesignTaskMaterialUsageRequest {
+  materialUsages: Array<{
+    materialId: number;
+    actualQuantity: number;
+    note?: string;
+  }>;
+}
+
+export interface ReportDesignTaskMaterialUsageResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: DesignTask;
+}
+
+export interface CompleteDesignTaskRequest {
+  reportImage: {
+    uri: string;
+    fileName?: string;
+    mimeType?: string;
+  };
+}
+
+export interface CompleteDesignTaskResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: DesignTask;
+}
+
+export interface DesignPackageMaterial {
+  materialId: number;
+  materialName: string;
+  suggestedQuantity: number;
+  availableQuantity: number;
+  isAvailableInNursery: boolean;
+  isActiveInNursery: boolean;
+}
+
+export interface GetDesignTaskPackageMaterialsResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: DesignPackageMaterial[];
+}
+
 // ==================== AI Room Design ====================
 export interface RoomDesignImageFile {
   uri: string;
@@ -2168,6 +2527,8 @@ export interface SupportRealtimeIncomingMessage {
 export type RootStackParamList = {
   MainTabs: NavigatorScreenParams<MainTabParamList> | undefined;
   Home: undefined;
+  CareServiceRegistration: undefined;
+  DesignService: undefined;
   ShipperHome: undefined;
   ShippingList: undefined;
   ShipperOrderDetail: {
@@ -2176,6 +2537,7 @@ export type RootStackParamList = {
   };
   CaretakerHome: undefined;
   CaretakerTasks: undefined;
+  CaretakerDesignTasks: undefined;
   CaretakerTaskDetail: {
     progressId: number;
     serviceRegistrationId: number;
@@ -2183,6 +2545,19 @@ export type RootStackParamList = {
   CaretakerRegistrationDetail: {
     registrationId: number;
     highlightedProgressId?: number;
+  };
+  DesignRegistrationDetail: {
+    registrationId: number;
+  };
+  DesignTaskDetail: {
+    taskId: number;
+  };
+  CaretakerDesignTaskDetail: {
+    taskId: number;
+  };
+  CaretakerDesignRegistrationDetail: {
+    registrationId: number;
+    highlightedTaskId?: number;
   };
   PlantDetail: { plantId: number };
   PlantInstanceDetail: {

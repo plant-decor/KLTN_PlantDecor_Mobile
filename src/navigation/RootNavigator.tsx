@@ -25,16 +25,23 @@ import {
   EditProfileScreen,
   OrderHistoryScreen,
   OrderDetailScreen,
+  CareServiceRegistrationScreen,
+  DesignServiceScreen,
   ServiceRegistrationDetailScreen,
+  DesignRegistrationDetailScreen,
+  DesignTaskDetailScreen,
   CareServicePackageDetailScreen,
   CustomerServiceProgressDetailScreen,
   ShipperHomeScreen,
   ShippingListScreen,
   ShipperOrderDetailScreen,
   CaretakerHomeScreen,
-  CaretakerRegistrationDetailScreen,
-  CaretakerTaskDetailScreen,
   CaretakerTasksScreen,
+  CaretakerDesignTasksScreen,
+  CaretakerRegistrationDetailScreen,
+  CaretakerDesignTaskDetailScreen,
+  CaretakerDesignRegistrationDetailScreen,
+  CaretakerTaskDetailScreen,
   HomeScreen,
   SupportChatScreen,
 } from '../screens';
@@ -69,6 +76,8 @@ export default function RootNavigator() {
     <>
       <Stack.Screen name="MainTabs" component={BottomTabNavigator} />
       <Stack.Screen name="Home" component={HomeScreen} />
+      <Stack.Screen name="CareServiceRegistration" component={CareServiceRegistrationScreen} />
+      <Stack.Screen name="DesignService" component={DesignServiceScreen} />
       <Stack.Screen name="AIChat" component={AIChatScreen} />
       <Stack.Screen name="AIChatSessions" component={AIChatSessionsScreen} />
       <Stack.Screen name="SupportChat" component={SupportChatScreen} />
@@ -98,6 +107,14 @@ export default function RootNavigator() {
       <Stack.Screen
         name="ServiceRegistrationDetail"
         component={ServiceRegistrationDetailScreen}
+      />
+      <Stack.Screen
+        name="DesignRegistrationDetail"
+        component={DesignRegistrationDetailScreen}
+      />
+      <Stack.Screen
+        name="DesignTaskDetail"
+        component={DesignTaskDetailScreen}
       />
       <Stack.Screen
         name="CustomerServiceProgressDetail"
@@ -134,8 +151,17 @@ export default function RootNavigator() {
       <Stack.Screen name="ShipperOrderDetail" component={ShipperOrderDetailScreen} />
       <Stack.Screen name="CaretakerHome" component={CaretakerHomeScreen} />
       <Stack.Screen name="CaretakerTasks" component={CaretakerTasksScreen} />
+      <Stack.Screen name="CaretakerDesignTasks" component={CaretakerDesignTasksScreen} />
       <Stack.Screen name="CaretakerTaskDetail" component={CaretakerTaskDetailScreen} />
       <Stack.Screen name="CaretakerRegistrationDetail" component={CaretakerRegistrationDetailScreen} />
+      <Stack.Screen
+        name="CaretakerDesignTaskDetail"
+        component={CaretakerDesignTaskDetailScreen}
+      />
+      <Stack.Screen
+        name="CaretakerDesignRegistrationDetail"
+        component={CaretakerDesignRegistrationDetailScreen}
+      />
     </>
   );
 

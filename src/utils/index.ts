@@ -97,3 +97,12 @@ export {
   sanitizeCaretakerTaskDateKey,
   sortCaretakerProgressesByTaskDate,
 } from './caretakerProgress';
+export {
+  getDesignRegistrationStatusPalette,
+  getDesignRoomTypeLabel,
+  getDesignStyleLabel,
+  getDesignTaskStatusPalette,
+  isDesignRegistrationAwaitPaymentStatus,
+  isDesignRegistrationCancellableStatus,
+  sortDesignTasks,
+} from './designFlow';

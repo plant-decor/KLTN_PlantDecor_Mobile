@@ -309,6 +309,27 @@ export const API = {
     SERVICE_PROGRESS_CHECK_OUT: (id: number) => `/service-progress/${id}/check-out`,
     SERVICE_PROGRESS_INCIDENT_REPORT: (id: number) => `/service-progress/${id}/incident-report`,
 
+    // Design Service
+    DESIGN_FLOW_ENUMS: "/system/enums/design-flow",
+    PUBLIC_DESIGN_TEMPLATES: "/public/design-templates",
+    PUBLIC_DESIGN_TEMPLATE_TIERS: "/public/design-template-tiers",
+    PUBLIC_DESIGN_TEMPLATE_TIER_DETAIL: (id: number) => `/public/design-template-tiers/${id}`,
+    PUBLIC_DESIGN_TEMPLATE_TIER_NURSERIES: (id: number) =>
+      `/public/design-template-tiers/${id}/nurseries`,
+    DESIGN_REGISTRATIONS: "/design-registrations",
+    MY_DESIGN_REGISTRATIONS: "/design-registrations/my",
+    CARETAKER_MY_DESIGN_REGISTRATIONS: "/design-registrations/caretaker/my",
+    DESIGN_REGISTRATION_DETAIL: (id: number) => `/design-registrations/${id}`,
+    CANCEL_DESIGN_REGISTRATION: (id: number) => `/design-registrations/${id}/cancel`,
+    DESIGN_REGISTRATION_SURVEY_INFO: (id: number) => `/design-registrations/${id}/survey-info`,
+    MY_DESIGN_TASKS: "/design-tasks/my",
+    DESIGN_TASK_DETAIL: (id: number) => `/design-tasks/${id}`,
+    DESIGN_TASKS_BY_REGISTRATION: (registrationId: number) =>
+      `/design-tasks/by-registration/${registrationId}`,
+    DESIGN_TASK_MATERIAL_USAGE: (id: number) => `/design-tasks/${id}/material-usage`,
+    DESIGN_TASK_COMPLETE: (id: number) => `/design-tasks/${id}/complete`,
+    DESIGN_TASK_PACKAGE_MATERIALS: (id: number) => `/design-tasks/${id}/package-materials`,
+
     // Support Conversations
     SUPPORT_CONVERSATIONS: "/support-conversations",
     SUPPORT_CONVERSATIONS_START: "/support-conversations/start",

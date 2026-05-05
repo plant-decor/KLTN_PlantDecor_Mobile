@@ -966,16 +966,29 @@ export default function CaretakerHomeScreen() {
           },
         ]}
       >
-        <TouchableOpacity
-          style={styles.primaryCtaButton}
-          activeOpacity={0.85}
-          onPress={() => navigation.navigate('CaretakerTasks')}
-        >
-          <Ionicons name="list-outline" size={18} color={COLORS.white} />
-          <Text style={styles.primaryCtaButtonText}>
-            {t('caretaker.openTaskBoard', { defaultValue: 'Open task board' })}
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.ctaRow}>
+          <TouchableOpacity
+            style={[styles.primaryCtaButton, styles.ctaButton]}
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate('CaretakerTasks')}
+          >
+            <Ionicons name="list-outline" size={18} color={COLORS.white} />
+            <Text style={styles.primaryCtaButtonText}>
+              {t('caretaker.openCareTaskBoard', { defaultValue: 'Care tasks' })}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.secondaryCtaButton, styles.ctaButton]}
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate('CaretakerDesignTasks')}
+          >
+            <Ionicons name="color-palette-outline" size={18} color={COLORS.primary} />
+            <Text style={styles.secondaryCtaButtonText}>
+              {t('caretaker.openDesignTaskBoard', { defaultValue: 'Design tasks' })}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <Modal
@@ -1512,17 +1525,34 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.xl,
     paddingTop: SPACING.sm,
   },
-  primaryCtaButton: {
+  ctaRow: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+  },
+  ctaButton: {
+    flex: 1,
     height: 46,
     borderRadius: RADIUS.lg,
-    backgroundColor: COLORS.primary,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
     gap: SPACING.xs,
   },
+  primaryCtaButton: {
+    backgroundColor: COLORS.primary,
+  },
   primaryCtaButtonText: {
     color: COLORS.white,
+    fontSize: FONTS.sizes.md,
+    fontWeight: '600',
+  },
+  secondaryCtaButton: {
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.white,
+  },
+  secondaryCtaButtonText: {
+    color: COLORS.primary,
     fontSize: FONTS.sizes.md,
     fontWeight: '600',
   },
