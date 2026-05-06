@@ -356,6 +356,80 @@ export interface PlantGuideResponse {
   payload: PlantGuide;
 }
 
+export interface CareReminder {
+  id: number;
+  userPlantId: number;
+  userId?: number;
+  careType: number;
+  careTypeName?: string | null;
+  plantName?: string | null;
+  plantImageUrl?: string | null;
+  title?: string | null;
+  message?: string | null;
+  content?: string | null;
+  reminderDate: string;
+  scheduledDate: string | null;
+  isCompleted: boolean;
+  createdAt: string;
+}
+
+export interface GetCareRemindersRequest {
+  careType?: number;
+  pageNumber?: number;
+  pageSize?: number;
+}
+
+export interface CareReminderListPayload {
+  items: CareReminder[];
+  totalCount: number;
+  pageNumber: number;
+  pageSize: number;
+  totalPages: number;
+  hasPrevious: boolean;
+  hasNext: boolean;
+}
+
+export interface CareReminderListResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: CareReminderListPayload;
+}
+
+export interface CareReminderTodayResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: CareReminder[];
+}
+
+export interface CreateCareReminderRequest {
+  userPlantId: number;
+  careType: number;
+  content: string;
+  reminderDate: string;
+}
+
+export interface UpdateCareReminderRequest {
+  userPlantId: number;
+  careType: number;
+  content: string;
+  reminderDate: string;
+}
+
+export interface CareReminderResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: CareReminder;
+}
+
+export interface DeleteCareReminderResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+}
+
 // ==================== Plant Search ====================
 export interface SearchPlantsRequest {
   pagination?: {
@@ -2575,6 +2649,7 @@ export type RootStackParamList = {
   Cart: undefined;
   Wishlist: undefined;
   UserPlants: undefined;
+  CareReminders: undefined;
   Checkout: {
     source?: CheckoutSource;
     items?: CheckoutItem[];

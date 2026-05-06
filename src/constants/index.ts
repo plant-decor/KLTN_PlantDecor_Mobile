@@ -180,6 +180,12 @@ export const API = {
     PLANTS: "/shop/plants/search",
     PLANT_DETAIL: (id: number) => `/shop/plants/${id}`,
     USER_PLANTS_MY: "/user-plants/my",
+    USER_PLANTS_CARE_REMINDERS: "/user-plants/my-care-reminders",
+    USER_PLANTS_CARE_REMINDERS_TODAY: "/user-plants/my-care-reminders/today",
+    USER_PLANTS_CARE_REMINDER_DETAIL: (id: number) =>
+      `/user-plants/my-care-reminders/${id}`,
+    USER_PLANTS_CARE_REMINDER_COMPLETE: (id: number) =>
+      `/user-plants/my-care-reminders/${id}/complete`,
     PLANT_GUIDE: (plantId: number) => `/plants/${plantId}/guide`,
 
     COMMON_PLANTS: "/shop/common-plants/search",

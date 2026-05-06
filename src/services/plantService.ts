@@ -16,6 +16,15 @@ import {
   UserPlantsResponse,
   PlantGuide,
   PlantGuideResponse,
+  CareReminder,
+  CareReminderListPayload,
+  CareReminderListResponse,
+  CareReminderTodayResponse,
+  CreateCareReminderRequest,
+  UpdateCareReminderRequest,
+  GetCareRemindersRequest,
+  CareReminderResponse,
+  DeleteCareReminderResponse,
   SearchAdminListParams,
   SearchCommonPlantsNurseryRequest,
   SearchCommonPlantsNurseryResponse,
@@ -50,6 +59,38 @@ const buildAdminListParams = (params?: SearchAdminListParams) => {
   }
 
   return Object.keys(query).length > 0 ? query : undefined;
+};
+
+const buildCareRemindersParams = (request?: GetCareRemindersRequest) => {
+  if (!request) {
+    return undefined;
+  }
+
+  const params: Record<string, number> = {};
+
+  if (typeof request.careType === 'number' && Number.isFinite(request.careType)) {
+    params.careType = request.careType;
+  }
+
+  if (typeof request.pageNumber === 'number' && Number.isFinite(request.pageNumber)) {
+    params.pageNumber = request.pageNumber;
+  }
+
+  if (typeof request.pageSize === 'number' && Number.isFinite(request.pageSize)) {
+    params.pageSize = request.pageSize;
+  }
+
+  return Object.keys(params).length > 0 ? params : undefined;
+};
+
+const EMPTY_CARE_REMINDER_LIST: CareReminderListPayload = {
+  items: [],
+  totalCount: 0,
+  pageNumber: 1,
+  pageSize: 10,
+  totalPages: 0,
+  hasPrevious: false,
+  hasNext: false,
 };
 
 const extractRecommendationItems = (
@@ -212,6 +253,96 @@ export const plantService = {
       return response.data.payload ?? null;
     } catch (error: any) {
       console.error('getPlantGuide error:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  getCareReminders: async (
+    request?: GetCareRemindersRequest
+  ): Promise<CareReminderListPayload> => {
+    try {
+      const response = await api.get<CareReminderListResponse>(
+        API.ENDPOINTS.USER_PLANTS_CARE_REMINDERS,
+        {
+          params: buildCareRemindersParams(request),
+        }
+      );
+
+      return response.data.payload ?? EMPTY_CARE_REMINDER_LIST;
+    } catch (error: any) {
+      console.error('getCareReminders error:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  getTodayCareReminders: async (): Promise<CareReminder[]> => {
+    try {
+      const response = await api.get<CareReminderTodayResponse>(
+        API.ENDPOINTS.USER_PLANTS_CARE_REMINDERS_TODAY
+      );
+
+      return response.data.payload ?? [];
+    } catch (error: any) {
+      console.error('getTodayCareReminders error:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  createCareReminder: async (
+    request: CreateCareReminderRequest
+  ): Promise<CareReminder> => {
+    try {
+      const response = await api.post<CareReminderResponse>(
+        API.ENDPOINTS.USER_PLANTS_CARE_REMINDERS,
+        request
+      );
+
+      return response.data.payload;
+    } catch (error: any) {
+      console.error('createCareReminder error:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  updateCareReminder: async (
+    id: number,
+    request: UpdateCareReminderRequest
+  ): Promise<CareReminder> => {
+    try {
+      const response = await api.put<CareReminderResponse>(
+        API.ENDPOINTS.USER_PLANTS_CARE_REMINDER_DETAIL(id),
+        request
+      );
+
+      return response.data.payload;
+    } catch (error: any) {
+      console.error('updateCareReminder error:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  completeCareReminder: async (id: number): Promise<CareReminder> => {
+    try {
+      const response = await api.patch<CareReminderResponse>(
+        API.ENDPOINTS.USER_PLANTS_CARE_REMINDER_COMPLETE(id)
+      );
+
+      return response.data.payload;
+    } catch (error: any) {
+      console.error('completeCareReminder error:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  deleteCareReminder: async (id: number): Promise<DeleteCareReminderResponse> => {
+    try {
+      const response = await api.delete<DeleteCareReminderResponse>(
+        API.ENDPOINTS.USER_PLANTS_CARE_REMINDER_DETAIL(id)
+      );
+
+      return response.data;
+    } catch (error: any) {
+      console.error('deleteCareReminder error:', error.response?.data || error.message);
       throw error;
     }
   },

@@ -22,6 +22,7 @@ import {
   ComboDetailScreen,
   WishlistScreen,
   UserPlantsScreen,
+  CareRemindersScreen,
   EditProfileScreen,
   OrderHistoryScreen,
   OrderDetailScreen,
@@ -88,6 +89,7 @@ export default function RootNavigator() {
       <Stack.Screen name="Cart" component={CartScreen} />
       <Stack.Screen name="Wishlist" component={WishlistScreen} />
       <Stack.Screen name="UserPlants" component={UserPlantsScreen} />
+      <Stack.Screen name="CareReminders" component={CareRemindersScreen} />
       <Stack.Screen name="Checkout" component={CheckoutScreen} />
       <Stack.Screen name="PaymentWebView" component={PaymentWebViewScreen} />
       <Stack.Screen

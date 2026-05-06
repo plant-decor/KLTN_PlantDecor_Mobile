@@ -14,15 +14,18 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, SPACING, RADIUS, SHADOWS } from '../../constants';
 import BrandedHeader from '../../components/branding/BrandedHeader';
 import { useUserPlantStore } from '../../stores/useUserPlantStore';
-import { UserPlant } from '../../types';
+import { RootStackParamList, UserPlant } from '../../types';
+
+type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'UserPlants'>;
 
 export default function UserPlantsScreen() {
   const { t } = useTranslation();
-  const navigation = useNavigation();
+  const navigation = useNavigation<NavigationProp>();
   const {
     userPlants,
     isLoading,
@@ -59,6 +62,10 @@ export default function UserPlantsScreen() {
     setGuideVisible(false);
     setGuideImageUri(null);
   }, []);
+
+  const openCareReminders = useCallback(() => {
+    navigation.navigate('CareReminders');
+  }, [navigation]);
 
   const getHealthColor = (status: string | undefined) => {
     if (!status) return COLORS.textSecondary;
@@ -169,6 +176,11 @@ export default function UserPlantsScreen() {
             <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
           </TouchableOpacity>
         } 
+        right={
+          <TouchableOpacity style={styles.headerButton} onPress={openCareReminders}>
+            <Ionicons name="notifications-outline" size={22} color={COLORS.textPrimary} />
+          </TouchableOpacity>
+        }
       />
 
       {isLoading && !refreshing ? (
