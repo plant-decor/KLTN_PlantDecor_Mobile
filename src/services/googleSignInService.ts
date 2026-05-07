@@ -5,7 +5,7 @@ type GoogleSignInModule = typeof import('@react-native-google-signin/google-sign
 let hasConfiguredGoogleSignIn = false;
 let cachedGoogleSignInModule: GoogleSignInModule | null = null;
 const APP_PACKAGE_NAME = 'com.plantdecor.mobile';
-const RELEASE_SHA1 = 'F9:1D:0F:87:C6:42:01:94:AD:74:38:F3:E3:44:D2:04:2A:2E:C6:BE';
+const RELEASE_SHA1 = '44:A7:47:9F:8A:E6:C3:6D:24:3F:1B:41:9D:D9:68:F7:D1:AF:7B:2B';
 
 const resolveErrorMessage = (error: unknown): string => {
   if (typeof error === 'string') {
@@ -38,21 +38,25 @@ const getGoogleSignInModule = (): GoogleSignInModule => {
   return cachedGoogleSignInModule;
 };
 
-const ensureGoogleSignInConfigured = () => {
-  if (hasConfiguredGoogleSignIn) {
-    return;
-  }
-
+const configureGoogleSignIn = (webClientId?: string) => {
   const { GoogleSignin } = getGoogleSignInModule();
 
   GoogleSignin.configure({
     scopes: ['profile', 'email'],
-    ...(ENV.GOOGLE_WEB_CLIENT_ID.trim().length > 0
-      ? { webClientId: ENV.GOOGLE_WEB_CLIENT_ID.trim() }
-      : {}),
+    ...(webClientId ? { webClientId } : {}),
   });
 
   hasConfiguredGoogleSignIn = true;
+};
+
+const ensureGoogleSignInConfigured = () => {
+  const preferredWebClientId = ENV.GOOGLE_WEB_CLIENT_ID.trim();
+
+  if (hasConfiguredGoogleSignIn) {
+    return;
+  }
+
+  configureGoogleSignIn(preferredWebClientId.length > 0 ? preferredWebClientId : undefined);
 };
 
 const isGoogleSignInCancelledError = (error: unknown) => {
@@ -62,6 +66,26 @@ const isGoogleSignInCancelledError = (error: unknown) => {
   } catch {
     return false;
   }
+};
+
+const signInAndFetchAccessToken = async (): Promise<string | null> => {
+  const { GoogleSignin, isCancelledResponse } = getGoogleSignInModule();
+
+  await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+  const signInResponse = await GoogleSignin.signIn();
+
+  if (isCancelledResponse(signInResponse)) {
+    return null;
+  }
+
+  const { accessToken } = await GoogleSignin.getTokens();
+  const normalizedAccessToken = accessToken?.trim();
+
+  if (!normalizedAccessToken) {
+    throw new Error('Google access token was not returned.');
+  }
+
+  return normalizedAccessToken;
 };
 
 const getGoogleSignInErrorMessage = (error: unknown) => {
@@ -122,24 +146,7 @@ const getGoogleSignInErrorMessage = (error: unknown) => {
 
 const getGoogleAccessToken = async (): Promise<string | null> => {
   ensureGoogleSignInConfigured();
-
-  const { GoogleSignin, isCancelledResponse } = getGoogleSignInModule();
-
-  await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
-  const signInResponse = await GoogleSignin.signIn();
-
-  if (isCancelledResponse(signInResponse)) {
-    return null;
-  }
-
-  const { accessToken } = await GoogleSignin.getTokens();
-  const normalizedAccessToken = accessToken?.trim();
-
-  if (!normalizedAccessToken) {
-    throw new Error('Google access token was not returned.');
-  }
-
-  return normalizedAccessToken;
+  return signInAndFetchAccessToken();
 };
 
 export const googleSignInService = {

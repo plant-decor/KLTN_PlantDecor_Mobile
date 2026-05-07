@@ -9,8 +9,8 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/plantdecor_app_splash_screen.png",
-      "resizeMode": "cover",
+      "image": "./assets/images/splash_screen_logo.png",
+      "resizeMode": "contain",
       "backgroundColor": "#FFFFFF"
     },
     "ios": {
@@ -24,8 +24,8 @@
         "backgroundColor": "#2D6A4F"
       },
       "splash": {
-        "image": "./assets/images/plantdecor_app_splash_screen.png",
-        "resizeMode": "cover",
+        "image": "./assets/images/splash_screen_logo.png",
+        "resizeMode": "contain",
         "backgroundColor": "#FFFFFF"
       },
       "edgeToEdgeEnabled": true,
