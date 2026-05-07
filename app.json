@@ -5,22 +5,27 @@
     "scheme": "plantdecor",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/only-logo.png",
+    "icon": "./assets/images/plantdecor_app_icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/only-logo.png",
+      "image": "./assets/images/plantdecor_app_splash_screen.png",
       "resizeMode": "contain",
       "backgroundColor": "#2D6A4F"
     },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.plantdecor.mobile",
-      "icon": "./assets/images/only-logo.png"
+      "icon": "./assets/images/plantdecor_app_icon.png"
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/only-logo.png",
+        "foregroundImage": "./assets/images/plantdecor_app_icon.png",
+        "backgroundColor": "#2D6A4F"
+      },
+      "splash": {
+        "image": "./assets/images/plantdecor_app_splash_screen.png",
+        "resizeMode": "contain",
         "backgroundColor": "#2D6A4F"
       },
       "edgeToEdgeEnabled": true,
@@ -28,7 +33,7 @@
       "package": "com.plantdecor.mobile"
     },
     "web": {
-      "favicon": "./assets/images/only-logo.png"
+      "favicon": "./assets/images/plantdecor_app_icon.png"
     },
     "plugins": [
       "expo-secure-store",

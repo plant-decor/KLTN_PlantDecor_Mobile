@@ -49,7 +49,7 @@ const en = {
   login: {
     title: 'Welcome!',
     subtitle: 'Take care of your garden today.',
-    emailOrPhone: 'Email or Phone number',
+    emailOrPhone: 'Email',
     password: 'Password',
     forgotPassword: 'Forgot password?',
     fillAllFields: 'Please fill in all fields.',

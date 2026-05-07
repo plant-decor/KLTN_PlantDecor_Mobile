@@ -9,6 +9,8 @@ import Logo from "../../assets/icons/logo.svg";
 import LogoWithText from "../../assets/icons/logo_with_text.svg";
 import LoginBG from "../../assets/images/login_bg.jpg";
 import RegisterBG from "../../assets/images/register_bg.jpg";
+import ChatBotAvatar from "../../assets/images/chatbot.png";
+import ConsultantAvatar from "../../assets/images/consultantChat.png";
 import ENV from "../config/env";
 
 // ==================== Icons ====================
@@ -28,6 +30,8 @@ export const ICONS = {
 export const IMAGES = {
   loginBG: LoginBG,
   registerBG: RegisterBG,
+  ChatBotAvatar: ChatBotAvatar,
+  ConsultantAvatar: ConsultantAvatar,
 } as const;
 
 // ==================== Colors ====================

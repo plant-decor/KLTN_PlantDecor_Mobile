@@ -48,7 +48,7 @@ const vi = {
   login: {
     title: 'Chào mừng bạn!',
     subtitle: 'Hãy chăm sóc khu vườn của bạn ngay hôm nay.',
-    emailOrPhone: 'Email hoặc Số điện thoại',
+    emailOrPhone: 'Email',
     password: 'Mật khẩu',
     forgotPassword: 'Quên mật khẩu?',
     fillAllFields: 'Vui lòng nhập đầy đủ thông tin.',
