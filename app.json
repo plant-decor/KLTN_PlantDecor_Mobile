@@ -10,8 +10,8 @@
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/images/plantdecor_app_splash_screen.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#2D6A4F"
+      "resizeMode": "cover",
+      "backgroundColor": "#FFFFFF"
     },
     "ios": {
       "supportsTablet": true,
@@ -25,8 +25,8 @@
       },
       "splash": {
         "image": "./assets/images/plantdecor_app_splash_screen.png",
-        "resizeMode": "contain",
-        "backgroundColor": "#2D6A4F"
+        "resizeMode": "cover",
+        "backgroundColor": "#FFFFFF"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,

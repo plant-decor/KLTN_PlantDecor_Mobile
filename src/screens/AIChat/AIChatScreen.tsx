@@ -25,8 +25,7 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RouteProp, useNavigation, useRoute } from "@react-navigation/native";
 import { useTranslation } from "react-i18next";
 import { aiChatService } from "../../services";
-import { COLORS, FONTS, RADIUS, SHADOWS, SPACING } from "../../constants";
-import { BrandMark } from "../../components/branding";
+import { COLORS, FONTS, IMAGES, RADIUS, SHADOWS, SPACING } from "../../constants";
 import { useAuthStore } from "../../stores";
 import {
   AIChatEnumGroup,
@@ -714,7 +713,7 @@ export default function AIChatScreen() {
         {!mine ? (
           <View style={styles.avatarColumn}>
             <View style={[styles.avatarCircle, styles.botAvatarCircle]}>
-              <BrandMark variant="logo" size="compactHeader" />
+              <Image source={IMAGES.ChatBotAvatar} style={styles.avatarImage} />
             </View>
           </View>
         ) : null}

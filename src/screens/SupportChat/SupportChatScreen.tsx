@@ -20,7 +20,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
-import { COLORS, SPACING, FONTS, RADIUS, SHADOWS } from '../../constants';
+import { COLORS, SPACING, FONTS, IMAGES, RADIUS, SHADOWS } from '../../constants';
 import { supportRealtimeService, supportService } from '../../services';
 import {
   SupportConversation,
@@ -32,7 +32,6 @@ import {
 import { useAuthStore } from '../../stores';
 import { resolveImageUri } from '../../utils/image';
 import { format } from 'date-fns';
-import { BrandMark } from '../../components/branding';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -481,7 +480,7 @@ export default function SupportChatScreen() {
   const renderAvatarForUser = (userId: number | string, isConsultant: boolean) => {
     if (isConsultant) {
       // Consultant avatar - use app logo
-      return <BrandMark variant="logo" size="compactHeader" />;
+      return <Image source={IMAGES.ConsultantAvatar} style={styles.avatar} />;
     } else {
       // User avatar
       const avatarUrl = user?.avatarUrl || user?.avatar;
