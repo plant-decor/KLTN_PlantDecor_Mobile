@@ -84,6 +84,42 @@ const normalizeEnumCode = (rawCode: unknown): number | null => {
 const normalizeEnumName = (rawName: string): string =>
   rawName.replace(/[^a-z0-9]/gi, '').toLowerCase();
 
+function decodeHtmlEntities(input: unknown): string {
+  if (input == null) return '';
+  let text = String(input);
+
+  text = text.replace(/<br\s*\/?>/gi, '\n');
+  text = text.replace(/<\/p\s*>/gi, '\n');
+  text = text.replace(/<p[^>]*>/gi, '');
+
+  const entities: Record<string, string> = {
+    '&nbsp;': ' ',
+    '&amp;': '&',
+    '&lt;': '<',
+    '&gt;': '>',
+    '&quot;': '"',
+    '&#39;': "'",
+    '&apos;': "'",
+  };
+
+  for (const [k, v] of Object.entries(entities)) {
+    text = text.split(k).join(v);
+  }
+
+  text = text.replace(/&#(\d+);/g, (_m, dec) =>
+    String.fromCharCode(parseInt(dec, 10))
+  );
+  text = text.replace(/&#x([0-9a-fA-F]+);/g, (_m, hex) =>
+    String.fromCharCode(parseInt(hex, 16))
+  );
+
+  text = text.replace(/<[^>]+>/g, '');
+  text = text.replace(/[ \t\u00A0]+/g, ' ');
+  text = text.replace(/\n{2,}/g, '\n\n');
+
+  return text.trim();
+}
+
 type AttributeProps = {
   icon: keyof typeof Ionicons.glyphMap;
   iconColor: string;
@@ -937,7 +973,9 @@ export default function ComboDetailScreen() {
             </View>
           </View>
 
-          <Text style={styles.description}>{combo.description || '-'}</Text>
+          <Text style={styles.description}>
+            {combo.description ? decodeHtmlEntities(combo.description) : '-'}
+          </Text>
 
           <View style={styles.sectionWrap}>
             <Text style={styles.sectionTitle}>
@@ -1031,7 +1069,11 @@ export default function ComboDetailScreen() {
             <Text style={styles.sectionTitle}>{t('comboDetail.theme', { defaultValue: 'Theme' })}</Text>
             <View style={styles.themeCard}>
               <Text style={styles.themeTitle}>{combo.themeName || '-'}</Text>
-              <Text style={styles.themeDescription}>{combo.themeDescription || '-'}</Text>
+              <Text style={styles.themeDescription}>
+                {combo.themeDescription
+                  ? decodeHtmlEntities(combo.themeDescription)
+                  : '-'}
+              </Text>
             </View>
           </View>
 
@@ -1060,7 +1102,11 @@ export default function ComboDetailScreen() {
                           color={canOpenPlantDetail ? '#15803D' : COLORS.textSecondary}
                         />
                       </View>
-                      {item.notes ? <Text style={styles.includedNotes}>{item.notes}</Text> : null}
+                      {item.notes ? (
+                        <Text style={styles.includedNotes}>
+                          {decodeHtmlEntities(item.notes)}
+                        </Text>
+                      ) : null}
                       <Text
                         style={canOpenPlantDetail ? styles.includedHint : styles.includedUnavailable}
                       >

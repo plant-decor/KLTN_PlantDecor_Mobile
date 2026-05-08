@@ -149,6 +149,9 @@ function decodeHtmlEntities(input: unknown): string {
   return text;
 }
 
+const normalizeSpecKey = (key: string): string =>
+  key.replace(/[^a-z0-9]/gi, "").toLowerCase();
+
 export default function MaterialDetailScreen() {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
@@ -613,21 +616,68 @@ export default function MaterialDetailScreen() {
     },
     [t],
   );
+
+  const specificationEntries = useMemo(() => {
+    if (!parsedSpecifications || typeof parsedSpecifications === "string") {
+      return [] as Array<[string, any]>;
+    }
+
+    const properties = parsedSpecifications.properties;
+    if (
+      properties &&
+      typeof properties === "object" &&
+      !Array.isArray(properties)
+    ) {
+      const entries = Object.entries(properties as Record<string, any>);
+      if (entries.length > 0) {
+        return entries;
+      }
+    }
+
+    return Object.entries(parsedSpecifications).filter(
+      ([key]) => key !== "type" && key !== "properties",
+    );
+  }, [parsedSpecifications]);
+
   const getSpecIcon = useCallback(
     (key: string): { name: keyof typeof Ionicons.glyphMap; color: string } => {
-      switch (key) {
+      const normalizedKey = normalizeSpecKey(key);
+
+      switch (normalizedKey) {
         case "ph":
           return { name: "flask-outline", color: "#8B5CF6" };
         case "drainage":
           return { name: "water-outline", color: "#0EA5E9" };
-        case "waterRetention":
+        case "waterretention":
           return { name: "leaf-outline", color: "#10B981" };
         case "organic":
           return { name: "nutrition-outline", color: "#84CC16" };
-        case "weightKg":
+        case "weightkg":
           return { name: "barbell-outline", color: "#F59E0B" };
-        case "suitableFor":
+        case "suitablefor":
           return { name: "flower-outline", color: "#EC4899" };
+        case "tool":
+        case "tooltype":
+        case "usage":
+          return { name: "hammer-outline", color: "#2563EB" };
+        case "material":
+        case "potmaterial":
+          return { name: "cube-outline", color: "#14B8A6" };
+        case "capacity":
+        case "capacityliters":
+        case "volume":
+          return { name: "water-outline", color: "#06B6D4" };
+        case "durability":
+          return { name: "shield-outline", color: "#4B5563" };
+        case "pot":
+        case "pottype":
+        case "potshape":
+          return { name: "flower-outline", color: "#65A30D" };
+        case "diameter":
+        case "height":
+        case "width":
+        case "length":
+          return { name: "options-outline", color: "#EA580C" };
         default:
           return { name: "checkmark-circle-outline", color: "#6B7280" };
       }
@@ -1102,20 +1152,10 @@ export default function MaterialDetailScreen() {
                         </Text>
                       ) : null}
 
-                      {parsedSpecifications.properties &&
-                      typeof parsedSpecifications.properties === "object" &&
-                      Object.keys(parsedSpecifications.properties).length >
-                        0 ? (
-                        Object.entries(parsedSpecifications.properties).map(
-                          ([key, value]) => (
-                            // render a nicer row for each property
-                            <SpecRow
-                              key={key}
-                              specKey={key}
-                              specValue={value}
-                            />
-                          ),
-                        )
+                      {specificationEntries.length > 0 ? (
+                        specificationEntries.map(([key, value]) => (
+                          <SpecRow key={key} specKey={key} specValue={value} />
+                        ))
                       ) : (
                         <Text style={styles.specText}>-</Text>
                       )}

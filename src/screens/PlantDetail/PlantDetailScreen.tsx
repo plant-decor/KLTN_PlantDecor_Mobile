@@ -198,6 +198,42 @@ const parseSortDescriptor = (
   return null;
 };
 
+function decodeHtmlEntities(input: unknown): string {
+  if (input == null) return "";
+  let text = String(input);
+
+  text = text.replace(/<br\s*\/?>/gi, "\n");
+  text = text.replace(/<\/p\s*>/gi, "\n");
+  text = text.replace(/<p[^>]*>/gi, "");
+
+  const entities: Record<string, string> = {
+    "&nbsp;": " ",
+    "&amp;": "&",
+    "&lt;": "<",
+    "&gt;": ">",
+    "&quot;": '"',
+    "&#39;": "'",
+    "&apos;": "'",
+  };
+
+  for (const [k, v] of Object.entries(entities)) {
+    text = text.split(k).join(v);
+  }
+
+  text = text.replace(/&#(\d+);/g, (_m, dec) =>
+    String.fromCharCode(parseInt(dec, 10)),
+  );
+  text = text.replace(/&#x([0-9a-fA-F]+);/g, (_m, hex) =>
+    String.fromCharCode(parseInt(hex, 16)),
+  );
+
+  text = text.replace(/<[^>]+>/g, "");
+  text = text.replace(/[ \t\u00A0]+/g, " ");
+  text = text.replace(/\n{2,}/g, "\n\n");
+
+  return text.trim();
+}
+
 // ---------- Attribute card helper ----------
 type AttributeProps = {
   icon: keyof typeof Ionicons.glyphMap;
@@ -1779,7 +1815,9 @@ export default function PlantDetailScreen() {
               )}
 
               {/* Description */}
-              <Text style={styles.description}>{plant.description}</Text>
+              <Text style={styles.description}>
+                {plant.description ? decodeHtmlEntities(plant.description) : "-"}
+              </Text>
 
               {/* ===== Biological Properties ===== */}
               <View style={styles.sectionWrap}>
