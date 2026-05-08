@@ -1,6 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 import type { NavigatorScreenParams } from '@react-navigation/native';
-// ==================== User & Auth ====================
+export * from './policy';
 export interface User {
   id: string;
   email: string;
@@ -2696,6 +2696,8 @@ export type RootStackParamList = {
   EditProfile: undefined;
   OrderHistory: undefined;
   SupportChat: undefined;
+  Policy: undefined;
+  PolicyDetail: { policyId: number; title?: string };
 };
 
 export type MainTabParamList = {

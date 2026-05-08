@@ -14,3 +14,4 @@ export { aiChatService } from './aiChatService';
 export { supportService } from './supportService';
 export { supportRealtimeService } from './supportRealtimeService';
 export { returnTicketService } from './returnTicketService';
+export { policyService } from './policyService';

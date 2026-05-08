@@ -260,9 +260,19 @@ export default function LoginScreen() {
 
             <View style={styles.termsWrap}>
               <Text style={styles.termsText}>{t('common.termsPrefix')}</Text>
-              <Text style={[styles.termsText, styles.termsBold]}>{t('common.terms')}</Text>
+              <Text 
+                style={[styles.termsText, styles.termsBold]}
+                onPress={() => navigation.navigate('Policy')}
+              >
+                {t('common.terms')}
+              </Text>
               <Text style={styles.termsText}>{t('common.and')}</Text>
-              <Text style={[styles.termsText, styles.termsBold]}>{t('common.privacyPolicy')}</Text>
+              <Text 
+                style={[styles.termsText, styles.termsBold]}
+                onPress={() => navigation.navigate('Policy')}
+              >
+                {t('common.privacyPolicy')}
+              </Text>
               <Text style={styles.termsText}>{t('common.termsSuffix')}</Text>
             </View>
           </View>

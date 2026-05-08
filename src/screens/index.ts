@@ -42,3 +42,5 @@ export { default as CaretakerDesignRegistrationDetailScreen } from './CaretakerD
 export { default as CaretakerTaskDetailScreen } from './CaretakerTaskDetail/CaretakerTaskDetailScreen';
 export { default as CaretakerRegistrationDetailScreen } from './CaretakerRegistrationDetail/CaretakerRegistrationDetailScreen';
 export { default as CustomerServiceProgressDetailScreen } from './CustomerServiceProgressDetail/CustomerServiceProgressDetailScreen';
+export { default as PolicyScreen } from './Policy/PolicyScreen';
+export { default as PolicyDetailScreen } from './Policy/PolicyDetailScreen';

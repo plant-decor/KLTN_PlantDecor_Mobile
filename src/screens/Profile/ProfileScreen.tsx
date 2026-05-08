@@ -130,6 +130,11 @@ export default function ProfileScreen() {
       onPress: () => navigation.navigate('Wishlist'),
     },
     {
+      icon: 'document-text-outline' as const,
+      label: t('profile.policy', { defaultValue: 'Policies' }),
+      onPress: () => navigation.navigate('Policy'),
+    },
+    {
       icon: 'chatbubble-ellipses-outline' as const,
       label: t('profile.supportChat', { defaultValue: 'Support Chat' }),
       onPress: () => navigation.navigate('SupportChat'),
@@ -230,7 +235,7 @@ export default function ProfileScreen() {
           <Text style={styles.logoutText}>{t('common.logout')}</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
+        {/* <TouchableOpacity
           style={styles.logoutAllButton}
           onPress={handleLogoutAll}
           disabled={isSigningOut}
@@ -239,7 +244,7 @@ export default function ProfileScreen() {
           <Text style={styles.logoutAllText}>
             {t('profile.logoutAll', { defaultValue: 'Log out all devices' })}
           </Text>
-        </TouchableOpacity>
+        </TouchableOpacity> */}
 
         {/* App Version */}
         <Text style={styles.version}>

@@ -1171,9 +1171,9 @@ export default function HomeScreen() {
         <View style={styles.stickyHeader}>
           <View style={styles.header}>
             <View style={styles.headerSide}>
-              <TouchableOpacity style={styles.iconBtn}>
+              {/* <TouchableOpacity style={styles.iconBtn}>
                 <Ionicons name="menu" size={22} color={COLORS.textPrimary} />
-              </TouchableOpacity>
+              </TouchableOpacity> */}
             </View>
 
             <View style={styles.brandRow}>

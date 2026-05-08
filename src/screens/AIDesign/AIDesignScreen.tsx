@@ -45,7 +45,7 @@ type StaticOption<Value extends string> = {
   fallbackLabel: string;
 };
 
-type FengShuiValue = 'Kim' | 'Moc' | 'Thuy' | 'Hoa' | 'Tho';
+type FengShuiValue = 'Metal' | 'Wood' | 'Water' | 'Fire' | 'Earth';
 type FengShuiSelection = 'omit' | FengShuiValue;
 type CareLevelValue = 'Easy' | 'Medium' | 'Hard';
 type CareLevelSelection = 'omit' | CareLevelValue;
@@ -97,32 +97,32 @@ const FENG_SHUI_OPTIONS: StaticOption<FengShuiSelection>[] = [
     fallbackLabel: 'Any',
   },
   {
-    value: 'Kim',
-    apiValue: 'Kim',
+    value: 'Metal',
+    apiValue: 'Metal',
     labelKey: 'catalog.fengShuiMetal',
     fallbackLabel: 'Metal',
   },
   {
-    value: 'Moc',
-    apiValue: 'Mộc',
+    value: 'Wood',
+    apiValue: 'Wood',
     labelKey: 'catalog.fengShuiWood',
     fallbackLabel: 'Wood',
   },
   {
-    value: 'Thuy',
-    apiValue: 'Thủy',
+    value: 'Water',
+    apiValue: 'Water',
     labelKey: 'catalog.fengShuiWater',
     fallbackLabel: 'Water',
   },
   {
-    value: 'Hoa',
-    apiValue: 'Hỏa',
+    value: 'Fire',
+    apiValue: 'Fire',
     labelKey: 'catalog.fengShuiFire',
     fallbackLabel: 'Fire',
   },
   {
-    value: 'Tho',
-    apiValue: 'Thổ',
+    value: 'Earth',
+    apiValue: 'Earth',
     labelKey: 'catalog.fengShuiEarth',
     fallbackLabel: 'Earth',
   },
@@ -1110,7 +1110,6 @@ export default function AIDesignScreen() {
             ? selectedPreferredNurseryIds
             : undefined,
       };
-
       const result = await roomDesignService.analyze(payload);
 
       setAnalysisResult(result);

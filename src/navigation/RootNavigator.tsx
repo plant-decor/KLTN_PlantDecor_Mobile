@@ -46,6 +46,8 @@ import {
   HomeScreen,
   MyDesignScreen,
   SupportChatScreen,
+  PolicyScreen,
+  PolicyDetailScreen,
 } from '../screens';
 import { resolveAuthenticatedHomeRoute } from '../utils/authFlow';
 
@@ -128,6 +130,8 @@ export default function RootNavigator() {
         name="CareServicePackageDetail"
         component={CareServicePackageDetailScreen}
       />
+      <Stack.Screen name="Policy" component={PolicyScreen} />
+      <Stack.Screen name="PolicyDetail" component={PolicyDetailScreen} />
     </>
   );
 
