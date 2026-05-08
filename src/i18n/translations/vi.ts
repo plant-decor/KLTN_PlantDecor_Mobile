@@ -838,6 +838,7 @@ const vi = {
     screenTitle: 'Danh sách giao hàng',
     titleWithCount: 'Danh sách giao hàng ({{count}})',
     orderCode: 'Đơn hàng #{{code}}',
+    filterAll: 'Tất cả đơn',
     filterAssigned: 'Đã phân công',
     filterShipping: 'Đang giao',
     filterDelivered: 'Đã giao',

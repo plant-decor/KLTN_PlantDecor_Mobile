@@ -13,11 +13,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, SPACING, RADIUS, SHADOWS } from '../../constants';
 import BrandedHeader from '../../components/branding/BrandedHeader';
+import { plantService } from '../../services';
 import { useUserPlantStore } from '../../stores/useUserPlantStore';
 import { RootStackParamList, UserPlant } from '../../types';
 
@@ -38,10 +39,26 @@ export default function UserPlantsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [guideVisible, setGuideVisible] = useState(false);
   const [guideImageUri, setGuideImageUri] = useState<string | null>(null);
+  const [todayCareReminderCount, setTodayCareReminderCount] = useState(0);
 
   useEffect(() => {
     void fetchUserPlants();
   }, [fetchUserPlants]);
+
+  const loadTodayCareReminders = useCallback(async () => {
+    try {
+      const reminders = await plantService.getTodayCareReminders();
+      setTodayCareReminderCount(reminders.length);
+    } catch {
+      setTodayCareReminderCount(0);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadTodayCareReminders();
+    }, [loadTodayCareReminders])
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -179,6 +196,7 @@ export default function UserPlantsScreen() {
         right={
           <TouchableOpacity style={styles.headerButton} onPress={openCareReminders}>
             <Ionicons name="notifications-outline" size={22} color={COLORS.textPrimary} />
+            {todayCareReminderCount > 0 ? <View style={styles.notificationDot} /> : null}
           </TouchableOpacity>
         }
       />
@@ -304,6 +322,17 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.full,
     backgroundColor: COLORS.surface,
     ...SHADOWS.sm,
+  },
+  notificationDot: {
+    position: 'absolute',
+    top: 7,
+    right: 7,
+    width: 9,
+    height: 9,
+    borderRadius: 9999,
+    backgroundColor: COLORS.error,
+    borderWidth: 1.5,
+    borderColor: COLORS.white,
   },
   centerContainer: { 
     flex: 1, 

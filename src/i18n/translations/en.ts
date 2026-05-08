@@ -864,6 +864,7 @@ const en = {
     screenTitle: 'Shipping List',
     titleWithCount: 'Shipping list ({{count}})',
     orderCode: 'Order #{{code}}',
+    filterAll: 'All orders',
     filterAssigned: 'Assigned',
     filterShipping: 'Shipping',
     filterDelivered: 'Delivered',

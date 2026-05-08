@@ -118,7 +118,7 @@ export default function OrderDetailScreen() {
   const [isCancellingOrder, setIsCancellingOrder] = useState(false);
   const [processingInvoiceId, setProcessingInvoiceId] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [currentReturnTicket, setCurrentReturnTicket] = useState<ReturnTicket | null>(null);
+  const [currentReturnTickets, setCurrentReturnTickets] = useState<ReturnTicket[]>([]);
   const [ticketReason, setTicketReason] = useState('');
   const [returnSelections, setReturnSelections] = useState<Record<number, ReturnSelectionState>>({});
   const [isCreatingReturnTicket, setIsCreatingReturnTicket] = useState(false);
@@ -186,10 +186,10 @@ export default function OrderDetailScreen() {
       setErrorMessage(null);
       const payload = await orderService.getOrderDetail(orderId);
       const returnTickets = await returnTicketService.getMyReturnTickets().catch(() => []);
-      const matchedTicket = returnTickets.find((ticket) => ticket.orderId === orderId) ?? null;
+      const matchedTickets = returnTickets.filter((ticket) => ticket.orderId === orderId);
       setOrder(payload);
-      setCurrentReturnTicket(matchedTicket);
-      setTicketReason(matchedTicket?.reason ?? '');
+      setCurrentReturnTickets(matchedTickets);
+      setTicketReason('');
       setReturnSelections({});
     } catch (error: any) {
       const apiMessage = error?.response?.data?.message;
@@ -222,23 +222,50 @@ export default function OrderDetailScreen() {
     [order]
   );
 
-  const selectedReturnItems = useMemo(
+  const requestedReturnItemIds = useMemo(() => {
+    const accumulator = new Set<number>();
+
+    currentReturnTickets.forEach((ticket) => {
+      ticket.items.forEach((item) => {
+        if (
+          typeof item.nurseryOrderDetailId === 'number' &&
+          Number.isFinite(item.nurseryOrderDetailId) &&
+          item.nurseryOrderDetailId > 0
+        ) {
+          accumulator.add(item.nurseryOrderDetailId);
+        }
+      });
+    });
+
+    return accumulator;
+  }, [currentReturnTickets]);
+
+  const returnableItemsForNewTicket = useMemo(
     () =>
       eligibleReturnItems.filter((item) => {
+        const itemId = resolveReturnEligibleItemId(item);
+        return itemId !== null && !requestedReturnItemIds.has(itemId);
+      }),
+    [eligibleReturnItems, requestedReturnItemIds]
+  );
+
+  const selectedReturnItems = useMemo(
+    () =>
+      returnableItemsForNewTicket.filter((item) => {
         const itemKey = resolveReturnEligibleItemId(item);
         return itemKey !== null && returnSelections[itemKey]?.selected;
       }),
-    [eligibleReturnItems, returnSelections]
+    [returnSelections, returnableItemsForNewTicket]
   );
 
   const isAllReturnItemsSelected = useMemo(
     () =>
-      eligibleReturnItems.length > 0 &&
-      eligibleReturnItems.every((item) => {
+      returnableItemsForNewTicket.length > 0 &&
+      returnableItemsForNewTicket.every((item) => {
         const itemId = resolveReturnEligibleItemId(item);
         return itemId !== null && returnSelections[itemId]?.selected;
       }),
-    [eligibleReturnItems, returnSelections]
+    [returnSelections, returnableItemsForNewTicket]
   );
 
   const canRequestReturn = useMemo(
@@ -246,10 +273,9 @@ export default function OrderDetailScreen() {
       Boolean(
         order &&
           isPendingConfirmationStatus(order.statusName) &&
-          eligibleReturnItems.length > 0 &&
-          !currentReturnTicket
+          returnableItemsForNewTicket.length > 0
       ),
-    [currentReturnTicket, eligibleReturnItems.length, order]
+    [order, returnableItemsForNewTicket.length]
   );
 
   const handleConfirmCancelOrder = useCallback(async () => {
@@ -376,7 +402,7 @@ export default function OrderDetailScreen() {
     }
 
     setReturnSelections((previous) =>
-      eligibleReturnItems.reduce<Record<number, ReturnSelectionState>>((accumulator, item) => {
+      returnableItemsForNewTicket.reduce<Record<number, ReturnSelectionState>>((accumulator, item) => {
         const itemId = resolveReturnEligibleItemId(item);
         if (itemId === null) {
           return accumulator;
@@ -390,7 +416,7 @@ export default function OrderDetailScreen() {
         return accumulator;
       }, {})
     );
-  }, [eligibleReturnItems, isAllReturnItemsSelected]);
+  }, [isAllReturnItemsSelected, returnableItemsForNewTicket]);
 
   const updateReturnItemQuantity = useCallback((lineItem: OrderLineItem, delta: number) => {
     const itemId = resolveReturnEligibleItemId(lineItem);
@@ -435,13 +461,10 @@ export default function OrderDetailScreen() {
     });
   }, []);
 
-  const refreshReturnTicket = useCallback(async () => {
+  const refreshReturnTickets = useCallback(async () => {
     const tickets = await returnTicketService.getMyReturnTickets();
-    const matchedTicket = tickets.find((ticket) => ticket.orderId === orderId) ?? null;
-    setCurrentReturnTicket(matchedTicket);
-    if (matchedTicket) {
-      setTicketReason(matchedTicket.reason ?? '');
-    }
+    const matchedTickets = tickets.filter((ticket) => ticket.orderId === orderId);
+    setCurrentReturnTickets(matchedTickets);
   }, [orderId]);
 
   const handleSubmitReturnTicket = useCallback(async () => {
@@ -497,21 +520,76 @@ export default function OrderDetailScreen() {
     setIsCreatingReturnTicket(true);
 
     try {
-      const createdTicket = await returnTicketService.createReturnTicket({
-        orderId: order.id,
-        reason: ticketReason.trim(),
-        items: requestItems,
-      });
+      const overallReason = ticketReason.trim();
+      const createRequests = requestItems.map((item) =>
+        returnTicketService.createReturnTicket({
+          orderId: order.id,
+          reason: overallReason || item.reason,
+          items: [item],
+        })
+      );
 
-      setCurrentReturnTicket(createdTicket);
-      setTicketReason(createdTicket.reason ?? '');
-      notify({
-        title: t('common.success', { defaultValue: 'Success' }),
-        message: t('returnTicket.createSuccess', {
-          defaultValue: 'Return request submitted successfully.',
-        }),
-      });
-      await refreshReturnTicket();
+      const results = await Promise.allSettled(createRequests);
+      const successfulTickets = results
+        .filter((result): result is PromiseFulfilledResult<ReturnTicket> =>
+          result.status === 'fulfilled'
+        )
+        .map((result) => result.value);
+      const failedResults = results.filter(
+        (result): result is PromiseRejectedResult => result.status === 'rejected'
+      );
+
+      if (successfulTickets.length > 0) {
+        setCurrentReturnTickets((previous) => {
+          const merged = [...previous, ...successfulTickets];
+          const uniqueById = new Map<number, ReturnTicket>();
+          merged.forEach((ticket) => uniqueById.set(ticket.id, ticket));
+          return Array.from(uniqueById.values());
+        });
+
+        const successfulItemIds = new Set(
+          successfulTickets
+            .flatMap((ticket) => ticket.items)
+            .map((item) => item.nurseryOrderDetailId)
+        );
+
+        setReturnSelections((previous) => {
+          const nextSelections: Record<number, ReturnSelectionState> = {};
+          Object.entries(previous).forEach(([itemIdKey, selection]) => {
+            const itemId = Number(itemIdKey);
+            if (!successfulItemIds.has(itemId)) {
+              nextSelections[itemId] = selection;
+            }
+          });
+          return nextSelections;
+        });
+      }
+
+      if (failedResults.length === 0) {
+        setTicketReason('');
+        notify({
+          title: t('common.success', { defaultValue: 'Success' }),
+          message: t('returnTicket.createSuccess', {
+            defaultValue: 'Return request submitted successfully.',
+          }),
+        });
+      } else {
+        const firstApiMessage = failedResults
+          .map((result) => (result.reason as any)?.response?.data?.message)
+          .find((message) => typeof message === 'string' && message.trim().length > 0);
+
+        notify({
+          title: t('common.error', { defaultValue: 'Error' }),
+          message:
+            (typeof firstApiMessage === 'string' ? firstApiMessage : null) ||
+            t('returnTicket.createPartialFailed', {
+              defaultValue:
+                'Some return requests could not be submitted. Please review and try again.',
+            }),
+        });
+      }
+
+      await refreshReturnTickets();
     } catch (error: any) {
       const apiMessage = error?.response?.data?.message;
       notify({
@@ -529,7 +607,7 @@ export default function OrderDetailScreen() {
   }, [
     isCreatingReturnTicket,
     order,
-    refreshReturnTicket,
+    refreshReturnTickets,
     returnSelections,
     selectedReturnItems,
     t,
@@ -557,8 +635,8 @@ export default function OrderDetailScreen() {
   );
 
   const uploadReturnItemImages = useCallback(
-    async (returnItemId: number, files: ReturnTicketImageFile[]) => {
-      if (!currentReturnTicket || files.length === 0) {
+    async (ticketId: number, returnItemId: number, files: ReturnTicketImageFile[]) => {
+      if (files.length === 0) {
         return;
       }
 
@@ -566,22 +644,29 @@ export default function OrderDetailScreen() {
 
       try {
         const updatedItem = await returnTicketService.uploadReturnTicketItemImages(
-          currentReturnTicket.id,
+          ticketId,
           returnItemId,
           files
         );
 
-        setCurrentReturnTicket((previous) => {
-          if (!previous) {
+        setCurrentReturnTickets((previous) => {
+          const matchedTicket = previous.find((ticket) => ticket.id === ticketId);
+          if (!matchedTicket) {
             return previous;
           }
 
-          return {
-            ...previous,
-            items: previous.items.map((item) =>
-              item.id === updatedItem.id ? updatedItem : item
-            ),
-          };
+          return previous.map((ticket) => {
+            if (ticket.id !== ticketId) {
+              return ticket;
+            }
+
+            return {
+              ...ticket,
+              items: ticket.items.map((item) =>
+                item.id === updatedItem.id ? updatedItem : item
+              ),
+            };
+          });
         });
 
         notify({
@@ -605,11 +690,11 @@ export default function OrderDetailScreen() {
         setUploadingReturnItemId(null);
       }
     },
-    [currentReturnTicket, t]
+    [t]
   );
 
   const handlePickReturnImages = useCallback(
-    async (returnItemId: number) => {
+    async (ticketId: number, returnItemId: number) => {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
         notify({
@@ -645,13 +730,13 @@ export default function OrderDetailScreen() {
         return;
       }
 
-      await uploadReturnItemImages(returnItemId, files);
+      await uploadReturnItemImages(ticketId, returnItemId, files);
     },
     [t, toReturnImageFile, uploadReturnItemImages]
   );
 
   const handleCaptureReturnImage = useCallback(
-    async (returnItemId: number) => {
+    async (ticketId: number, returnItemId: number) => {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
         notify({
@@ -683,7 +768,7 @@ export default function OrderDetailScreen() {
         return;
       }
 
-      await uploadReturnItemImages(returnItemId, [file]);
+      await uploadReturnItemImages(ticketId, returnItemId, [file]);
     },
     [t, toReturnImageFile, uploadReturnItemImages]
   );
@@ -880,158 +965,173 @@ export default function OrderDetailScreen() {
           </View>
         ) : null}
 
-        {(isPendingConfirmationStatus(order.statusName) || currentReturnTicket) ? (
+        {(isPendingConfirmationStatus(order.statusName) || currentReturnTickets.length > 0) ? (
           <View style={styles.card}>
             <View style={styles.returnSectionHeader}>
               <Text style={styles.sectionTitle}>
                 {t('returnTicket.sectionTitle', { defaultValue: 'Return request' })}
               </Text>
-              {currentReturnTicket ? (
+              {currentReturnTickets.length > 0 ? (
                 <View style={styles.returnStatusBadge}>
                   <Text style={styles.returnStatusBadgeText}>
-                    {getReturnTicketStatusLabel(currentReturnTicket.statusName)}
+                    {t('returnTicket.requestCountLabel', {
+                      defaultValue: '{{count}} request(s)',
+                      count: currentReturnTickets.length,
+                    })}
                   </Text>
                 </View>
               ) : null}
             </View>
 
-            {currentReturnTicket ? (
+            {currentReturnTickets.length > 0 ? (
               <>
                 <Text style={styles.infoText}>
                   {t('returnTicket.existingSubtitle', {
                     defaultValue: 'Your return request is already being processed.',
                   })}
                 </Text>
-                <Text style={styles.noteText}>
-                  {t('returnTicket.overallReasonLabel', {
-                    defaultValue: 'Overall reason',
-                  })}
-                  : {currentReturnTicket.reason || '-'}
-                </Text>
-                <Text style={styles.noteText}>
-                  {t('returnTicket.itemCountLabel', {
-                    defaultValue: '{{count}} item(s)',
-                    count: currentReturnTicket.items.length,
-                  })}
-                </Text>
-
-                {currentReturnTicket.items.map((item) => (
-                  <View key={item.id} style={styles.returnItemCard}>
-                    <View style={styles.lineItemRow}>
-                      {resolveImageUri(item.productImageUrl) ? (
-                        <TouchableOpacity
-                          activeOpacity={0.9}
-                          onPress={() => setPreviewImageUri(resolveImageUri(item.productImageUrl))}
-                        >
-                          <Image
-                            source={{ uri: resolveImageUri(item.productImageUrl)! }}
-                            style={styles.lineItemImage}
-                            resizeMode="cover"
-                          />
-                        </TouchableOpacity>
-                      ) : (
-                        <View style={styles.lineItemImagePlaceholder}>
-                          <Ionicons name="image-outline" size={16} color={COLORS.gray500} />
-                        </View>
-                      )}
-
-                      <View style={styles.lineItemBody}>
-                        <Text style={styles.lineItemName} numberOfLines={2}>
-                          {item.itemName}
-                        </Text>
-                        <Text style={styles.noteText}>
-                          {t('returnTicket.quantityLabel', {
-                            defaultValue: 'Return qty',
-                          })}
-                          : {item.requestedQuantity}
-                        </Text>
-                        <Text style={styles.noteText}>
-                          {t('returnTicket.itemReasonLabel', {
-                            defaultValue: 'Item reason',
-                          })}
-                          : {item.reason}
-                        </Text>
-                      </View>
+                {currentReturnTickets.map((ticket) => (
+                  <View key={ticket.id} style={styles.returnTicketBlock}>
+                    <View style={styles.topRow}>
+                      <Text style={styles.invoiceTitle}>#{ticket.id}</Text>
+                      <Text style={styles.invoiceStatus}>
+                        {getReturnTicketStatusLabel(ticket.statusName)}
+                      </Text>
                     </View>
-
-                    <Text style={styles.returnEvidenceHint}>
-                      {t('returnTicket.uploadEvidenceHint', {
-                        defaultValue:
-                          'Upload evidence images to help us decide your return request.',
+                    <Text style={styles.noteText}>
+                      {t('returnTicket.overallReasonLabel', {
+                        defaultValue: 'Overall reason',
+                      })}
+                      : {ticket.reason || '-'}
+                    </Text>
+                    <Text style={styles.noteText}>
+                      {t('returnTicket.itemCountLabel', {
+                        defaultValue: '{{count}} item(s)',
+                        count: ticket.items.length,
                       })}
                     </Text>
 
-                    <View style={styles.returnUploadActionRow}>
-                      <TouchableOpacity
-                        style={styles.returnUploadButton}
-                        onPress={() => {
-                          void handlePickReturnImages(item.id);
-                        }}
-                        disabled={uploadingReturnItemId === item.id}
-                      >
-                        <Ionicons name="images-outline" size={16} color={COLORS.textPrimary} />
-                        <Text style={styles.returnUploadButtonText}>
-                          {t('returnTicket.chooseImages', {
-                            defaultValue: 'Choose images',
+                    {ticket.items.map((item) => (
+                      <View key={item.id} style={styles.returnItemCard}>
+                        <View style={styles.lineItemRow}>
+                          {resolveImageUri(item.productImageUrl) ? (
+                            <TouchableOpacity
+                              activeOpacity={0.9}
+                              onPress={() => setPreviewImageUri(resolveImageUri(item.productImageUrl))}
+                            >
+                              <Image
+                                source={{ uri: resolveImageUri(item.productImageUrl)! }}
+                                style={styles.lineItemImage}
+                                resizeMode="cover"
+                              />
+                            </TouchableOpacity>
+                          ) : (
+                            <View style={styles.lineItemImagePlaceholder}>
+                              <Ionicons name="image-outline" size={16} color={COLORS.gray500} />
+                            </View>
+                          )}
+
+                          <View style={styles.lineItemBody}>
+                            <Text style={styles.lineItemName} numberOfLines={2}>
+                              {item.itemName}
+                            </Text>
+                            <Text style={styles.noteText}>
+                              {t('returnTicket.quantityLabel', {
+                                defaultValue: 'Return qty',
+                              })}
+                              : {item.requestedQuantity}
+                            </Text>
+                            <Text style={styles.noteText}>
+                              {t('returnTicket.itemReasonLabel', {
+                                defaultValue: 'Item reason',
+                              })}
+                              : {item.reason}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <Text style={styles.returnEvidenceHint}>
+                          {t('returnTicket.uploadEvidenceHint', {
+                            defaultValue:
+                              'Upload evidence images to help us decide your return request.',
                           })}
                         </Text>
-                      </TouchableOpacity>
 
-                      <TouchableOpacity
-                        style={styles.returnUploadButton}
-                        onPress={() => {
-                          void handleCaptureReturnImage(item.id);
-                        }}
-                        disabled={uploadingReturnItemId === item.id}
-                      >
-                        <Ionicons name="camera-outline" size={16} color={COLORS.textPrimary} />
-                        <Text style={styles.returnUploadButtonText}>
-                          {t('returnTicket.takePhoto', {
-                            defaultValue: 'Take photo',
-                          })}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-
-                    {uploadingReturnItemId === item.id ? (
-                      <ActivityIndicator
-                        size="small"
-                        color={COLORS.primary}
-                        style={styles.returnUploadLoader}
-                      />
-                    ) : null}
-
-                    {item.imageUrls.length > 0 ? (
-                      <ScrollView
-                        horizontal
-                        showsHorizontalScrollIndicator={false}
-                        contentContainerStyle={styles.returnImageList}
-                      >
-                        {item.imageUrls.map((imageUrl) => (
+                        <View style={styles.returnUploadActionRow}>
                           <TouchableOpacity
-                            key={imageUrl}
-                            activeOpacity={0.9}
-                            onPress={() => setPreviewImageUri(imageUrl)}
+                            style={styles.returnUploadButton}
+                            onPress={() => {
+                              void handlePickReturnImages(ticket.id, item.id);
+                            }}
+                            disabled={uploadingReturnItemId === item.id}
                           >
-                            <Image
-                              source={{ uri: imageUrl }}
-                              style={styles.returnEvidenceImage}
-                              resizeMode="cover"
-                            />
+                            <Ionicons name="images-outline" size={16} color={COLORS.textPrimary} />
+                            <Text style={styles.returnUploadButtonText}>
+                              {t('returnTicket.chooseImages', {
+                                defaultValue: 'Choose images',
+                              })}
+                            </Text>
                           </TouchableOpacity>
-                        ))}
-                      </ScrollView>
-                    ) : (
-                      <Text style={styles.noteText}>
-                        {t('returnTicket.noImages', {
-                          defaultValue: 'No evidence images uploaded yet.',
-                        })}
-                      </Text>
-                    )}
+
+                          <TouchableOpacity
+                            style={styles.returnUploadButton}
+                            onPress={() => {
+                              void handleCaptureReturnImage(ticket.id, item.id);
+                            }}
+                            disabled={uploadingReturnItemId === item.id}
+                          >
+                            <Ionicons name="camera-outline" size={16} color={COLORS.textPrimary} />
+                            <Text style={styles.returnUploadButtonText}>
+                              {t('returnTicket.takePhoto', {
+                                defaultValue: 'Take photo',
+                              })}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+
+                        {uploadingReturnItemId === item.id ? (
+                          <ActivityIndicator
+                            size="small"
+                            color={COLORS.primary}
+                            style={styles.returnUploadLoader}
+                          />
+                        ) : null}
+
+                        {item.imageUrls.length > 0 ? (
+                          <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            contentContainerStyle={styles.returnImageList}
+                          >
+                            {item.imageUrls.map((imageUrl) => (
+                              <TouchableOpacity
+                                key={`${ticket.id}-${item.id}-${imageUrl}`}
+                                activeOpacity={0.9}
+                                onPress={() => setPreviewImageUri(imageUrl)}
+                              >
+                                <Image
+                                  source={{ uri: imageUrl }}
+                                  style={styles.returnEvidenceImage}
+                                  resizeMode="cover"
+                                />
+                              </TouchableOpacity>
+                            ))}
+                          </ScrollView>
+                        ) : (
+                          <Text style={styles.noteText}>
+                            {t('returnTicket.noImages', {
+                              defaultValue: 'No evidence images uploaded yet.',
+                            })}
+                          </Text>
+                        )}
+                      </View>
+                    ))}
                   </View>
                 ))}
               </>
-            ) : canRequestReturn ? (
+            ) : null}
+
+            {canRequestReturn ? (
               <>
                 <Text style={styles.returnEvidenceHint}>
                   {t('returnTicket.selectItemsHint', {
@@ -1066,7 +1166,7 @@ export default function OrderDetailScreen() {
                   onChangeText={setTicketReason}
                 />
 
-                {eligibleReturnItems.map((item) => {
+                {returnableItemsForNewTicket.map((item) => {
                   const returnItemId = resolveReturnEligibleItemId(item);
                   if (returnItemId === null) {
                     return null;
@@ -1161,7 +1261,7 @@ export default function OrderDetailScreen() {
                 <Text style={styles.returnEvidenceHint}>
                   {t('returnTicket.uploadOptionalHint', {
                     defaultValue:
-                      'Images are optional. You can upload multiple images for each item.',
+                      'Images are optional now. You can upload multiple images for each item after submitting.',
                   })}
                 </Text>
 
@@ -1180,7 +1280,7 @@ export default function OrderDetailScreen() {
                   ) : (
                     <Text style={styles.submitReturnButtonText}>
                       {t('returnTicket.submitAction', {
-                        defaultValue: 'Submit return request',
+                        defaultValue: 'Submit selected return requests',
                       })}
                     </Text>
                   )}
@@ -1192,8 +1292,8 @@ export default function OrderDetailScreen() {
                   ? t('returnTicket.noEligibleItems', {
                       defaultValue: 'No eligible items available for return.',
                     })
-                  : t('returnTicket.existingSubtitle', {
-                      defaultValue: 'Your return request is already being processed.',
+                  : t('returnTicket.allItemsAlreadyRequested', {
+                      defaultValue: 'You have already submitted return requests for all eligible items.',
                     })}
               </Text>
             )}
@@ -1584,6 +1684,14 @@ const styles = StyleSheet.create({
     height: 88,
     borderRadius: RADIUS.md,
     backgroundColor: COLORS.gray100,
+  },
+  returnTicketBlock: {
+    marginTop: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    borderRadius: RADIUS.lg,
+    backgroundColor: COLORS.white,
+    padding: SPACING.sm,
   },
   fullImageModalOverlay: {
     flex: 1,

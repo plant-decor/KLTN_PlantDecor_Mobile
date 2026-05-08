@@ -32,7 +32,7 @@ import {
 } from '../../utils';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'ShippingList'>;
-type StatusFilter = 'assigned' | 'shipping' | 'delivered' | 'failed';
+type StatusFilter = 'all' | 'assigned' | 'shipping' | 'delivered' | 'failed';
 type ShipperActionType = 'start-shipping' | 'mark-delivered' | 'mark-delivery-failed';
 type PageToken = number | 'left-ellipsis' | 'right-ellipsis';
 type SelectedDeliveryImage = {
@@ -48,7 +48,7 @@ const ACCENT_DARK = '#102216';
 const TEXT_DARK = '#0D1B12';
 const SHIPPING_STATUS = 4;
 
-const FILTER_STATUS_MAP: Record<StatusFilter, number> = {
+const FILTER_STATUS_MAP: Record<Exclude<StatusFilter, 'all'>, number> = {
   assigned: 3,
   shipping: 4,
   delivered: 5,
@@ -78,8 +78,13 @@ const canMarkDelivered = (statusName: string): boolean => isShippingStatus(statu
 
 const canMarkDeliveryFailed = (statusName: string): boolean => isShippingStatus(statusName);
 
-const isOrderInFilter = (order: OrderNursery, filter: StatusFilter): boolean =>
-  order.status === FILTER_STATUS_MAP[filter];
+const isOrderInFilter = (order: OrderNursery, filter: StatusFilter): boolean => {
+  if (filter === 'all') {
+    return true;
+  }
+
+  return order.status === FILTER_STATUS_MAP[filter];
+};
 
 const buildOrderCode = (id: number): string => `DH-${String(id).padStart(4, '0')}`;
 
@@ -154,7 +159,7 @@ export default function ShippingListScreen() {
 
   const locale = i18n.language === 'vi' ? 'vi-VN' : 'en-US';
 
-  const [activeFilter, setActiveFilter] = useState<StatusFilter>('assigned');
+  const [activeFilter, setActiveFilter] = useState<StatusFilter>('all');
   const [orders, setOrders] = useState<(OrderNursery | ShipperNurseryOrderDetailPayload)[]>([]);
   const [activeShippingOrder, setActiveShippingOrder] = useState<OrderNursery | ShipperNurseryOrderDetailPayload | null>(null);
   const [totalCount, setTotalCount] = useState(0);
@@ -177,7 +182,7 @@ export default function ShippingListScreen() {
   const [processingOrderId, setProcessingOrderId] = useState<number | null>(null);
 
   const statusFilters = useMemo<StatusFilter[]>(
-    () => ['assigned', 'shipping', 'delivered', 'failed'],
+    () => ['all', 'assigned', 'shipping', 'delivered', 'failed'],
     []
   );
 
@@ -213,6 +218,12 @@ export default function ShippingListScreen() {
 
   const getFilterLabel = useCallback(
     (filter: StatusFilter) => {
+      if (filter === 'all') {
+        return t('shippingList.filterAll', {
+          defaultValue: 'All orders',
+        });
+      }
+
       if (filter === 'assigned') {
         return t('shippingList.filterAssigned', {
           defaultValue: 'Assigned',
@@ -227,8 +238,8 @@ export default function ShippingListScreen() {
         return t('shippingList.filterDelivered', { defaultValue: 'Delivered' });
       }
 
-      return t('shippingList.filterFailed', {
-        defaultValue: 'Failed',
+      return t('shippingList.filterDeliveryFailed', {
+        defaultValue: 'Delivery failed',
       });
     },
     [t]
@@ -290,9 +301,10 @@ export default function ShippingListScreen() {
 
       try {
         setErrorMessage(null);
+        const status = filter === 'all' ? undefined : FILTER_STATUS_MAP[filter];
         const [payload, shippingPayload] = await Promise.all([
           orderService.getNurseryOrders({
-            status: FILTER_STATUS_MAP[filter],
+            ...(status !== undefined ? { status } : {}),
             pageNumber: targetPage,
             pageSize: PAGE_SIZE,
           }),
