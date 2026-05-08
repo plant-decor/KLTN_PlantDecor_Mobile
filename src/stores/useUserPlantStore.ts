@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { UserPlant, PlantGuide } from '../types';
+import { UserPlant, PlantGuide, UpdateUserPlantRequest } from '../types';
 import { plantService } from '../services/plantService';
 
 interface UserPlantState {
@@ -7,10 +7,12 @@ interface UserPlantState {
   selectedGuide: PlantGuide | null;
   isLoading: boolean;
   isGuideLoading: boolean;
+  isUpdating: boolean;
   error: string | null;
 
   fetchUserPlants: () => Promise<void>;
   fetchPlantGuide: (plantId: number) => Promise<PlantGuide | null>;
+  updateUserPlant: (id: number, request: UpdateUserPlantRequest) => Promise<UserPlant | null>;
   clearError: () => void;
   resetState: () => void;
 }
@@ -20,6 +22,7 @@ export const useUserPlantStore = create<UserPlantState>((set) => ({
   selectedGuide: null,
   isLoading: false,
   isGuideLoading: false,
+  isUpdating: false,
   error: null,
 
   fetchUserPlants: async () => {
@@ -51,10 +54,30 @@ export const useUserPlantStore = create<UserPlantState>((set) => ({
     }
   },
 
+  updateUserPlant: async (id: number, request: UpdateUserPlantRequest) => {
+    set({ isUpdating: true, error: null });
+    try {
+      const updatedPlant = await plantService.updateUserPlant(id, request);
+      set((state) => ({
+        userPlants: state.userPlants.map((plant) =>
+          plant.id === id ? updatedPlant : plant
+        ),
+        isUpdating: false,
+      }));
+      return updatedPlant;
+    } catch (error: any) {
+      set({
+        error: error?.response?.data?.message || 'Không thể cập nhật cây của bạn',
+        isUpdating: false,
+      });
+      return null;
+    }
+  },
+
   clearError: () => set({ error: null }),
 
   resetState: () =>
-    set({ userPlants: [], selectedGuide: null, isLoading: false, isGuideLoading: false, error: null }),
+    set({ userPlants: [], selectedGuide: null, isLoading: false, isGuideLoading: false, isUpdating: false, error: null }),
 }));
 
 export default useUserPlantStore;

@@ -333,6 +333,21 @@ export interface UserPlantsResponse {
   payload: UserPlant[];
 }
 
+export interface UpdateUserPlantRequest {
+  location?: string | null;
+  currentTrunkDiameter?: number | null;
+  currentHeight?: number | null;
+  healthStatus?: string | null;
+  age?: number | null;
+}
+
+export interface UserPlantResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: UserPlant;
+}
+
 export interface PlantGuide {
   id: number;
   plantId: number;

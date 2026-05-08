@@ -14,6 +14,8 @@ import {
   PlantDetailResponse,
   UserPlant,
   UserPlantsResponse,
+  UpdateUserPlantRequest,
+  UserPlantResponse,
   PlantGuide,
   PlantGuideResponse,
   CareReminder,
@@ -243,6 +245,19 @@ export const plantService = {
       return response.data.payload ?? null;
     } catch (error: any) {
       console.error('getUserPlants error:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  updateUserPlant: async (id: number, request: UpdateUserPlantRequest): Promise<UserPlant> => {
+    try {
+      const response = await api.put<UserPlantResponse>(
+        API.ENDPOINTS.USER_PLANTS_UPDATE(id),
+        request
+      );
+      return response.data.payload;
+    } catch (error: any) {
+      console.error('updateUserPlant error:', error.response?.data || error.message);
       throw error;
     }
   },
