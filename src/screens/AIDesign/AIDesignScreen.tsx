@@ -77,7 +77,12 @@ const FALLBACK_ROOM_STYLE_NAMES: readonly string[] = [
 
 const FALLBACK_LIGHT_DIRECTIONS: readonly string[] = ['North', 'South', 'East', 'West', 'NorthEast', 'NorthWest', 'SouthEast', 'SouthWest'];
 const FALLBACK_DOMINANT_DIRECTIONS: readonly string[] = ['North', 'South', 'East', 'West', 'NorthEast', 'NorthWest', 'SouthEast', 'SouthWest'];
-const FALLBACK_NATURAL_LIGHT_LEVELS: readonly string[] = ['LowLight', 'MediumLight', 'BrightLight', 'DirectSun'];
+const FALLBACK_NATURAL_LIGHT_LEVELS: readonly string[] = [
+  'LowLight',
+  'IndirectLight',
+  'PartialSun',
+  'FullSun',
+];
 
 const ALLERGY_SEARCH_TAKE = 50;
 const ALLERGY_SEARCH_DEBOUNCE_MS = 350;
@@ -544,7 +549,9 @@ export default function AIDesignScreen() {
         const roomStyleGroup = groups.find((g) => g.enumName === 'RoomStyle');
         const lightDirGroup = groups.find((g) => g.enumName === 'LightDirection');
         const domDirGroup = groups.find((g) => g.enumName === 'DominantDirection');
-        const natLightGroup = groups.find((g) => g.enumName === 'NaturalLightLevel');
+        const natLightGroup = groups.find(
+          (g) => g.enumName === 'LightRequirement' || g.enumName === 'NaturalLightLevel'
+        );
 
         const rt =
           roomTypeGroup?.values
@@ -1107,6 +1114,10 @@ export default function AIDesignScreen() {
       const result = await roomDesignService.analyze(payload);
 
       setAnalysisResult(result);
+
+      if (result.layoutDesignId) {
+        void handleGenerateImages(result.layoutDesignId);
+      }
     } catch (error: unknown) {
       setAnalysisError(
         resolveApiMessage(
@@ -1261,9 +1272,9 @@ export default function AIDesignScreen() {
     [navigation, t]
   );
 
-  const handleGenerateImages = useCallback(async () => {
-    const layoutDesignId = analysisResult?.layoutDesignId ?? null;
-    if (!layoutDesignId || isGeneratingImages) {
+  const handleGenerateImages = useCallback(async (layoutDesignId?: number | null) => {
+    const resolvedLayoutDesignId = layoutDesignId ?? analysisResult?.layoutDesignId ?? null;
+    if (!resolvedLayoutDesignId || isGeneratingImages) {
       return;
     }
 
@@ -1273,9 +1284,9 @@ export default function AIDesignScreen() {
     setGeneratedImagesError(null);
 
     try {
-      await roomDesignService.generateImages(layoutDesignId);
+      await roomDesignService.generateImages(resolvedLayoutDesignId);
       setIsGeneratingImages(false);
-      void pollGeneratedImages(layoutDesignId, 0);
+      void pollGeneratedImages(resolvedLayoutDesignId, 0);
     } catch (error: unknown) {
       setIsGeneratingImages(false);
       setGeneratedImagesError(
@@ -1351,6 +1362,16 @@ export default function AIDesignScreen() {
         title={t('aiDesign.headerTitle', { defaultValue: 'AI RoomDesign' })}
         brandVariant="none"
         containerStyle={styles.header}
+        right={
+          <TouchableOpacity
+            onPress={() => navigation.navigate('MyDesign')}
+            style={styles.headerActionButton}
+            accessibilityRole="button"
+            accessibilityLabel={t('profile.myDesign', { defaultValue: 'My Design' })}
+          >
+            <Ionicons name="images-outline" size={20} color={COLORS.primary} />
+          </TouchableOpacity>
+        }
       />
 
       {!isAuthenticated ? (
@@ -2038,8 +2059,20 @@ export default function AIDesignScreen() {
                             />
                           </TouchableOpacity>
 
-                          {(item.placementPosition || canAddToCart || canBuyNow) ? (
+                          {(item.name || item.placementPosition || item.price != null || canAddToCart || canBuyNow) ? (
                             <View style={styles.recommendationBody}>
+                              {item.name ? (
+                                <Text style={styles.recommendationName}>
+                                  {item.name}
+                                </Text>
+                              ) : null}
+
+                              {item.price != null ? (
+                                <Text style={styles.recommendationPrice}>
+                                  {`${item.price.toLocaleString(locale)}đ`}
+                                </Text>
+                              ) : null}
+
                               {item.placementPosition ? (
                                 <Text style={styles.recommendationMeta}>
                                   {`${t('aiDesign.placementPositionLabel', {
@@ -2298,6 +2331,16 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: SPACING.lg,
+  },
+  headerActionButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
   },
   scrollView: {
     flex: 1,

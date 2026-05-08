@@ -201,8 +201,16 @@ const GROUP_ALIASES: Record<string, string[]> = {
   LightRequirement: [
     'LightRequirement',
     'lightRequirement',
+    'NaturalLightLevel',
+    'naturalLightLevel',
     'suitableSpace',
     'light',
+  ],
+  NaturalLightLevel: [
+    'NaturalLightLevel',
+    'naturalLightLevel',
+    'LightRequirement',
+    'lightRequirement',
   ],
   RoomType: ['RoomType', 'roomType', 'suitableRooms', 'room'],
   WishlistItemType: [

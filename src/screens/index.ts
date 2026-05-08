@@ -11,6 +11,7 @@ export { default as AIChatScreen } from './AIChat/AIChatScreen';
 export { default as AIChatSessionsScreen } from './AIChatSessions/AIChatSessionsScreen';
 export { default as VerifyCodeScreen } from './VerifyCode/VerifyCodeScreen';
 export { default as SupportChatScreen } from './SupportChat/SupportChatScreen';
+export { default as MyDesignScreen } from './MyDesign/MyDesignScreen';
 export { default as LoginScreen } from './Login/LoginScreen';
 export { default as RegisterScreen } from './Register/RegisterScreen';
 export { default as ForgotPasswordScreen } from './ForgotPassword/ForgotPasswordScreen';

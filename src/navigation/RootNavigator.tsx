@@ -44,6 +44,7 @@ import {
   CaretakerDesignRegistrationDetailScreen,
   CaretakerTaskDetailScreen,
   HomeScreen,
+  MyDesignScreen,
   SupportChatScreen,
 } from '../screens';
 import { resolveAuthenticatedHomeRoute } from '../utils/authFlow';
@@ -98,6 +99,7 @@ export default function RootNavigator() {
         options={{ animation: 'fade_from_bottom' }}
       />
       <Stack.Screen name="AIDesign" component={AIDesignScreen} />
+      <Stack.Screen name="MyDesign" component={MyDesignScreen} />
       <Stack.Screen name="Catalog" component={CatalogScreen} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{ animation: 'fade_from_bottom' }} />
       <Stack.Screen

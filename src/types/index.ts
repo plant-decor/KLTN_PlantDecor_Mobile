@@ -2326,10 +2326,15 @@ export interface RoomDesignAnalyzeResult {
 export interface RoomDesignGeneratedImage {
   id: string;
   imageUrl: string;
+  layoutDesignId?: number | null;
   layoutDesignPlantId?: number | null;
   commonPlantId?: number | null;
   plantInstanceId?: number | null;
+  name?: string | null;
+  price?: number | null;
   placementPosition?: string | null;
+  createdAt?: string | null;
+  fluxPromptUsed?: string | null;
   isSuccess?: boolean;
 }
 
@@ -2645,6 +2650,7 @@ export type RootStackParamList = {
     comboId: number;
   };
   AIDesign: undefined;
+  MyDesign: undefined;
   AIDesignResult: { resultId: string };
   Cart: undefined;
   Wishlist: undefined;

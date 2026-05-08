@@ -246,6 +246,7 @@ export const API = {
       `/RoomDesign/${layoutDesignId}/generate-images`,
     ROOM_DESIGN_GENERATED_IMAGES: (layoutDesignId: number) =>
       `/RoomDesign/${layoutDesignId}/generated-images`,
+    MY_DESIGNS: "/RoomDesign/generated-images",
 
     // AI Chat
     AI_CHAT_ENUMS: "/system/enums/AI-chat",

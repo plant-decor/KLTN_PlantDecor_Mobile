@@ -121,8 +121,8 @@ export default function ProfileScreen() {
     },
     {
       icon: 'sparkles-outline' as const,
-      label: t('profile.myAIDesign'),
-      onPress: () => navigation.navigate('AIDesign'),
+      label: t('profile.myDesign'),
+      onPress: () => navigation.navigate('MyDesign'),
     },
     {
       icon: 'heart-outline' as const,

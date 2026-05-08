@@ -492,18 +492,32 @@ const normalizeGeneratedImageItem = (
     return null;
   }
 
-  const parseNum = (val: unknown) => (typeof val === 'number' ? val : null);
+  const parseNum = (val: unknown) => toNumber(val);
+  const promptUsed =
+    toTrimmedString(getValueByKeys(record, ['fluxPromptUsed', 'FluxPromptUsed'])) ??
+    fallbackPrompt ??
+    null;
 
   return {
     id:
       toTrimmedString(record.id) ??
+      (toNumber(record.id) !== null ? String(toNumber(record.id)) : null) ??
       toTrimmedString(record.layoutDesignPlantId) ??
       `${imageUrl}-${index}`,
     imageUrl,
+    layoutDesignId: parseNum(record.layoutDesignId),
     layoutDesignPlantId: parseNum(record.layoutDesignPlantId),
     commonPlantId: parseNum(record.commonPlantId),
     plantInstanceId: parseNum(record.plantInstanceId),
-    placementPosition: toTrimmedString(record.placementPosition) ?? null,
+    name: toTrimmedString(getValueByKeys(record, ['name', 'Name'])) ?? null,
+    price: parseNum(getValueByKeys(record, ['price', 'Price'])),
+    placementPosition:
+      toTrimmedString(
+        getValueByKeys(record, ['placementPosition', 'PlacementPosition', 'placement', 'Placement'])
+      ) ?? null,
+    createdAt:
+      toTrimmedString(getValueByKeys(record, ['createdAt', 'CreatedAt'])) ?? null,
+    fluxPromptUsed: promptUsed,
     isSuccess: typeof record.isSuccess === 'boolean' ? record.isSuccess : undefined,
   };
 };
@@ -895,6 +909,17 @@ export const roomDesignService = {
   ): Promise<RoomDesignGeneratedImage[]> => {
     const response = await api.get<ApiResponse<unknown>>(
       API.ENDPOINTS.ROOM_DESIGN_GENERATED_IMAGES(layoutDesignId),
+      {
+        timeout: ROOM_DESIGN_REQUEST_TIMEOUT,
+      }
+    );
+
+    return normalizeGeneratedImages(response.data);
+  },
+
+  getMyDesigns: async (): Promise<RoomDesignGeneratedImage[]> => {
+    const response = await api.get<ApiResponse<unknown>>(
+      API.ENDPOINTS.MY_DESIGNS,
       {
         timeout: ROOM_DESIGN_REQUEST_TIMEOUT,
       }
