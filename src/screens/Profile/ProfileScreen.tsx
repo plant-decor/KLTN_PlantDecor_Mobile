@@ -31,6 +31,31 @@ export default function ProfileScreen() {
   const { totalItems } = useCartStore();
 
   const selectedLanguage = i18n.language === 'vi' ? 'vi' : 'en';
+  const normalizedTierName =
+    typeof user?.tierName === 'string' && user.tierName.trim().length > 0
+      ? user.tierName.trim()
+      : null;
+  const normalizedTierLevel =
+    typeof user?.tierLevel === 'number' && Number.isFinite(user.tierLevel)
+      ? user.tierLevel
+      : null;
+  const showTierBadge = normalizedTierName !== null || normalizedTierLevel !== null;
+  const tierBadgeText =
+    normalizedTierName !== null && normalizedTierLevel !== null
+      ? t('profile.tierBadge', {
+          tierName: normalizedTierName,
+          tierLevel: normalizedTierLevel,
+          defaultValue: '{{tierName}} • Level {{tierLevel}}',
+        })
+      : normalizedTierName !== null
+        ? t('profile.tierBadgeNameOnly', {
+            tierName: normalizedTierName,
+            defaultValue: '{{tierName}}',
+          })
+        : t('profile.tierBadgeLevelOnly', {
+            tierLevel: normalizedTierLevel ?? 0,
+            defaultValue: 'Level {{tierLevel}}',
+          });
 
   const handleChangeLanguage = (language: 'en' | 'vi') => {
     if (selectedLanguage !== language) {
@@ -164,6 +189,12 @@ export default function ProfileScreen() {
           </View>
           <Text style={styles.userName}>{user?.fullName}</Text>
           <Text style={styles.userEmail}>{user?.email}</Text>
+          {showTierBadge ? (
+            <View style={styles.tierBadge}>
+              <Ionicons name="ribbon-outline" size={14} color={COLORS.primary} />
+              <Text style={styles.tierBadgeText}>{tierBadgeText}</Text>
+            </View>
+          ) : null}
         </View>
 
         {/* Menu */}
@@ -339,6 +370,21 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.md,
     color: COLORS.textSecondary,
     marginTop: 2,
+  },
+  tierBadge: {
+    marginTop: SPACING.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.primary + '1A',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+  },
+  tierBadgeText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.primary,
+    fontWeight: '700',
   },
   menuContainer: {
     backgroundColor: COLORS.white,

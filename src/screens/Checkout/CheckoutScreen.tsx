@@ -479,7 +479,12 @@ export default function CheckoutScreen() {
 
     const username = user.username?.trim() ?? '';
     const fullName = user.fullName?.trim() ?? '';
-    const birthYear = user.birthYear;
+    const birthDate =
+      typeof user.birthDate === 'string' && user.birthDate.trim().length > 0
+        ? user.birthDate.trim()
+        : typeof user.birthYear === 'number' && Number.isInteger(user.birthYear)
+          ? `${String(user.birthYear).padStart(4, '0')}-01-01`
+          : '';
     const resolvedPhoneNumber =
       trimmedPhone || user.phoneNumber?.trim() || user.phone?.trim() || '';
     const payloadLatitude =
@@ -491,7 +496,7 @@ export default function CheckoutScreen() {
         ? user.longitude
         : 0;
 
-    if (!username || !fullName || typeof birthYear !== 'number' || !Number.isInteger(birthYear)) {
+    if (!username || !fullName || !birthDate) {
       Alert.alert(
         t('common.error', { defaultValue: 'Error' }),
         t('checkout.profileRequiredForAddressUpdate', {
@@ -529,7 +534,7 @@ export default function CheckoutScreen() {
       phoneNumber: resolvedPhoneNumber,
       fullName,
       address: trimmedAddress,
-      birthYear,
+      birthDate,
       gender: resolvedGenderName,
       latitude: payloadLatitude,
       longitude: payloadLongitude,

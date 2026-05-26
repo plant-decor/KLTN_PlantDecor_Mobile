@@ -243,6 +243,7 @@ export const API = {
     ROOM_DESIGN_ALLERGY_PLANTS: "/RoomDesign/allergy-plants",
     ROOM_DESIGN_ANALYZE: "/RoomDesign/analyze",
     ROOM_DESIGN_ANALYZE_UPLOAD: "/RoomDesign/analyze-upload",
+    ROOM_DESIGN_ANALYZE_ROOM_ONLY_UPLOAD: "/RoomDesign/analyze-room-only-upload",
     ROOM_DESIGN_GENERATE_IMAGES: (layoutDesignId: number) =>
       `/RoomDesign/${layoutDesignId}/generate-images`,
     ROOM_DESIGN_GENERATED_IMAGES: (layoutDesignId: number) =>

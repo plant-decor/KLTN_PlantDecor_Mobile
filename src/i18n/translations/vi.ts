@@ -486,7 +486,7 @@ const vi = {
   aiDesign: {
     headerTitle: 'Thiết kế AI 🪄',
     headerSubtitle: 'Chụp ảnh không gian, AI sẽ thiết kế cây cảnh phù hợp',
-    sectionImage: 'Ảnh không gian',
+    sectionImage: 'Ảnh phòng',
     sectionRoomType: 'Loại không gian',
     sectionStyle: 'Phong cách',
     roomType: {
@@ -524,7 +524,7 @@ const vi = {
     mediaPermissionMessage: 'Vui lòng cấp quyền truy cập thư viện ảnh',
     cameraPermissionMessage: 'Vui lòng cấp quyền truy cập camera',
     missingImageTitle: 'Thiếu ảnh',
-    missingImageMessage: 'Vui lòng chọn hoặc chụp ảnh không gian',
+    missingImageMessage: 'Vui lòng tải lên ít nhất một ảnh phòng',
     errorTitle: 'Lỗi',
     errorMessage: 'Không thể tạo thiết kế. Vui lòng thử lại.',
     roomLivingRoom: 'Phòng khách',
@@ -543,7 +543,7 @@ const vi = {
     customerOnlyTitle: 'RoomDesign chỉ dành cho tài khoản khách hàng',
     customerOnlyMessage:
       'Tính năng này hiện chỉ mở cho khách hàng. Vui lòng chuyển sang tài khoản khách hàng để tiếp tục.',
-    imageHint: 'Tải ảnh căn phòng để AI phân tích không gian của bạn.',
+    imageHint: 'Tải lên 1–4 ảnh của căn phòng. Cần ít nhất một ảnh.',
     preferencesTitle: 'Tuỳ chọn thiết kế',
     preferencesSubtitle:
       'Chỉ bắt buộc loại phòng và phong cách. Các mục khác để trống để không gửi lên API.',
@@ -578,6 +578,7 @@ const vi = {
     allergyLoadFailed: 'Không thể tải danh sách cây dị ứng.',
     analyzeButton: 'Phân tích phòng',
     analyzing: 'Đang phân tích phòng...',
+    startOverButton: 'Bắt đầu lại',
     invalidBudgetMessage: 'Vui lòng nhập khoảng ngân sách hợp lệ.',
     invalidBudgetRangeMessage:
       'Ngân sách tối thiểu không được lớn hơn ngân sách tối đa.',
@@ -699,8 +700,8 @@ const vi = {
     editFormAddressPlaceholder: 'Nhập địa chỉ',
     editFormPhoneNumber: 'Số điện thoại',
     editFormPhoneNumberPlaceholder: 'Nhập số điện thoại',
-    editFormBirthYear: 'Năm sinh',
-    editFormBirthYearPlaceholder: 'Ví dụ: 2004',
+    editFormBirthYear: 'Ngày sinh',
+    editFormBirthYearPlaceholder: 'Chọn ngày sinh của bạn',
     editFormLocation: 'Vị trí',
     editFormLatitudePlaceholder: 'Vĩ độ',
     editFormLongitudePlaceholder: 'Kinh độ',
@@ -724,7 +725,7 @@ const vi = {
     editFormReceiveNotificationHint: 'Nhận cập nhật về đơn hàng và gợi ý.',
     editFormSaveButton: 'Lưu thay đổi',
     editFormRequired: 'Vui lòng nhập đầy đủ các trường bắt buộc.',
-    editFormBirthYearInvalid: 'Năm sinh phải trong khoảng {{min}} đến {{max}}.',
+    editFormBirthYearInvalid: 'Ngày sinh phải trong khoảng {{min}} đến {{max}}.',
     editFormUpdateSuccess: 'Cập nhật hồ sơ thành công.',
     editFormUpdateFailed: 'Không thể cập nhật hồ sơ. Vui lòng thử lại.',
     editAvatarAction: 'Đổi ảnh đại diện',
@@ -741,6 +742,9 @@ const vi = {
     logoutAll: 'Đăng xuất tất cả thiết bị',
     logoutAllConfirmTitle: 'Đăng xuất tất cả thiết bị',
     logoutAllConfirmMessage: 'Bạn có chắc chắn muốn đăng xuất trên tất cả thiết bị?',
+    tierBadge: '{{tierName}} • Hạng {{tierLevel}}',
+    tierBadgeNameOnly: '{{tierName}}',
+    tierBadgeLevelOnly: 'Hạng {{tierLevel}}',
     version: 'PlantDecor v{{version}}',
   },
   myDesign: {

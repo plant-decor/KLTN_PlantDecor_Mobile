@@ -11,6 +11,7 @@ import {
   RoomDesignRoomAnalysis,
   RoomDesignUploadedImage,
   RoomDesignAnalyzePayload,
+  RoomDesignUploadResponse,
 } from '../types';
 import { resolveImageUri, resolveImageUris } from '../utils/image';
 import api from './api';
@@ -415,6 +416,9 @@ const normalizeAnalyzeResult = (
       .filter((c): c is string => Boolean(c && c.length > 0));
 
     roomAnalysis = {
+      numberOfPlantsSuggest: toNumber(
+        getValueByKeys(roomAnalysisRecord, ['numberOfPlantsSuggest', 'NumberOfPlantsSuggest'])
+      ),
       availableSpace: toTrimmedString(
         getValueByKeys(roomAnalysisRecord, ['availableSpace', 'AvailableSpace'])
       ),
@@ -681,6 +685,7 @@ const normalizeRoomImageItem = (source: unknown): RoomDesignUploadedImage | null
   return {
     roomImageId: id,
     imageUrl: toTrimmedString(getValueByKeys(record, ['imageUrl', 'ImageUrl', 'url', 'Url'])) ?? null,
+    orderIndex: toNumber(getValueByKeys(record, ['orderIndex', 'OrderIndex'])),
     viewAngle: toTrimmedString(getValueByKeys(record, ['viewAngle', 'ViewAngle'])) ?? null,
     moderationStatus:
       toTrimmedString(getValueByKeys(record, ['moderationStatus', 'ModerationStatus'])) ?? null,
@@ -716,6 +721,31 @@ const extractRoomImageItems = (responseBody: ApiResponse<unknown> | unknown): Ro
     .filter((item): item is RoomDesignUploadedImage => Boolean(item));
 };
 
+const appendRoomImage = (
+  formData: FormData,
+  image: RoomDesignImageFile,
+  orderIndex: number
+): void => {
+  const normalizedUri = image.uri.trim();
+  if (!normalizedUri) {
+    throw new Error('Invalid room image uri');
+  }
+
+  const inferredFileName =
+    image.fileName?.trim() || normalizedUri.split('/').pop() || `room-${Date.now()}.jpg`;
+  const mimeType = image.mimeType?.trim() || 'image/jpeg';
+
+  formData.append(
+    'Images',
+    {
+      uri: normalizedUri,
+      name: inferredFileName,
+      type: mimeType,
+    } as any
+  );
+  formData.append('OrderIndexes', String(orderIndex));
+};
+
 export const roomDesignService = {
   searchAllergyPlants: async (
     keyword?: string,
@@ -738,31 +768,20 @@ export const roomDesignService = {
       .filter((item): item is RoomDesignAllergyPlant => Boolean(item));
   },
 
-  uploadRoomImage: async (
-    image: RoomDesignImageFile,
-    viewAngle: string
+  uploadRoomImages: async (
+    images: RoomDesignImageFile[]
   ): Promise<RoomDesignUploadedImage[]> => {
-    const normalizedUri = image.uri.trim();
-    if (!normalizedUri) {
+    const normalizedImages = images.filter((image) => image.uri.trim().length > 0);
+    if (normalizedImages.length === 0) {
       throw new Error('Invalid room image uri');
     }
 
-    const inferredFileName =
-      image.fileName?.trim() || normalizedUri.split('/').pop() || `room-${Date.now()}.jpg`;
-    const mimeType = image.mimeType?.trim() || 'image/jpeg';
-
     const formData = new FormData();
-    formData.append(
-      'Images',
-      {
-        uri: normalizedUri,
-        name: inferredFileName,
-        type: mimeType,
-      } as any
-    );
-    formData.append('ViewAngles', viewAngle);
+    normalizedImages.forEach((image, index) => {
+      appendRoomImage(formData, image, index + 1);
+    });
 
-    const response = await api.post<ApiResponse<unknown>>(
+    const response = await api.post<RoomDesignUploadResponse | ApiResponse<unknown>>(
       API.ENDPOINTS.ROOM_IMAGE_UPLOAD,
       formData,
       {
@@ -774,6 +793,18 @@ export const roomDesignService = {
     );
 
     return extractRoomImageItems(response.data);
+  },
+
+  uploadRoomImage: async (
+    image: RoomDesignImageFile,
+    viewAngle: string
+  ): Promise<RoomDesignUploadedImage[]> => {
+    return roomDesignService.uploadRoomImages([
+      {
+        ...image,
+        fileName: image.fileName?.trim() || viewAngle.trim() || image.fileName,
+      },
+    ]);
   },
 
   analyzeUpload: async (
@@ -814,11 +845,6 @@ export const roomDesignService = {
     const lightDir = request.lightDirection?.trim();
     if (lightDir) {
       formData.append('LightDirection', lightDir);
-    }
-
-    const domDir = request.dominantDirection?.trim();
-    if (domDir) {
-      formData.append('DominantDirection', domDir);
     }
 
     const natLight = request.naturalLightLevel?.trim();
@@ -878,6 +904,42 @@ export const roomDesignService = {
     );
 
     return normalizeAnalyzeResult(response.data);
+  },
+
+  analyzeRoomOnlyUpload: async (
+    images: RoomDesignImageFile[]
+  ): Promise<import('../types').RoomDesignAnalyzeOnlyUploadResult> => {
+    const normalizedImages = images.filter((image) => image.uri.trim().length > 0);
+    if (normalizedImages.length === 0) {
+      throw new Error('Invalid room image uri');
+    }
+
+    const formData = new FormData();
+    normalizedImages.forEach((image, index) => {
+      appendRoomImage(formData, image, index + 1);
+    });
+
+    const response = await api.post<ApiResponse<unknown>>(
+      API.ENDPOINTS.ROOM_DESIGN_ANALYZE_ROOM_ONLY_UPLOAD,
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        timeout: ROOM_DESIGN_REQUEST_TIMEOUT,
+      }
+    );
+
+    const unwrapped = unwrapEnvelope(response.data) as any;
+    if (!unwrapped) {
+      return { roomType: null };
+    }
+
+    const payload = (unwrapped && typeof unwrapped === 'object' && 'roomType' in unwrapped)
+      ? (unwrapped as { roomType?: string }).roomType
+      : null;
+
+    return { roomType: payload ?? null };
   },
 
   analyze: async (

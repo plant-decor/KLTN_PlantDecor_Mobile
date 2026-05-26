@@ -61,6 +61,28 @@ const normalizeBirthYear = (rawBirthYear: unknown): number | undefined => {
   return undefined;
 };
 
+const normalizeBirthDate = (
+  rawBirthDate: unknown,
+  rawBirthYear?: unknown
+): string | undefined => {
+  if (typeof rawBirthDate === 'string') {
+    const trimmed = rawBirthDate.trim();
+    if (trimmed.length >= 10) {
+      const dateKey = trimmed.slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
+        return dateKey;
+      }
+    }
+  }
+
+  const birthYear = normalizeBirthYear(rawBirthYear);
+  if (typeof birthYear === 'number') {
+    return `${String(birthYear).padStart(4, '0')}-01-01`;
+  }
+
+  return undefined;
+};
+
 const normalizeGender = (
   rawGender: unknown
 ): { gender?: UserGender; genderCode?: number } => {
@@ -277,6 +299,15 @@ const normalizeUser = (rawUser: any): User => {
       : typeof rawUser?.receiveNotification === 'boolean'
         ? rawUser.receiveNotification
         : undefined;
+  const normalizedBirthDate = normalizeBirthDate(rawUser?.birthDate, rawUser?.birthYear);
+  const normalizedFengShuiElementName =
+    typeof rawUser?.fengShuiElementName === 'string' &&
+    rawUser.fengShuiElementName.trim().length > 0
+      ? rawUser.fengShuiElementName
+      : typeof rawUser?.fengShuiElement === 'string' &&
+          rawUser.fengShuiElement.trim().length > 0
+        ? rawUser.fengShuiElement
+        : null;
   const normalizedRole = resolveNormalizedRole(
     rawUser?.role,
     rawUser?.Role,
@@ -300,7 +331,11 @@ const normalizeUser = (rawUser: any): User => {
       typeof rawUser?.address === 'string'
         ? rawUser.address
         : rawUser?.address?.fullAddress ?? undefined,
-    birthYear: normalizeBirthYear(rawUser?.birthYear),
+    birthDate: normalizedBirthDate,
+    birthYear:
+      normalizedBirthDate !== undefined
+        ? Number(normalizedBirthDate.slice(0, 4))
+        : normalizeBirthYear(rawUser?.birthYear),
     gender: normalizedGender.gender,
     genderCode: normalizedGender.genderCode,
     latitude: normalizedLatitude,
@@ -311,6 +346,13 @@ const normalizeUser = (rawUser: any): User => {
       typeof rawUser?.profileCompleteness === 'number'
         ? rawUser.profileCompleteness
         : undefined,
+    tierLevel: typeof rawUser?.tierLevel === 'number' ? rawUser.tierLevel : undefined,
+    tierName:
+      typeof rawUser?.tierName === 'string' && rawUser.tierName.trim().length > 0
+        ? rawUser.tierName.trim()
+        : undefined,
+    fengShuiElement: rawUser?.fengShuiElement,
+    fengShuiElementName: normalizedFengShuiElementName,
     createdAt: rawUser?.createdAt ?? EMPTY_DATE,
     updatedAt: rawUser?.updatedAt,
     status: rawUser?.status,
@@ -565,7 +607,7 @@ export const authService = {
       phoneNumber: data.phoneNumber.trim(),
       fullName: data.fullName.trim(),
       address: data.address.trim(),
-      birthYear: data.birthYear,
+      birthDate: data.birthDate.trim(),
       gender: normalizeUpdateGender(data.gender),
       latitude: Number.isFinite(data.latitude) ? data.latitude : 0,
       longitude: Number.isFinite(data.longitude) ? data.longitude : 0,

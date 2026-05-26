@@ -11,6 +11,7 @@ export interface User {
   avatar?: string;
   avatarUrl?: string;
   address?: string | Address;
+  birthDate?: string;
   birthYear?: number;
   gender?: UserGender;
   genderCode?: number;
@@ -19,6 +20,10 @@ export interface User {
   receiveNotifications?: boolean;
   receiveNotification?: boolean;
   profileCompleteness?: number;
+  tierLevel?: number;
+  tierName?: string;
+  fengShuiElement?: number | string;
+  fengShuiElementName?: string | null;
   createdAt: string;
   updatedAt?: string;
   status?: string;
@@ -36,7 +41,7 @@ export interface UpdateProfileRequest {
   phoneNumber: string;
   fullName: string;
   address: string;
-  birthYear: number;
+  birthDate: string;
   gender: UserGender;
   latitude: number;
   longitude: number;
@@ -2231,7 +2236,6 @@ export interface RoomDesignAnalyzeRequest {
   fengShuiElement?: string | null;
   roomArea?: number;
   lightDirection?: string | null;
-  dominantDirection?: string | null;
   naturalLightLevel?: string | null;
   minBudget?: number;
   maxBudget?: number;
@@ -2248,10 +2252,20 @@ export interface RoomDesignAnalyzeRequest {
 export interface RoomDesignUploadedImage {
   roomImageId: number;
   imageUrl?: string | null;
+  orderIndex?: number | null;
   viewAngle?: string | null;
   moderationStatus?: string | null;
   moderationReason?: string | null;
   uploadedAt?: string | null;
+}
+
+export interface RoomDesignUploadResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: {
+    roomImages: RoomDesignUploadedImage[];
+  };
 }
 
 export interface RoomDesignAnalyzePayload {
@@ -2261,7 +2275,6 @@ export interface RoomDesignAnalyzePayload {
   roomStyle: string;
   roomArea?: number;
   lightDirection?: string | null;
-  dominantDirection?: string | null;
   naturalLightLevel?: string | null;
   minBudget?: number;
   maxBudget?: number;
@@ -2272,6 +2285,10 @@ export interface RoomDesignAnalyzePayload {
   petSafe?: boolean | null;
   childSafe?: boolean | null;
   preferredNurseryIds?: number[];
+}
+
+export interface RoomDesignAnalyzeOnlyUploadResult {
+  roomType?: string | null;
 }
 
 export interface RoomDesignRecommendationEntityRef {
@@ -2317,6 +2334,7 @@ export interface RoomDesignRecommendation {
 }
 
 export interface RoomDesignRoomAnalysis {
+  numberOfPlantsSuggest?: number | null;
   availableSpace?: string | null;
   colorPalette?: string[] | null;
   summary?: string | null;

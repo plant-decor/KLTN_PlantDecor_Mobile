@@ -14,6 +14,9 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import DateTimePicker, {
+  DateTimePickerAndroid,
+} from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -29,11 +32,17 @@ import {
   UserGenderCode,
 } from '../../types';
 import { useAuthStore, useEnumStore } from '../../stores';
+import {
+  formatDateToIsoKey,
+  formatVietnamDate,
+  isIsoDateKey,
+  parseIsoDateKeyToDate,
+} from '../../utils';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'EditProfile'>;
 
 const CURRENT_YEAR = new Date().getFullYear();
-const MIN_BIRTH_YEAR = 1900;
+const MIN_BIRTH_DATE_KEY = '1900-01-01';
 const ADDRESS_SUGGESTION_MIN_LENGTH = 3;
 const ADDRESS_SUGGESTION_LIMIT = 5;
 const ADDRESS_SUGGESTION_DEBOUNCE_MS = 350;
@@ -64,6 +73,30 @@ const normalizeCoordinate = (rawCoordinate: unknown): number | null => {
   }
 
   return null;
+};
+
+const normalizeBirthDate = (rawBirthDate: unknown, rawBirthYear?: unknown): string => {
+  if (typeof rawBirthDate === 'string') {
+    const trimmed = rawBirthDate.trim();
+    if (isIsoDateKey(trimmed)) {
+      return trimmed;
+    }
+
+    const candidate = trimmed.slice(0, 10);
+    if (isIsoDateKey(candidate)) {
+      return candidate;
+    }
+  }
+
+  if (typeof rawBirthYear === 'number' && Number.isInteger(rawBirthYear)) {
+    return `${String(rawBirthYear).padStart(4, '0')}-01-01`;
+  }
+
+  if (typeof rawBirthYear === 'string' && /^\d{4}$/.test(rawBirthYear.trim())) {
+    return `${rawBirthYear.trim()}-01-01`;
+  }
+
+  return '';
 };
 
 type ReverseGeocodeAddress = {
@@ -174,6 +207,35 @@ export default function EditProfileScreen() {
       );
   }, [enumGroups, getEnumValues, t]);
 
+    const fengShuiOptions = useMemo(() => {
+      const values = getEnumValues(['FengShuiElement', 'fengShuiElement']);
+
+      return values
+        .map((option) => {
+          const normalizedName = option.name.trim();
+          const normalizedValue = option.value?.toString().trim();
+
+          if (!normalizedName && !normalizedValue) {
+            return null;
+          }
+
+          return {
+            value: normalizedValue || normalizedName,
+            label: t(`catalog.fengShui${normalizedName}`, { defaultValue: normalizedName || normalizedValue || '' }),
+            rawName: normalizedName,
+          };
+        })
+        .filter(
+          (
+            option
+          ): option is {
+            value: string;
+            label: string;
+            rawName: string;
+          } => Boolean(option)
+        );
+    }, [getEnumValues, t]);
+
   const preferredGenderCode = useMemo(() => {
     const normalizedCode = normalizeGenderCode(user?.genderCode);
     if (normalizedCode !== null) {
@@ -212,8 +274,8 @@ export default function EditProfileScreen() {
     const normalizedLongitude = normalizeCoordinate(user?.longitude);
     return normalizedLongitude !== null ? String(normalizedLongitude) : '';
   });
-  const [birthYear, setBirthYear] = useState(
-    typeof user?.birthYear === 'number' ? String(user.birthYear) : ''
+  const [birthDate, setBirthDate] = useState(() =>
+    normalizeBirthDate(user?.birthDate, user?.birthYear)
   );
   const [gender, setGender] = useState<UserGenderCode>(() =>
     normalizeGenderCode(user?.genderCode) ?? 1
@@ -225,6 +287,12 @@ export default function EditProfileScreen() {
   const [isImageSourceModalVisible, setIsImageSourceModalVisible] = useState(false);
   const [isResolvingLocation, setIsResolvingLocation] = useState(false);
   const [isGeocodingAddress, setIsGeocodingAddress] = useState(false);
+  const [isBirthDatePickerVisible, setIsBirthDatePickerVisible] = useState(false);
+  const [birthDatePickerDraft, setBirthDatePickerDraft] = useState(() =>
+    parseIsoDateKeyToDate(
+      normalizeBirthDate(user?.birthDate, user?.birthYear) || formatDateToIsoKey(new Date())
+    )
+  );
   const [isAddressFocused, setIsAddressFocused] = useState(false);
   const [isLoadingAddressSuggestions, setIsLoadingAddressSuggestions] = useState(false);
   const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
@@ -602,8 +670,47 @@ export default function EditProfileScreen() {
       return selectedOption.rawName.trim();
     }
 
-    return String(gender);
+    return 'Unknown';
   }, [gender, genderOptions]);
+
+  const selectedFengShuiValue = useMemo(() => {
+    const rawElement = user?.fengShuiElementName ?? user?.fengShuiElement;
+
+    if (typeof rawElement === 'string') {
+      const trimmed = rawElement.trim();
+      if (!trimmed) {
+        return '';
+      }
+
+      const matchedByName = fengShuiOptions.find(
+        (option) => option.rawName.trim().toLowerCase() === trimmed.toLowerCase()
+      );
+      if (matchedByName) {
+        return matchedByName.label;
+      }
+
+      return trimmed;
+    }
+
+    if (typeof rawElement === 'number') {
+      const matchedByValue = fengShuiOptions.find(
+        (option) => option.value === String(rawElement)
+      );
+      return matchedByValue?.label ?? String(rawElement);
+    }
+
+    return '';
+  }, [fengShuiOptions, user?.fengShuiElement, user?.fengShuiElementName]);
+
+  const birthDateDisplayValue = useMemo(() => {
+    if (!birthDate) {
+      return '';
+    }
+
+    return formatVietnamDate(birthDate, i18n.language === 'vi' ? 'vi-VN' : 'en-US', {
+      empty: birthDate,
+    });
+  }, [birthDate, i18n.language]);
 
   const latitudeDisplayValue = useMemo(
     () => formatCoordinateValue(latitude),
@@ -700,6 +807,46 @@ export default function EditProfileScreen() {
     t,
   ]);
 
+  const openBirthDatePicker = useCallback(() => {
+    if (isLoading || isGeocodingAddress) {
+      return;
+    }
+
+    const currentBirthDate = isIsoDateKey(birthDate)
+      ? parseIsoDateKeyToDate(birthDate, new Date())
+      : new Date();
+
+    if (Platform.OS === 'android') {
+      DateTimePickerAndroid.open({
+        value: currentBirthDate,
+        mode: 'date',
+        minimumDate: new Date(1900, 0, 1),
+        maximumDate: new Date(),
+        onChange: (event, selectedDate) => {
+          if (event.type !== 'set' || !selectedDate) {
+            return;
+          }
+
+          setBirthDate(formatDateToIsoKey(selectedDate));
+          setBirthDatePickerDraft(selectedDate);
+        },
+      });
+      return;
+    }
+
+    setBirthDatePickerDraft(currentBirthDate);
+    setIsBirthDatePickerVisible(true);
+  }, [birthDate, isGeocodingAddress, isLoading]);
+
+  const handleBirthDatePickerClose = useCallback(() => {
+    setIsBirthDatePickerVisible(false);
+  }, []);
+
+  const handleBirthDatePickerConfirm = useCallback(() => {
+    setBirthDate(formatDateToIsoKey(birthDatePickerDraft));
+    setIsBirthDatePickerVisible(false);
+  }, [birthDatePickerDraft]);
+
   const handleUpdateProfile = async () => {
     if (isLoading || isGeocodingAddress) {
       return;
@@ -711,7 +858,7 @@ export default function EditProfileScreen() {
     let trimmedAddress = address.trim();
     let resolvedLatitude = normalizeCoordinate(latitude);
     let resolvedLongitude = normalizeCoordinate(longitude);
-    const parsedBirthYear = Number(birthYear);
+    const trimmedBirthDate = birthDate.trim();
 
     if (
       !trimmedAddress &&
@@ -735,7 +882,7 @@ export default function EditProfileScreen() {
       !trimmedPhoneNumber ||
       !trimmedFullName ||
       !trimmedAddress ||
-      !birthYear.trim()
+      !trimmedBirthDate
     ) {
       Alert.alert(
         t('common.error', { defaultValue: 'Error' }),
@@ -747,16 +894,16 @@ export default function EditProfileScreen() {
     }
 
     if (
-      !Number.isInteger(parsedBirthYear) ||
-      parsedBirthYear < MIN_BIRTH_YEAR ||
-      parsedBirthYear > CURRENT_YEAR
+      !isIsoDateKey(trimmedBirthDate) ||
+      trimmedBirthDate < MIN_BIRTH_DATE_KEY ||
+      trimmedBirthDate > formatDateToIsoKey(new Date())
     ) {
       Alert.alert(
         t('common.error', { defaultValue: 'Error' }),
         t('profile.editFormBirthYearInvalid', {
-          min: MIN_BIRTH_YEAR,
-          max: CURRENT_YEAR,
-          defaultValue: `Birth year must be between ${MIN_BIRTH_YEAR} and ${CURRENT_YEAR}.`,
+          min: MIN_BIRTH_DATE_KEY,
+          max: formatDateToIsoKey(new Date()),
+          defaultValue: `Birth date must be between ${MIN_BIRTH_DATE_KEY} and ${formatDateToIsoKey(new Date())}.`,
         })
       );
       return;
@@ -803,7 +950,7 @@ export default function EditProfileScreen() {
       phoneNumber: trimmedPhoneNumber,
       fullName: trimmedFullName,
       address: trimmedAddress,
-      birthYear: parsedBirthYear,
+      birthDate: trimmedBirthDate,
       gender: selectedGenderName,
       latitude: payloadLatitude,
       longitude: payloadLongitude,
@@ -959,6 +1106,31 @@ export default function EditProfileScreen() {
                 textAlignVertical="top"
                 editable={!isLoading && !isGeocodingAddress}
               />
+              <TouchableOpacity
+                style={[
+                  styles.locationButton,
+                  (isLoading || isResolvingLocation || isGeocodingAddress) &&
+                    styles.locationButtonDisabled,
+                ]}
+                onPress={() => void handleUseCurrentLocation()}
+                activeOpacity={0.8}
+                disabled={isLoading || isResolvingLocation || isGeocodingAddress}
+              >
+                {isResolvingLocation ? (
+                  <ActivityIndicator size="small" color={COLORS.primary} />
+                ) : (
+                  <Ionicons name="locate-outline" size={16} color={COLORS.primary} />
+                )}
+                <Text style={styles.locationButtonText}>
+                  {isResolvingLocation
+                    ? t('profile.editFormLocationLoading', {
+                        defaultValue: 'Getting current location...',
+                      })
+                    : t('profile.editFormUseCurrentLocation', {
+                        defaultValue: 'Use current location',
+                      })}
+                </Text>
+              </TouchableOpacity>
 
               {shouldShowAddressSuggestionPanel ? (
                 <View style={styles.addressSuggestionList}>
@@ -1003,76 +1175,31 @@ export default function EditProfileScreen() {
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>{t('profile.editFormBirthYear')}</Text>
-              <TextInput
-                style={styles.input}
-                value={birthYear}
-                onChangeText={setBirthYear}
-                placeholder={t('profile.editFormBirthYearPlaceholder')}
-                placeholderTextColor={COLORS.gray500}
-                keyboardType="number-pad"
-                maxLength={4}
-                editable={!isLoading}
-              />
+              <Text style={styles.inputLabel}>{t('profile.fengShuiElementLabel', { defaultValue: 'Feng Shui element' })}</Text>
+              <View style={[styles.input, styles.readOnlyField]}>
+                <Text style={[styles.readOnlyFieldText, !selectedFengShuiValue && styles.readOnlyFieldPlaceholder]}>
+                  {selectedFengShuiValue || t('common.notAvailable', { defaultValue: 'Not available' })}
+                </Text>
+              </View>
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>
-                {t('profile.editFormLocation', { defaultValue: 'Location' })}
-              </Text>
-              <View style={styles.coordinateRow}>
-                <View style={[styles.input, styles.coordinateInput, styles.coordinateDisplay]}>
-                  <Text
-                    style={[
-                      styles.coordinateValueText,
-                      !latitudeDisplayValue && styles.coordinatePlaceholderText,
-                    ]}
-                  >
-                    {latitudeDisplayValue ??
-                      t('profile.editFormLatitudePlaceholder', {
-                        defaultValue: 'Latitude',
-                      })}
-                  </Text>
-                </View>
-                <View style={[styles.input, styles.coordinateInput, styles.coordinateDisplay]}>
-                  <Text
-                    style={[
-                      styles.coordinateValueText,
-                      !longitudeDisplayValue && styles.coordinatePlaceholderText,
-                    ]}
-                  >
-                    {longitudeDisplayValue ??
-                      t('profile.editFormLongitudePlaceholder', {
-                        defaultValue: 'Longitude',
-                      })}
-                  </Text>
-                </View>
-              </View>
-
+              <Text style={styles.inputLabel}>{t('profile.editFormBirthYear')}</Text>
               <TouchableOpacity
-                style={[
-                  styles.locationButton,
-                  (isLoading || isResolvingLocation || isGeocodingAddress) &&
-                    styles.locationButtonDisabled,
-                ]}
-                onPress={() => void handleUseCurrentLocation()}
-                activeOpacity={0.8}
-                disabled={isLoading || isResolvingLocation || isGeocodingAddress}
+                style={[styles.input, styles.datePickerInput]}
+                onPress={() => void openBirthDatePicker()}
+                activeOpacity={0.85}
+                disabled={isLoading || isGeocodingAddress}
               >
-                {isResolvingLocation ? (
-                  <ActivityIndicator size="small" color={COLORS.primary} />
-                ) : (
-                  <Ionicons name="locate-outline" size={16} color={COLORS.primary} />
-                )}
-                <Text style={styles.locationButtonText}>
-                  {isResolvingLocation
-                    ? t('profile.editFormLocationLoading', {
-                        defaultValue: 'Getting current location...',
-                      })
-                    : t('profile.editFormUseCurrentLocation', {
-                        defaultValue: 'Use current location',
-                      })}
+                <Text
+                  style={[
+                    styles.datePickerText,
+                    !birthDateDisplayValue && styles.datePickerPlaceholderText,
+                  ]}
+                >
+                  {birthDateDisplayValue || t('profile.editFormBirthYearPlaceholder')}
                 </Text>
+                <Ionicons name="calendar-outline" size={18} color={COLORS.gray500} />
               </TouchableOpacity>
             </View>
 
@@ -1153,6 +1280,45 @@ export default function EditProfileScreen() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={isBirthDatePickerVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={handleBirthDatePickerClose}
+      >
+        <Pressable style={styles.modalOverlay} onPress={handleBirthDatePickerClose}>
+          <Pressable style={styles.datePickerModalContent} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.modalTitle}>{t('profile.editFormBirthYear')}</Text>
+            <DateTimePicker
+              value={birthDatePickerDraft}
+              mode="date"
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              minimumDate={new Date(1900, 0, 1)}
+              maximumDate={new Date()}
+              onChange={(_, selectedDate) => {
+                if (selectedDate) {
+                  setBirthDatePickerDraft(selectedDate);
+                }
+              }}
+            />
+            <View style={styles.datePickerModalActions}>
+              <TouchableOpacity
+                style={[styles.modalCancelButton, styles.datePickerModalActionButton]}
+                onPress={handleBirthDatePickerClose}
+              >
+                <Text style={styles.modalCancelText}>{t('common.cancel', { defaultValue: 'Cancel' })}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.saveButton, styles.datePickerModalActionButton]}
+                onPress={handleBirthDatePickerConfirm}
+              >
+                <Text style={styles.saveButtonText}>{t('common.confirm', { defaultValue: 'Confirm' })}</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <Modal
         visible={isImageSourceModalVisible}
@@ -1324,6 +1490,31 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     fontSize: FONTS.sizes.md,
     color: COLORS.textPrimary,
+  },
+  datePickerInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SPACING.sm,
+  },
+  datePickerText: {
+    flex: 1,
+    fontSize: FONTS.sizes.md,
+    color: COLORS.textPrimary,
+  },
+  datePickerPlaceholderText: {
+    color: COLORS.gray500,
+  },
+  readOnlyField: {
+    justifyContent: 'center',
+    backgroundColor: COLORS.gray100,
+  },
+  readOnlyFieldText: {
+    fontSize: FONTS.sizes.md,
+    color: COLORS.textPrimary,
+  },
+  readOnlyFieldPlaceholder: {
+    color: COLORS.textLight,
   },
   addressInput: {
     minHeight: 84,
@@ -1503,6 +1694,14 @@ const styles = StyleSheet.create({
     padding: SPACING.lg,
     paddingBottom: Platform.OS === 'ios' ? 40 : SPACING.xl,
   },
+  datePickerModalContent: {
+    backgroundColor: COLORS.white,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.lg,
+    paddingBottom: Platform.OS === 'ios' ? 40 : SPACING.xl,
+  },
   modalHandle: {
     width: 40,
     height: 4,
@@ -1551,5 +1750,13 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.md,
     color: COLORS.textPrimary,
     fontWeight: '700',
+  },
+  datePickerModalActions: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+    marginTop: SPACING.lg,
+  },
+  datePickerModalActionButton: {
+    flex: 1,
   },
 });
