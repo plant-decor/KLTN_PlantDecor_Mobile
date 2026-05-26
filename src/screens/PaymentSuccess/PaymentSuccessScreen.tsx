@@ -16,8 +16,15 @@ export default function PaymentSuccessScreen() {
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<ScreenRouteProp>();
   const orderId = route.params?.orderId;
+  const paymentContext = route.params?.paymentContext ?? 'order';
+  const subscriptionPackageName = route.params?.subscriptionPackageName;
 
-  const successMessage = orderId
+  const successMessage = paymentContext === 'subscription'
+    ? t('subscription.paymentSuccessMessage', {
+        packageName: subscriptionPackageName ?? t('subscription.title', { defaultValue: 'subscription' }),
+        defaultValue: `Payment completed successfully for ${subscriptionPackageName ?? 'your subscription package'}.`,
+      })
+    : orderId
     ? t('checkout.paymentSuccessMessage', {
         orderId,
         defaultValue: `Payment completed successfully for order #${orderId}.`,
@@ -41,10 +48,14 @@ export default function PaymentSuccessScreen() {
         <View style={styles.actionGroup}>
           <TouchableOpacity
             style={styles.primaryBtn}
-            onPress={() => navigation.replace('OrderHistory')}
+            onPress={() =>
+              navigation.replace(paymentContext === 'subscription' ? 'SubscriptionHub' : 'OrderHistory')
+            }
           >
             <Text style={styles.primaryBtnText}>
-              {t('orderHistory.title', { defaultValue: 'Order history' })}
+              {paymentContext === 'subscription'
+                ? t('subscription.backToPlans', { defaultValue: 'Back to plans' })
+                : t('orderHistory.title', { defaultValue: 'Order history' })}
             </Text>
           </TouchableOpacity>
 
@@ -53,7 +64,9 @@ export default function PaymentSuccessScreen() {
             onPress={() => navigation.replace('MainTabs')}
           >
             <Text style={styles.secondaryBtnText}>
-              {t('home.title', { defaultValue: 'Continue shopping' })}
+              {paymentContext === 'subscription'
+                ? t('subscription.continueBrowsing', { defaultValue: 'Continue browsing' })
+                : t('home.title', { defaultValue: 'Continue shopping' })}
             </Text>
           </TouchableOpacity>
         </View>

@@ -48,7 +48,7 @@ export default function PaymentWebViewScreen() {
   const { t } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<ScreenRouteProp>();
-  const { paymentUrl, orderId } = route.params;
+  const { paymentUrl, orderId, paymentContext, subscriptionPackageName } = route.params;
   const fetchCart = useCartStore((state) => state.fetchCart);
 
   const hasHandledResultRef = useRef(false);
@@ -93,7 +93,11 @@ export default function PaymentWebViewScreen() {
     await refreshCartOnce();
 
     if (result === 'success') {
-      navigation.replace('PaymentSuccess', { orderId });
+      navigation.replace('PaymentSuccess', {
+        orderId,
+        paymentContext,
+        subscriptionPackageName,
+      });
 
       return;
     }

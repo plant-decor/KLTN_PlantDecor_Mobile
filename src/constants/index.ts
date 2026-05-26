@@ -226,9 +226,17 @@ export const API = {
 
     // Payment
     PAYMENT_CREATE: "/Payment/create",
+    PAYMENT_CREATE_TIER_PACKAGE: "/Payment/create-tier-package",
     PAYMENT_CONTINUE: (invoiceId: number) => `/Payment/invoice/${invoiceId}/continue`,
     PAYMENT_CALLBACK: "/Payment/Checkout/PaymentCallbackVnpay",
     PAYMENT_IPN: "/Payment/Checkout/IpnVnpay",
+
+    // Subscription / AI quota
+    PUBLIC_TIER_PACKAGES: "/public/tier-packages",
+    PUBLIC_TIER_PACKAGE_DETAIL: (id: number) => `/public/tier-packages/${id}`,
+    PUBLIC_TIER_THRESHOLDS: "/public/tier-thresholds",
+    USER_AI_QUOTA: "/user/ai-quota",
+    USER_SUBSCRIPTIONS: "/User/subscriptions",
 
     // System Enums
     SYSTEM_ENUMS: "/system/enums",

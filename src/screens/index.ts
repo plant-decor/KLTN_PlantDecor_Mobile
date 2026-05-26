@@ -19,6 +19,7 @@ export { default as CatalogScreen } from './Catalog/CatalogScreen';
 export { default as CareServiceRegistrationScreen } from './CareServiceRegistration/CareServiceRegistrationScreen';
 export { default as ServiceHubScreen } from './ServiceHub/ServiceHubScreen';
 export { default as DesignServiceScreen } from './DesignService/DesignServiceScreen';
+export { default as SubscriptionHubScreen } from './SubscriptionHub/SubscriptionHubScreen';
 export { default as DesignRegistrationDetailScreen } from './DesignRegistrationDetail/DesignRegistrationDetailScreen';
 export { default as DesignTaskDetailScreen } from './DesignTaskDetail/DesignTaskDetailScreen';
 export { default as ServiceRegistrationDetailScreen } from './ServiceRegistrationDetail/ServiceRegistrationDetailScreen';

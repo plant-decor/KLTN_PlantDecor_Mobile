@@ -169,6 +169,11 @@ export default function ProfileScreen() {
       label: t('profile.aiAssistant', { defaultValue: 'AI Assistant' }),
       onPress: () => navigation.navigate('AIChat'),
     },
+    {
+      icon: 'cube-outline' as const,
+      label: t('profile.subscriptions', { defaultValue: 'AI subscriptions' }),
+      onPress: () => navigation.navigate('SubscriptionHub'),
+    },
   ];
 
   return (

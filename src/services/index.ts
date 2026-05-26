@@ -6,6 +6,7 @@ export { cartService } from './cartService';
 export { wishlistService } from './wishlistService';
 export { orderService } from './orderService';
 export { paymentService } from './paymentService';
+export { subscriptionService } from './subscriptionService';
 export { careService } from './careService';
 export { designService } from './designService';
 export { googleSignInService } from './googleSignInService';

@@ -1466,6 +1466,106 @@ export interface ContinuePaymentResponse {
   payload: CreatePaymentPayload;
 }
 
+// ==================== Subscription / AI quota ====================
+export interface TierPackage {
+  id: number;
+  name: string;
+  price: number;
+  quotaRequests: number;
+  durationMonths: number;
+  description: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface TierThreshold {
+  id: number;
+  name: string;
+  tierLevel: number;
+  minTotalSpent: number;
+  benefitDescription: string;
+  isActive: boolean;
+  monthlyFreeQuota: number;
+}
+
+export interface ActiveSubscriptionQuota {
+  subscriptionId: number;
+  packageName: string;
+  totalQuota: number;
+  usedQuota: number;
+  remainingQuota: number;
+  endDate: string;
+  isMonthlyFree: boolean;
+}
+
+export interface UserAIQuotaStatus {
+  tierLevel: number;
+  tierName: string;
+  tierMonthlyFreeQuota: number;
+  totalRemainingQuota: number;
+  activeSubscriptions: ActiveSubscriptionQuota[];
+}
+
+export interface SubscriptionRecord {
+  id: number;
+  packageName: string;
+  totalQuota: number;
+  usedQuota: number;
+  remainingQuota: number;
+  startDate: string;
+  endDate: string;
+  isActive: boolean;
+  isMonthlyFree: boolean;
+  paidAt: string | null;
+  createdAt: string;
+}
+
+export interface CreateTierPackagePaymentRequest {
+  tierPackageId: number;
+}
+
+export interface CreateTierPackagePaymentResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: CreatePaymentPayload;
+}
+
+export interface GetTierPackagesResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: TierPackage[];
+}
+
+export interface GetTierPackageResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: TierPackage;
+}
+
+export interface GetTierThresholdsResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: TierThreshold[];
+}
+
+export interface GetUserAIQuotaResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: UserAIQuotaStatus;
+}
+
+export interface GetUserSubscriptionsResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: SubscriptionRecord[];
+}
+
 // ==================== Return Tickets ====================
 export interface CreateReturnTicketItemRequest {
   nurseryOrderDetailId: number;
@@ -2641,6 +2741,7 @@ export type RootStackParamList = {
   Home: undefined;
   CareServiceRegistration: undefined;
   DesignService: undefined;
+  SubscriptionHub: undefined;
   ShipperHome: undefined;
   ShippingList: undefined;
   ShipperOrderDetail: {
@@ -2697,10 +2798,14 @@ export type RootStackParamList = {
   } | undefined;
   PaymentWebView: {
     paymentUrl: string;
-    orderId: number;
+    orderId?: number;
+    paymentContext?: 'order' | 'subscription';
+    subscriptionPackageName?: string;
   };
   PaymentSuccess: {
     orderId?: number;
+    paymentContext?: 'order' | 'subscription';
+    subscriptionPackageName?: string;
   };
   AIChat: {
     sessionId?: number;
