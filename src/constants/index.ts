@@ -236,6 +236,7 @@ export const API = {
     PUBLIC_TIER_PACKAGE_DETAIL: (id: number) => `/public/tier-packages/${id}`,
     PUBLIC_TIER_THRESHOLDS: "/public/tier-thresholds",
     USER_AI_QUOTA: "/user/ai-quota",
+    USER_TIER_PROGRESS: "/User/tier-progress",
     USER_SUBSCRIPTIONS: "/User/subscriptions",
 
     // System Enums

@@ -29,6 +29,7 @@ import {
   CareServiceRegistrationScreen,
   DesignServiceScreen,
   SubscriptionHubScreen,
+  SubscriptionHistoryScreen,
   ServiceRegistrationDetailScreen,
   DesignRegistrationDetailScreen,
   DesignTaskDetailScreen,
@@ -84,6 +85,7 @@ export default function RootNavigator() {
       <Stack.Screen name="CareServiceRegistration" component={CareServiceRegistrationScreen} />
       <Stack.Screen name="DesignService" component={DesignServiceScreen} />
       <Stack.Screen name="SubscriptionHub" component={SubscriptionHubScreen} />
+      <Stack.Screen name="SubscriptionHistory" component={SubscriptionHistoryScreen} />
       <Stack.Screen name="AIChat" component={AIChatScreen} />
       <Stack.Screen name="AIChatSessions" component={AIChatSessionsScreen} />
       <Stack.Screen name="SupportChat" component={SupportChatScreen} />

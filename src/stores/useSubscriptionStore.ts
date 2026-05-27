@@ -4,6 +4,7 @@ import {
   TierPackage,
   TierThreshold,
   UserAIQuotaStatus,
+  UserTierProgressStatus,
 } from '../types';
 import { subscriptionService } from '../services';
 
@@ -11,12 +12,14 @@ type SubscriptionState = {
   tierPackages: TierPackage[];
   tierThresholds: TierThreshold[];
   quotaStatus: UserAIQuotaStatus | null;
+  tierProgress: UserTierProgressStatus | null;
   subscriptionHistory: SubscriptionRecord[];
   isLoading: boolean;
   error: string | null;
   fetchTierPackages: () => Promise<TierPackage[]>;
   fetchTierThresholds: () => Promise<TierThreshold[]>;
   fetchQuotaStatus: () => Promise<UserAIQuotaStatus | null>;
+  fetchTierProgress: () => Promise<UserTierProgressStatus | null>;
   fetchSubscriptionHistory: () => Promise<SubscriptionRecord[]>;
   purchaseTierPackage: (tierPackageId: number) => Promise<{ paymentId: number; paymentUrl: string }>;
   clear: () => void;
@@ -26,6 +29,7 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
   tierPackages: [],
   tierThresholds: [],
   quotaStatus: null,
+  tierProgress: null,
   subscriptionHistory: [],
   isLoading: false,
   error: null,
@@ -66,6 +70,18 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
     }
   },
 
+  fetchTierProgress: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      const tierProgress = await subscriptionService.getUserTierProgress();
+      set({ tierProgress, isLoading: false });
+      return tierProgress;
+    } catch (error) {
+      set({ isLoading: false, error: 'Unable to load tier progress.' });
+      throw error;
+    }
+  },
+
   fetchSubscriptionHistory: async () => {
     set({ isLoading: true, error: null });
     try {
@@ -88,6 +104,7 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
       tierPackages: [],
       tierThresholds: [],
       quotaStatus: null,
+      tierProgress: null,
       subscriptionHistory: [],
       isLoading: false,
       error: null,

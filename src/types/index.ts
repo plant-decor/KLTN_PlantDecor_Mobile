@@ -1506,6 +1506,23 @@ export interface UserAIQuotaStatus {
   activeSubscriptions: ActiveSubscriptionQuota[];
 }
 
+export interface UserTierProgressStatus {
+  currentTierLevel: number;
+  currentTierName: string;
+  currentTierBenefitDescription: string;
+  currentTierMonthlyFreeQuota: number;
+  currentTierMinSpent: number;
+  totalSpent: number;
+  nextTierLevel: number | null;
+  nextTierName: string | null;
+  nextTierBenefitDescription: string | null;
+  nextTierMonthlyFreeQuota: number | null;
+  nextTierMinSpent: number | null;
+  amountToNextTier: number | null;
+  progressPercent: number;
+  isMaxTier: boolean;
+}
+
 export interface SubscriptionRecord {
   id: number;
   packageName: string;
@@ -1557,6 +1574,13 @@ export interface GetUserAIQuotaResponse {
   statusCode: number;
   message: string;
   payload: UserAIQuotaStatus;
+}
+
+export interface GetUserTierProgressResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: UserTierProgressStatus;
 }
 
 export interface GetUserSubscriptionsResponse {
@@ -2742,6 +2766,7 @@ export type RootStackParamList = {
   CareServiceRegistration: undefined;
   DesignService: undefined;
   SubscriptionHub: undefined;
+  SubscriptionHistory: undefined;
   ShipperHome: undefined;
   ShippingList: undefined;
   ShipperOrderDetail: {

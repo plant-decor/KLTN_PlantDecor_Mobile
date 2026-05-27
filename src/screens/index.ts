@@ -20,6 +20,7 @@ export { default as CareServiceRegistrationScreen } from './CareServiceRegistrat
 export { default as ServiceHubScreen } from './ServiceHub/ServiceHubScreen';
 export { default as DesignServiceScreen } from './DesignService/DesignServiceScreen';
 export { default as SubscriptionHubScreen } from './SubscriptionHub/SubscriptionHubScreen';
+export { default as SubscriptionHistoryScreen } from './SubscriptionHub/SubscriptionHistoryScreen';
 export { default as DesignRegistrationDetailScreen } from './DesignRegistrationDetail/DesignRegistrationDetailScreen';
 export { default as DesignTaskDetailScreen } from './DesignTaskDetail/DesignTaskDetailScreen';
 export { default as ServiceRegistrationDetailScreen } from './ServiceRegistrationDetail/ServiceRegistrationDetailScreen';

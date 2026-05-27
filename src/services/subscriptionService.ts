@@ -6,10 +6,12 @@ import {
   GetTierPackagesResponse,
   GetTierThresholdsResponse,
   GetUserAIQuotaResponse,
+  GetUserTierProgressResponse,
   GetUserSubscriptionsResponse,
   TierPackage,
   TierThreshold,
   UserAIQuotaStatus,
+  UserTierProgressStatus,
   SubscriptionRecord,
 } from '../types';
 import api from './api';
@@ -49,6 +51,11 @@ export const subscriptionService = {
 
   getUserAIQuota: async (): Promise<UserAIQuotaStatus> => {
     const response = await api.get<GetUserAIQuotaResponse>(API.ENDPOINTS.USER_AI_QUOTA);
+    return getPayload(response.data);
+  },
+
+  getUserTierProgress: async (): Promise<UserTierProgressStatus> => {
+    const response = await api.get<GetUserTierProgressResponse>(API.ENDPOINTS.USER_TIER_PROGRESS);
     return getPayload(response.data);
   },
 
