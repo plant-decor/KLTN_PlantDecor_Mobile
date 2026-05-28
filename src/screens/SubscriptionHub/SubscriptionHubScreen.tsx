@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -30,6 +31,7 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 export default function SubscriptionHubScreen() {
   const { t } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
+  const [thresholdsModalVisible, setThresholdsModalVisible] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -104,6 +106,14 @@ export default function SubscriptionHubScreen() {
     setRefreshing(true);
     void loadAll();
   }, [loadAll]);
+
+  const handleShowThresholds = useCallback(() => {
+    setThresholdsModalVisible(true);
+  }, []);
+
+  const handleCloseThresholds = useCallback(() => {
+    setThresholdsModalVisible(false);
+  }, []);
 
   const handlePurchase = useCallback(
     async (tierPackage: TierPackage) => {
@@ -332,6 +342,18 @@ export default function SubscriptionHubScreen() {
                 </>
               )}
             </View>
+
+            <TouchableOpacity
+              style={styles.thresholdLinkButton}
+              onPress={handleShowThresholds}
+            >
+              <Text style={styles.thresholdLinkButtonText}>
+                {t('subscription.viewThresholds', {
+                  defaultValue: 'Show tier thresholds',
+                })}
+              </Text>
+              <Ionicons name="chevron-down" size={16} color={COLORS.primary} />
+            </TouchableOpacity>
           </View>
         ) : null}
 
@@ -390,40 +412,79 @@ export default function SubscriptionHubScreen() {
           </View>
         ))}
 
-        <Text style={styles.sectionTitle}>
-          {t('subscription.tierThresholds', { defaultValue: 'Tier thresholds' })}
-        </Text>
-        <View style={styles.thresholdGrid}>
-          {tierThresholds.map((threshold) => (
-            <View
-              key={threshold.id}
-              style={[
-                styles.thresholdCard,
-                { borderColor: getThresholdShade(threshold.tierLevel) },
-              ]}
-            >
-              <View style={styles.thresholdTopRow}>
-                <View
-                  style={[
-                    styles.thresholdDot,
-                    { backgroundColor: getThresholdShade(threshold.tierLevel) },
-                  ]}
-                />
-                <Text style={styles.thresholdName}>{threshold.name}</Text>
-              </View>
-              <Text style={styles.mutedText}>{threshold.benefitDescription}</Text>
-              <Text style={styles.thresholdValue}>
-                {t('subscription.minSpent', {
-                  defaultValue: 'Min {{value}} VND',
-                  value: threshold.minTotalSpent.toLocaleString('vi-VN'),
-                })}
-              </Text>
-            </View>
-          ))}
-        </View>
-
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
       </ScrollView>
+
+      <Modal
+        visible={thresholdsModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCloseThresholds}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalTitleWrap}>
+                <Text style={styles.modalEyebrow}>
+                  {t('subscription.tierThresholds', { defaultValue: 'Tier thresholds' })}
+                </Text>
+                <Text style={styles.modalTitle}>
+                  {t('subscription.thresholdsTitle', {
+                    defaultValue: 'What unlocks each tier',
+                  })}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.modalCloseButton}
+                onPress={handleCloseThresholds}
+              >
+                <Ionicons name="close" size={20} color={COLORS.textPrimary} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalSubtitle}>
+              {t('subscription.thresholdsSubtitle', {
+                defaultValue: 'Review the spending requirement and the benefit for each tier.',
+              })}
+            </Text>
+
+            <ScrollView
+              style={styles.modalScroll}
+              contentContainerStyle={styles.modalScrollContent}
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.thresholdGrid}>
+                {tierThresholds.map((threshold) => (
+                  <View
+                    key={threshold.id}
+                    style={[
+                      styles.thresholdCard,
+                      { borderColor: getThresholdShade(threshold.tierLevel) },
+                    ]}
+                  >
+                    <View style={styles.thresholdTopRow}>
+                      <View
+                        style={[
+                          styles.thresholdDot,
+                          { backgroundColor: getThresholdShade(threshold.tierLevel) },
+                        ]}
+                      />
+                      <Text style={styles.thresholdName}>{threshold.name}</Text>
+                    </View>
+                    <Text style={styles.mutedText}>{threshold.benefitDescription}</Text>
+                    <Text style={styles.thresholdValue}>
+                      {t('subscription.minSpent', {
+                        defaultValue: 'Min {{value}} VND',
+                        value: threshold.minTotalSpent.toLocaleString('vi-VN'),
+                      })}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -624,6 +685,78 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.lg,
     padding: SPACING.md,
     gap: SPACING.xs,
+  },
+  thresholdLinkButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    alignSelf: 'flex-start',
+    backgroundColor: '#E8F3EC',
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+  },
+  thresholdLinkButtonText: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '700',
+    color: COLORS.primary,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    backgroundColor: COLORS.white,
+    borderTopLeftRadius: RADIUS['2xl'],
+    borderTopRightRadius: RADIUS['2xl'],
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.lg,
+    paddingBottom: SPACING['2xl'],
+    maxHeight: '86%',
+    ...SHADOWS.lg,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: SPACING.md,
+  },
+  modalTitleWrap: {
+    flex: 1,
+    gap: SPACING.xs,
+  },
+  modalEyebrow: {
+    fontSize: FONTS.sizes.xs,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    color: COLORS.primary,
+  },
+  modalTitle: {
+    fontSize: FONTS.sizes['2xl'],
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+  },
+  modalSubtitle: {
+    marginTop: SPACING.sm,
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.gray700,
+  },
+  modalCloseButton: {
+    width: 36,
+    height: 36,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.gray50,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalScroll: {
+    marginTop: SPACING.lg,
+  },
+  modalScrollContent: {
+    paddingBottom: SPACING.md,
   },
   progressNextTierLabel: {
     fontSize: FONTS.sizes.xs,

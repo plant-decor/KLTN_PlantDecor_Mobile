@@ -76,7 +76,7 @@ export const COLORS = {
 
   // Text
   textPrimary: "#212529",
-  textSecondary: "#868E96",
+  textSecondary: "#3d3d3d",
   textLight: "#ADB5BD",
   textOnPrimary: "#FFFFFF",
 
