@@ -23,10 +23,14 @@ import { OrderPayload, ReturnTicket, RootStackParamList } from '../../types';
 import {
   canContinueOrderPayment,
   formatVietnamDateTime,
+  getOrderDisplayLineItems,
   getOrderStatusColors,
   getOrderStatusLabel,
+  humanizeOrderType,
   isOrderCancellableStatus,
+  normalizeOrderTypeToken,
   notify,
+  resolveOrderTypeName,
   toVietnamTimestamp,
 } from '../../utils';
 
@@ -108,6 +112,26 @@ export default function OrderHistoryScreen() {
     }, {});
   }, [enumGroups, getEnumValues]);
 
+  const enumOrderTypeLabelMap = useMemo(() => {
+    const enumValues = getEnumValues(['OrderType', 'orderType']);
+
+    return enumValues.reduce<Record<string, string>>((accumulator, item) => {
+      const name = typeof item.name === 'string' ? item.name.trim() : '';
+      if (!name) {
+        return accumulator;
+      }
+
+      if (typeof item.value === 'number') {
+        accumulator[String(item.value)] = name;
+      } else if (typeof item.value === 'string' && item.value.trim().length > 0) {
+        accumulator[item.value.trim()] = name;
+      }
+
+      accumulator[name] = name;
+      return accumulator;
+    }, {});
+  }, [enumGroups, getEnumValues]);
+
   useEffect(() => {
     if (activeFilter === 'all') {
       return;
@@ -139,6 +163,21 @@ export default function OrderHistoryScreen() {
       });
     },
     [t]
+  );
+
+  const getOrderTypeLabel = useCallback(
+    (order: OrderPayload) => {
+      const apiName = resolveOrderTypeName(
+        order,
+        enumOrderTypeLabelMap[String(order.orderType)] ?? undefined
+      );
+      const token = normalizeOrderTypeToken(apiName);
+
+      return t(`orderHistory.orderType.${token}`, {
+        defaultValue: humanizeOrderType(apiName),
+      });
+    },
+    [enumOrderTypeLabelMap, t]
   );
 
   const formatCurrency = useCallback(
@@ -368,6 +407,11 @@ export default function OrderHistoryScreen() {
 
   const renderOrderItem = ({ item }: { item: OrderPayload }) => {
     const statusColors = getOrderStatusColors(item.statusName);
+    const displayItems = getOrderDisplayLineItems(item);
+    const totalQuantity = displayItems.reduce(
+      (total, orderItem) => total + orderItem.quantity,
+      0
+    );
     const existingReturnTicket = returnTicketByOrderId[item.id];
     const canRequestReturn =
       isPendingConfirmationStatus(item.statusName) && !existingReturnTicket;
@@ -408,6 +452,11 @@ export default function OrderHistoryScreen() {
           {t('orderHistory.createdAt', { defaultValue: 'Created' })}: {formatDateTime(item.createdAt)}
         </Text>
 
+        <View style={styles.orderTypeRow}>
+          <Ionicons name="pricetag-outline" size={15} color={COLORS.primary} />
+          <Text style={styles.orderTypeText}>{getOrderTypeLabel(item)}</Text>
+        </View>
+
         <View style={styles.orderMetaRow}>
           <View style={styles.metaBlock}>
             <Text style={styles.metaLabel}>{t('orderHistory.total', { defaultValue: 'Total' })}</Text>
@@ -415,7 +464,7 @@ export default function OrderHistoryScreen() {
           </View>
           <View style={styles.metaBlock}>
             <Text style={styles.metaLabel}>{t('orderHistory.items', { defaultValue: 'Items' })}</Text>
-            <Text style={styles.metaValue}>{item.items.length}</Text>
+            <Text style={styles.metaValue}>{totalQuantity}</Text>
           </View>
           <View style={styles.metaBlock}>
             <Text style={styles.metaLabel}>{t('orderHistory.invoice', { defaultValue: 'Invoice' })}</Text>
@@ -425,21 +474,21 @@ export default function OrderHistoryScreen() {
 
         <View style={styles.divider} />
 
-        {item.items.slice(0, 2).map((orderItem) => (
+        {displayItems.slice(0, 2).map((orderItem) => (
           <View key={orderItem.id} style={styles.lineItemRow}>
             <Text style={styles.lineItemName} numberOfLines={1}>
               {orderItem.itemName}
             </Text>
             <Text style={styles.lineItemQty}>x{orderItem.quantity}</Text>
-            <Text style={styles.lineItemPrice}>{formatCurrency(orderItem.price)}</Text>
+            <Text style={styles.lineItemPrice}>{formatCurrency(orderItem.amount)}</Text>
           </View>
         ))}
 
-        {item.items.length > 2 ? (
+        {displayItems.length > 2 ? (
           <Text style={styles.moreItemsText}>
             {t('orderHistory.moreItems', {
               defaultValue: '+{{count}} more items',
-              count: item.items.length - 2,
+              count: displayItems.length - 2,
             })}
           </Text>
         ) : null}
@@ -545,7 +594,7 @@ export default function OrderHistoryScreen() {
           <View style={styles.addressRow}>
             <Ionicons name="location-outline" size={15} color={COLORS.gray600} />
             <Text style={styles.addressText} numberOfLines={1}>
-              {item.address}
+              {item.address || item.customerEmail || '-'}
             </Text>
           </View>
 
@@ -750,7 +799,18 @@ const styles = StyleSheet.create({
   orderDate: {
     fontSize: FONTS.sizes.sm,
     color: COLORS.textSecondary,
+    marginBottom: SPACING.xs,
+  },
+  orderTypeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
     marginBottom: SPACING.md,
+  },
+  orderTypeText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.primary,
+    fontWeight: '700',
   },
   orderMetaRow: {
     flexDirection: 'row',

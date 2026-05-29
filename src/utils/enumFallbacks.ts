@@ -77,6 +77,8 @@ const FALLBACK_GROUPS: Record<string, SystemEnumValue[]> = {
     { value: 2, name: 'PlantInstance' },
     { value: 3, name: 'OtherProductBuyNow' },
     { value: 4, name: 'Service' },
+    { value: 5, name: 'Design' },
+    { value: 6, name: 'TierPackage' },
   ],
   BuyNowItemType: [
     { value: 1, name: 'CommonPlant' },

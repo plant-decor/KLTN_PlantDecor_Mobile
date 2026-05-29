@@ -31,11 +31,16 @@ import {
 import {
   canContinueOrderPayment,
   formatVietnamDateTime,
+  getOrderDisplayLineItems,
   getOrderStatusColors,
   getOrderStatusLabel,
+  humanizeOrderType,
   isOrderCancellableStatus,
+  normalizeOrderTypeToken,
   notify,
   resolveImageUri,
+  resolveOrderTypeName,
+  shouldDisplayOrderItemImages,
 } from '../../utils';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'OrderDetail'>;
@@ -58,6 +63,9 @@ const resolveOrderItemImage = (lineItem: OrderPayload['items'][number]): string 
 
   return null;
 };
+
+const resolveDisplayItemImage = (lineItem: { imageUrl?: string | null }): string | null =>
+  resolveImageUri(lineItem.imageUrl);
 
 const normalizeStatusToken = (status: string): string =>
   status.replace(/[^a-z0-9]/gi, '').toLowerCase();
@@ -157,6 +165,26 @@ export default function OrderDetailScreen() {
     }, {});
   }, [enumGroups, getEnumValues]);
 
+  const enumOrderTypeLabelMap = useMemo(() => {
+    const enumValues = getEnumValues(['OrderType', 'orderType']);
+
+    return enumValues.reduce<Record<string, string>>((accumulator, item) => {
+      const name = typeof item.name === 'string' ? item.name.trim() : '';
+      if (!name) {
+        return accumulator;
+      }
+
+      if (typeof item.value === 'number') {
+        accumulator[String(item.value)] = name;
+      } else if (typeof item.value === 'string' && item.value.trim().length > 0) {
+        accumulator[item.value.trim()] = name;
+      }
+
+      accumulator[name] = name;
+      return accumulator;
+    }, {});
+  }, [enumGroups, getEnumValues]);
+
   const getStatusLabel = useCallback(
     (status: string) => getOrderStatusLabel(status, t, enumStatusLabelMap[status]),
     [enumStatusLabelMap, t]
@@ -168,6 +196,21 @@ export default function OrderDetailScreen() {
         defaultValue: status,
       }),
     [t]
+  );
+
+  const getOrderTypeLabel = useCallback(
+    (selectedOrder: OrderPayload) => {
+      const apiName = resolveOrderTypeName(
+        selectedOrder,
+        enumOrderTypeLabelMap[String(selectedOrder.orderType)] ?? undefined
+      );
+      const token = normalizeOrderTypeToken(apiName);
+
+      return t(`orderHistory.orderType.${token}`, {
+        defaultValue: humanizeOrderType(apiName),
+      });
+    },
+    [enumOrderTypeLabelMap, t]
   );
 
   const formatCurrency = useCallback(
@@ -818,6 +861,19 @@ export default function OrderDetailScreen() {
   }
 
   const statusColors = getOrderStatusColors(order.statusName);
+  const displayLineItems = getOrderDisplayLineItems(order);
+  const orderTypeLabel = getOrderTypeLabel(order);
+  const canDisplayItemImages = shouldDisplayOrderItemImages(
+    order,
+    enumOrderTypeLabelMap[String(order.orderType)] ?? undefined
+  );
+  const receiverName =
+    order.customerName ||
+    t('orderDetail.notAvailable', { defaultValue: 'Not available' });
+  const receiverPhone =
+    order.phone || t('orderDetail.notAvailable', { defaultValue: 'Not available' });
+  const receiverAddress =
+    order.address || t('orderDetail.notAvailable', { defaultValue: 'Not available' });
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -861,9 +917,29 @@ export default function OrderDetailScreen() {
           <Text style={styles.infoText}>
             {t('orderDetail.updatedAt', { defaultValue: 'Updated at' })}: {formatDateTime(order.updatedAt)}
           </Text>
+          <Text style={styles.infoText}>
+            {t('orderDetail.orderType', { defaultValue: 'Order type' })}: {orderTypeLabel}
+          </Text>
+          {order.paymentStrategyName ? (
+            <Text style={styles.infoText}>
+              {t('orderDetail.paymentStrategy', { defaultValue: 'Payment method' })}:{' '}
+              {order.paymentStrategyName}
+            </Text>
+          ) : null}
           <Text style={styles.totalText}>
             {t('orderDetail.total', { defaultValue: 'Total' })}: {formatCurrency(order.totalAmount)}
           </Text>
+          {order.depositAmount !== null ? (
+            <Text style={styles.infoText}>
+              {t('orderDetail.deposit', { defaultValue: 'Deposit' })}: {formatCurrency(order.depositAmount)}
+            </Text>
+          ) : null}
+          {order.remainingAmount !== null ? (
+            <Text style={styles.infoText}>
+              {t('orderDetail.remaining', { defaultValue: 'Remaining' })}:{' '}
+              {formatCurrency(order.remainingAmount)}
+            </Text>
+          ) : null}
 
           {canCancelOrder ? (
             <View style={styles.orderActionRow}>
@@ -891,9 +967,10 @@ export default function OrderDetailScreen() {
           <Text style={styles.sectionTitle}>
             {t('orderDetail.receiver', { defaultValue: 'Receiver information' })}
           </Text>
-          <Text style={styles.infoText}>{order.customerName}</Text>
-          <Text style={styles.infoText}>{order.phone}</Text>
-          <Text style={styles.infoText}>{order.address}</Text>
+          <Text style={styles.infoText}>Name: {receiverName}</Text>
+          <Text style={styles.infoText}>Phone: {receiverPhone}</Text>
+          {order.customerEmail ? <Text style={styles.infoText}>Email: {order.customerEmail}</Text> : null}
+          <Text style={styles.infoText}>Address: {receiverAddress}</Text>
           {order.note ? (
             <Text style={styles.noteText}>
               {t('orderDetail.note', { defaultValue: 'Note' })}: {order.note}
@@ -905,18 +982,20 @@ export default function OrderDetailScreen() {
           <Text style={styles.sectionTitle}>
             {t('orderDetail.items', { defaultValue: 'Items' })}
           </Text>
-          {order.items.map((item) => {
-            const imageUri = resolveOrderItemImage(item);
+          {displayLineItems.map((item) => {
+            const imageUri = resolveDisplayItemImage(item);
 
             return (
               <View key={item.id} style={styles.lineItemRow}>
-                {imageUri ? (
-                  <Image source={{ uri: imageUri }} style={styles.lineItemImage} resizeMode="cover" />
-                ) : (
-                  <View style={styles.lineItemImagePlaceholder}>
-                    <Ionicons name="image-outline" size={16} color={COLORS.gray500} />
-                  </View>
-                )}
+                {canDisplayItemImages ? (
+                  imageUri ? (
+                    <Image source={{ uri: imageUri }} style={styles.lineItemImage} resizeMode="cover" />
+                  ) : (
+                    <View style={styles.lineItemImagePlaceholder}>
+                      <Ionicons name="image-outline" size={16} color={COLORS.gray500} />
+                    </View>
+                  )
+                ) : null}
 
                 <View style={styles.lineItemBody}>
                   <Text style={styles.lineItemName} numberOfLines={2}>
@@ -933,7 +1012,7 @@ export default function OrderDetailScreen() {
                       </Text>
                     </View>
 
-                    <Text style={styles.lineItemPrice}>{formatCurrency(item.price)}</Text>
+                    <Text style={styles.lineItemPrice}>{formatCurrency(item.amount)}</Text>
                   </View>
                 </View>
               </View>
@@ -1441,7 +1520,7 @@ const styles = StyleSheet.create({
   },
   infoText: {
     fontSize: FONTS.sizes.md,
-    color: COLORS.gray700,
+    color: COLORS.textSecondary,
     marginBottom: 4,
   },
   totalText: {

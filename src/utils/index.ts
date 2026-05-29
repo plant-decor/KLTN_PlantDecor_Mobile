@@ -76,6 +76,13 @@ export {
   isOrderCancellableStatus,
 } from './orderStatus';
 export {
+  getOrderDisplayLineItems,
+  humanizeOrderType,
+  normalizeOrderTypeToken,
+  resolveOrderTypeName,
+  shouldDisplayOrderItemImages,
+} from './orderDisplay';
+export {
   isServiceRegistrationAwaitPaymentStatus,
   isServiceRegistrationCancellableStatus,
   isServiceRegistrationPendingApprovalStatus,

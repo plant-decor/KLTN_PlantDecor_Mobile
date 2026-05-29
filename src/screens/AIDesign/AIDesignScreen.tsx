@@ -292,6 +292,12 @@ const formatEnumNameDefault = (name: string): string =>
     .replace(/^\s+/, "")
     .trim();
 
+const normalizeRoomTypeToken = (value: string | null | undefined): string =>
+  (value ?? "").replace(/[^a-z0-9]/gi, "").toLowerCase();
+
+const isNotRelatedRoomType = (value: string | null | undefined): boolean =>
+  normalizeRoomTypeToken(value) === "notrelated";
+
 type StringChipOption = { value: string; label: string };
 
 type WizardStep = {
@@ -964,6 +970,11 @@ export default function AIDesignScreen() {
     [roomPhotos],
   );
 
+  const isDetectedRoomTypeNotRelated = useMemo(
+    () => isNotRelatedRoomType(detectedRoomType),
+    [detectedRoomType],
+  );
+
   const nextEmptyRoomPhotoSlot = useMemo(
     () => roomPhotos.find((it) => !it.localImage && !it.roomImageId) ?? null,
     [roomPhotos],
@@ -1017,32 +1028,6 @@ export default function AIDesignScreen() {
     },
     [analysisResult, currentStep],
   );
-
-  const handleNextStep = useCallback(() => {
-    if (currentStep === 1) {
-      if (selectedRoomPhotoCount === 0) {
-        Alert.alert(
-          t("aiDesign.missingImageTitle", { defaultValue: "Missing image" }),
-          t("aiDesign.missingImageMessage", {
-            defaultValue: "Please upload at least one room photo.",
-          }),
-        );
-        return;
-      }
-
-      setCurrentStep(2);
-      return;
-    }
-
-    if (currentStep === 2) {
-      setCurrentStep(3);
-      return;
-    }
-
-    if (currentStep === 3) {
-      setCurrentStep(4);
-    }
-  }, [currentStep, selectedRoomPhotoCount, t]);
 
   const getStaticOptionLabel = useCallback(
     <Value extends string>(option: StaticOption<Value>) =>
@@ -1396,28 +1381,86 @@ export default function AIDesignScreen() {
       if (localImages.length === 0) {
         setDetectedRoomType(null);
         setIsDetectingRoomType(false);
-        return;
+        return null;
       }
 
       setIsDetectingRoomType(true);
       try {
         const res = await roomDesignService.analyzeRoomOnlyUpload(localImages);
-        const rt = res?.roomType ?? null;
+        const rt = res?.roomType?.trim() || null;
         setDetectedRoomType(rt);
         // only set the form value if the user hasn't manually overridden
-        if (rt && !userOverrodeRoomType) {
+        if (rt && !isNotRelatedRoomType(rt) && !userOverrodeRoomType) {
           setRoomType(rt);
         }
         // A new detection should clear any previous override so users can accept suggestion
         setUserOverrodeRoomType(false);
+        return rt;
       } catch (e) {
         // ignore errors for detection
+        return null;
       } finally {
         setIsDetectingRoomType(false);
       }
     },
     [selectedRoomPhotos, userOverrodeRoomType],
   );
+
+  const handleNextStep = useCallback(async () => {
+    if (currentStep === 1) {
+      if (selectedRoomPhotoCount === 0) {
+        Alert.alert(
+          t("aiDesign.missingImageTitle", { defaultValue: "Missing image" }),
+          t("aiDesign.missingImageMessage", {
+            defaultValue: "Please upload at least one room photo.",
+          }),
+        );
+        return;
+      }
+
+      const localImages = selectedRoomPhotos
+        .map((slot) => slot.localImage)
+        .filter((image): image is RoomDesignImageFile => Boolean(image));
+      let analyzedRoomType = detectedRoomType;
+
+      if (localImages.length > 0 && (!analyzedRoomType || isDetectingRoomType)) {
+        analyzedRoomType = await performDetectRoomType(localImages);
+      }
+
+      if (isNotRelatedRoomType(analyzedRoomType)) {
+        Alert.alert(
+          t("aiDesign.notRelatedRoomTitle", {
+            defaultValue: "Photo is not a room",
+          }),
+          t("aiDesign.notRelatedRoomMessage", {
+            defaultValue:
+              "Please upload a room or indoor space photo before continuing.",
+          }),
+        );
+        return;
+      }
+
+      setCurrentStep(2);
+      return;
+    }
+
+    if (currentStep === 2) {
+      setCurrentStep(3);
+      return;
+    }
+
+    if (currentStep === 3) {
+      setCurrentStep(4);
+    }
+  }, [
+    currentStep,
+    detectedRoomType,
+    isDetectingRoomType,
+    performDetectRoomType,
+    selectedRoomPhotoCount,
+    selectedRoomPhotos,
+    t,
+  ]);
 
   useEffect(() => {
     // auto-detect when local images change and user hasn't overridden
@@ -1968,6 +2011,8 @@ export default function AIDesignScreen() {
         })}
         brandVariant="none"
         containerStyle={styles.header}
+        sideWidth={52}
+        titleStyle={styles.headerTitle}
         right={
           <TouchableOpacity
             onPress={() => navigation.navigate("MyDesign")}
@@ -1977,11 +2022,7 @@ export default function AIDesignScreen() {
               defaultValue: "My Design",
             })}
           >
-            <Text style={styles.headerActionText}>
-              {t("profile.myDesign", {
-                defaultValue: "My Designs",
-              }).toUpperCase()}
-            </Text>
+            <Ionicons name="images-outline" size={19} color={COLORS.primaryDark} />
           </TouchableOpacity>
         }
       />
@@ -2188,20 +2229,50 @@ export default function AIDesignScreen() {
                 </View>
 
                 {detectedRoomType ? (
-                  <View style={styles.detectedContainer}>
+                  <View
+                    style={[
+                      styles.detectedContainer,
+                      isDetectedRoomTypeNotRelated &&
+                        styles.detectedContainerError,
+                    ]}
+                  >
                     <View style={styles.detectedLeft}>
                       <Ionicons
-                        name="sparkles"
+                        name={
+                          isDetectedRoomTypeNotRelated
+                            ? "alert-circle"
+                            : "sparkles"
+                        }
                         size={16}
-                        color={COLORS.primary}
+                        color={
+                          isDetectedRoomTypeNotRelated
+                            ? COLORS.error
+                            : COLORS.primary
+                        }
                       />
                       <Text style={styles.detectedLabelText}>
-                        {t("aiDesign.aiDetected", {
-                          defaultValue: "AI detected:",
-                        })}
+                        {isDetectedRoomTypeNotRelated
+                          ? t("aiDesign.notRelatedRoomDetected", {
+                              defaultValue: "This photo is not a room:",
+                            })
+                          : t("aiDesign.aiDetected", {
+                              defaultValue: "AI detected:",
+                            })}
                       </Text>
-                      <View style={styles.detectedBadge}>
-                        <Text style={styles.detectedBadgeText}>
+                      <View
+                        style={[
+                          styles.detectedBadge,
+                          isDetectedRoomTypeNotRelated &&
+                            styles.detectedBadgeError,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.detectedBadgeText,
+                            isDetectedRoomTypeNotRelated &&
+                              styles.detectedBadgeTextError,
+                          ]}
+                        >
                           {roomTypeChipOptions.find(
                             (o) => o.value === detectedRoomType,
                           )?.label ?? formatEnumNameDefault(detectedRoomType)}
@@ -2209,22 +2280,24 @@ export default function AIDesignScreen() {
                       </View>
                     </View>
 
-                    <TouchableOpacity
-                      style={styles.detectedOverride}
-                      onPress={() => {
-                        setUserOverrodeRoomType(true);
-                        openRoomSelectField("roomType");
-                      }}
-                    >
-                      <Ionicons
-                        name="pencil"
-                        size={16}
-                        color={COLORS.primaryDark}
-                      />
-                      <Text style={styles.detectedOverrideText}>
-                        {t("aiDesign.override", { defaultValue: "OVERRIDE" })}
-                      </Text>
-                    </TouchableOpacity>
+                    {!isDetectedRoomTypeNotRelated ? (
+                      <TouchableOpacity
+                        style={styles.detectedOverride}
+                        onPress={() => {
+                          setUserOverrodeRoomType(true);
+                          openRoomSelectField("roomType");
+                        }}
+                      >
+                        <Ionicons
+                          name="pencil"
+                          size={16}
+                          color={COLORS.primaryDark}
+                        />
+                        <Text style={styles.detectedOverrideText}>
+                          {t("aiDesign.override", { defaultValue: "OVERRIDE" })}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
                   </View>
                 ) : null}
 
@@ -2273,8 +2346,15 @@ export default function AIDesignScreen() {
 
               <View style={styles.stepActionRowSingle}>
                 <TouchableOpacity
-                  style={styles.wizardPrimaryButton}
-                  onPress={handleNextStep}
+                  style={[
+                    styles.wizardPrimaryButton,
+                    (isDetectingRoomType || isDetectedRoomTypeNotRelated) &&
+                      styles.primaryActionButtonDisabled,
+                  ]}
+                  onPress={() => {
+                    void handleNextStep();
+                  }}
+                  disabled={isDetectingRoomType || isDetectedRoomTypeNotRelated}
                 >
                   <Text style={styles.wizardPrimaryButtonText}>
                     {t("common.next", { defaultValue: "Next" }).toUpperCase()}
@@ -3545,17 +3625,22 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: SPACING.lg,
   },
+  headerTitle: {
+    maxWidth: "100%",
+    fontSize: FONTS.sizes.md,
+    fontWeight: "800",
+    color: COLORS.textPrimary,
+  },
   headerActionButton: {
-    minHeight: 36,
-    borderRadius: RADIUS.md,
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.full,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: COLORS.primaryLight,
+    backgroundColor: COLORS.white,
     borderWidth: 1,
-    borderColor: COLORS.primary,
-    paddingHorizontal: SPACING.md,
-    flexDirection: "row",
-    gap: SPACING.xs,
+    borderColor: "rgba(47, 128, 237, 0.22)",
+    ...SHADOWS.sm,
   },
   headerActionText: {
     color: COLORS.textPrimary,
@@ -4155,6 +4240,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
+  detectedContainerError: {
+    borderColor: COLORS.error,
+    backgroundColor: "#FFF1F0",
+  },
   detectedLeft: {
     flexDirection: "row",
     alignItems: "center",
@@ -4174,9 +4263,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.success,
   },
+  detectedBadgeError: {
+    borderColor: COLORS.error,
+  },
   detectedBadgeText: {
     color: COLORS.success,
     fontWeight: "700",
+  },
+  detectedBadgeTextError: {
+    color: COLORS.error,
   },
   detectedOverride: {
     flexDirection: "row",

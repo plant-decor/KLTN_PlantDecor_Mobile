@@ -1330,16 +1330,19 @@ export interface OrderInvoice {
 export interface OrderPayload {
   id: number;
   userId: number;
-  address: string;
-  phone: string;
-  customerName: string;
+  address: string | null;
+  phone: string | null;
+  customerName: string | null;
+  customerEmail?: string | null;
   totalAmount: number;
   depositAmount: number | null;
   remainingAmount: number | null;
   status: number;
   statusName: string;
-  paymentStrategy: number;
+  paymentStrategy: number | null;
+  paymentStrategyName?: string | null;
   orderType: number;
+  orderTypeName?: string | null;
   note: string | null;
   createdAt: string;
   updatedAt: string;

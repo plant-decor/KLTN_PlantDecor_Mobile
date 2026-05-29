@@ -2043,21 +2043,6 @@ export default function CareServiceRegistrationScreen() {
               </View>
             ) : null}
 
-            <View style={styles.coordinateInfoWrap}>
-              <Text style={styles.coordinateInfoText}>
-                {t('careService.latitudeLabel', {
-                  defaultValue: 'Latitude: {{value}}',
-                  value: formatCoordinate(latitude),
-                })}
-              </Text>
-              <Text style={styles.coordinateInfoText}>
-                {t('careService.longitudeLabel', {
-                  defaultValue: 'Longitude: {{value}}',
-                  value: formatCoordinate(longitude),
-                })}
-              </Text>
-            </View>
-
             <View style={styles.secondaryActionRow}>
               <TouchableOpacity
                 style={[
@@ -3261,6 +3246,7 @@ const styles = StyleSheet.create({
   secondaryActionRow: {
     flexDirection: 'row',
     gap: SPACING.sm,
+    marginTop: SPACING.sm,
     marginBottom: SPACING.md,
   },
   secondaryActionButton: {
