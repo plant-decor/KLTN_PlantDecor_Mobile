@@ -1446,6 +1446,13 @@ export interface CancelOrderResponse {
   payload: OrderPayload;
 }
 
+export interface ConfirmNurseryOrderReceivedResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: OrderPayload;
+}
+
 export interface CreatePaymentRequest {
   invoiceId: number;
 }

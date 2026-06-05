@@ -73,6 +73,14 @@ const normalizeStatusToken = (status: string): string =>
 const isPendingConfirmationStatus = (status: string): boolean =>
   normalizeStatusToken(status) === 'pendingconfirmation';
 
+const isDeliveredStatus = (status: string): boolean =>
+  normalizeStatusToken(status) === 'delivered';
+
+const canConfirmNurseryOrderReceived = (
+  status: string,
+  hasReturnTickets: boolean
+): boolean => isDeliveredStatus(status) && !hasReturnTickets;
+
 const resolveReturnEligibleItemId = (lineItem: OrderLineItem): number | null => {
   if (
     typeof lineItem.nurseryOrderDetailId === 'number' &&
@@ -125,6 +133,7 @@ export default function OrderDetailScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [isCancellingOrder, setIsCancellingOrder] = useState(false);
   const [processingInvoiceId, setProcessingInvoiceId] = useState<number | null>(null);
+  const [processingNurseryOrderId, setProcessingNurseryOrderId] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [currentReturnTickets, setCurrentReturnTickets] = useState<ReturnTicket[]>([]);
   const [ticketReason, setTicketReason] = useState('');
@@ -415,6 +424,72 @@ export default function OrderDetailScreen() {
       }
     },
     [isCancellingOrder, navigation, order, processingInvoiceId, t]
+  );
+
+  const handleConfirmNurseryOrderReceived = useCallback(
+    async (nurseryOrderId: number) => {
+      if (!order || processingNurseryOrderId !== null) {
+        return;
+      }
+
+      setProcessingNurseryOrderId(nurseryOrderId);
+
+      try {
+        const payload = await orderService.confirmNurseryOrderReceived(nurseryOrderId);
+        setOrder(payload);
+
+        notify({
+          title: t('common.success', { defaultValue: 'Success' }),
+          message: t('orderDetail.confirmReceivedSuccess', {
+            defaultValue: 'Nursery order receipt confirmed successfully.',
+          }),
+        });
+      } catch (error: any) {
+        const apiMessage = error?.response?.data?.message;
+
+        Alert.alert(
+          t('common.error', { defaultValue: 'Error' }),
+          typeof apiMessage === 'string' && apiMessage.trim().length > 0
+            ? apiMessage
+            : t('orderDetail.confirmReceivedFailed', {
+                defaultValue: 'Unable to confirm order receipt. Please try again.',
+              })
+        );
+      } finally {
+        setProcessingNurseryOrderId(null);
+      }
+    },
+    [order, processingNurseryOrderId, t]
+  );
+
+  const handleConfirmNurseryOrderReceivedPress = useCallback(
+    (nurseryOrderId: number) => {
+      if (processingNurseryOrderId !== null) {
+        return;
+      }
+
+      Alert.alert(
+        t('orderDetail.confirmReceivedTitle', { defaultValue: 'Confirm received?' }),
+        t('orderDetail.confirmReceivedMessage', {
+          defaultValue: 'Please confirm that you have received this nursery order.',
+        }),
+        [
+          {
+            text: t('common.cancel', { defaultValue: 'Cancel' }),
+            style: 'cancel',
+          },
+          {
+            text: t('orderDetail.confirmReceivedAction', {
+              defaultValue: 'Confirm received',
+            }),
+            onPress: () => {
+              void handleConfirmNurseryOrderReceived(nurseryOrderId);
+            },
+          },
+        ]
+      );
+    },
+    [handleConfirmNurseryOrderReceived, processingNurseryOrderId, t]
   );
 
   const toggleReturnItemSelection = useCallback((lineItem: OrderLineItem) => {
@@ -978,47 +1053,49 @@ export default function OrderDetailScreen() {
           ) : null}
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>
-            {t('orderDetail.items', { defaultValue: 'Items' })}
-          </Text>
-          {displayLineItems.map((item) => {
-            const imageUri = resolveDisplayItemImage(item);
+        {order.nurseryOrders.length === 0 ? (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>
+              {t('orderDetail.items', { defaultValue: 'Items' })}
+            </Text>
+            {displayLineItems.map((item) => {
+              const imageUri = resolveDisplayItemImage(item);
 
-            return (
-              <View key={item.id} style={styles.lineItemRow}>
-                {canDisplayItemImages ? (
-                  imageUri ? (
-                    <Image source={{ uri: imageUri }} style={styles.lineItemImage} resizeMode="cover" />
-                  ) : (
-                    <View style={styles.lineItemImagePlaceholder}>
-                      <Ionicons name="image-outline" size={16} color={COLORS.gray500} />
+              return (
+                <View key={item.id} style={styles.lineItemRow}>
+                  {canDisplayItemImages ? (
+                    imageUri ? (
+                      <Image source={{ uri: imageUri }} style={styles.lineItemImage} resizeMode="cover" />
+                    ) : (
+                      <View style={styles.lineItemImagePlaceholder}>
+                        <Ionicons name="image-outline" size={16} color={COLORS.gray500} />
+                      </View>
+                    )
+                  ) : null}
+
+                  <View style={styles.lineItemBody}>
+                    <Text style={styles.lineItemName} numberOfLines={2}>
+                      {item.itemName}
+                    </Text>
+
+                    <View style={styles.lineItemMetaRow}>
+                      <View style={styles.lineItemQtyBadge}>
+                        <Text style={styles.lineItemQtyBadgeText}>
+                          {t('orderDetail.qtyLabel', {
+                            defaultValue: 'Qty {{count}}',
+                            count: item.quantity,
+                          })}
+                        </Text>
+                      </View>
+
+                      <Text style={styles.lineItemPrice}>{formatCurrency(item.amount)}</Text>
                     </View>
-                  )
-                ) : null}
-
-                <View style={styles.lineItemBody}>
-                  <Text style={styles.lineItemName} numberOfLines={2}>
-                    {item.itemName}
-                  </Text>
-
-                  <View style={styles.lineItemMetaRow}>
-                    <View style={styles.lineItemQtyBadge}>
-                      <Text style={styles.lineItemQtyBadgeText}>
-                        {t('orderDetail.qtyLabel', {
-                          defaultValue: 'Qty {{count}}',
-                          count: item.quantity,
-                        })}
-                      </Text>
-                    </View>
-
-                    <Text style={styles.lineItemPrice}>{formatCurrency(item.amount)}</Text>
                   </View>
                 </View>
-              </View>
-            );
-          })}
-        </View>
+              );
+            })}
+          </View>
+        ) : null}
 
         {order.nurseryOrders.length > 0 ? (
           <View style={styles.card}>
@@ -1039,6 +1116,79 @@ export default function OrderDetailScreen() {
                   {t('orderDetail.subTotal', { defaultValue: 'Sub total' })}:{' '}
                   {formatCurrency(nurseryOrder.subTotalAmount)}
                 </Text>
+                {nurseryOrder.items.length > 0 ? (
+                  <View style={styles.nurseryItemsBlock}>
+                    <Text style={styles.nurseryItemsTitle}>
+                      {t('orderDetail.items', { defaultValue: 'Items' })}
+                    </Text>
+                    {nurseryOrder.items.map((item) => {
+                      const imageUri = resolveOrderItemImage(item);
+
+                      return (
+                        <View key={`${nurseryOrder.id}-${item.id}`} style={styles.lineItemRow}>
+                          {canDisplayItemImages ? (
+                            imageUri ? (
+                              <Image
+                                source={{ uri: imageUri }}
+                                style={styles.lineItemImage}
+                                resizeMode="cover"
+                              />
+                            ) : (
+                              <View style={styles.lineItemImagePlaceholder}>
+                                <Ionicons name="image-outline" size={16} color={COLORS.gray500} />
+                              </View>
+                            )
+                          ) : null}
+
+                          <View style={styles.lineItemBody}>
+                            <Text style={styles.lineItemName} numberOfLines={2}>
+                              {item.itemName}
+                            </Text>
+
+                            <View style={styles.lineItemMetaRow}>
+                              <View style={styles.lineItemQtyBadge}>
+                                <Text style={styles.lineItemQtyBadgeText}>
+                                  {t('orderDetail.qtyLabel', {
+                                    defaultValue: 'Qty {{count}}',
+                                    count: item.quantity,
+                                  })}
+                                </Text>
+                              </View>
+
+                              <Text style={styles.lineItemPrice}>
+                                {formatCurrency(item.price * item.quantity)}
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                ) : null}
+                {canConfirmNurseryOrderReceived(
+                  nurseryOrder.statusName,
+                  currentReturnTickets.length > 0
+                ) ? (
+                  <TouchableOpacity
+                    style={[
+                      styles.confirmReceivedButton,
+                      processingNurseryOrderId === nurseryOrder.id &&
+                        styles.actionButtonDisabled,
+                    ]}
+                    onPress={() => handleConfirmNurseryOrderReceivedPress(nurseryOrder.id)}
+                    disabled={processingNurseryOrderId === nurseryOrder.id}
+                  >
+                    {processingNurseryOrderId === nurseryOrder.id ? (
+                      <ActivityIndicator size="small" color={COLORS.white} />
+                    ) : (
+                      <Text style={styles.confirmReceivedButtonText}>
+                        {t('orderDetail.confirmReceivedAction', {
+                          defaultValue: 'Confirm received',
+                        })}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                ) : null}
               </View>
             ))}
           </View>
@@ -1550,6 +1700,20 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.error,
   },
+  confirmReceivedButton: {
+    marginTop: SPACING.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: RADIUS.full,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+    backgroundColor: COLORS.primary,
+  },
+  confirmReceivedButtonText: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '700',
+    color: COLORS.white,
+  },
   actionButtonDisabled: {
     opacity: 0.65,
   },
@@ -1812,6 +1976,15 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.sm,
     color: COLORS.primary,
     fontWeight: '600',
+  },
+  nurseryItemsBlock: {
+    marginTop: SPACING.sm,
+    gap: SPACING.xs,
+  },
+  nurseryItemsTitle: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
   },
   invoiceBlock: {
     borderTopWidth: 1,

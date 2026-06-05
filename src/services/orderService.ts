@@ -1,6 +1,7 @@
 import { API } from '../constants';
 import {
   CancelOrderResponse,
+  ConfirmNurseryOrderReceivedResponse,
   CreateOrderRequest,
   CreateOrderResponse,
   GetNurseryOrdersPayload,
@@ -246,6 +247,21 @@ export const orderService = {
       return response.data.payload;
     } catch (error: any) {
       console.error('cancelOrder error:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  confirmNurseryOrderReceived: async (nurseryOrderId: number): Promise<OrderPayload> => {
+    try {
+      const response = await api.patch<ConfirmNurseryOrderReceivedResponse>(
+        API.ENDPOINTS.CONFIRM_NURSERY_ORDER_RECEIVED(nurseryOrderId)
+      );
+      return response.data.payload;
+    } catch (error: any) {
+      console.error(
+        'confirmNurseryOrderReceived error:',
+        error.response?.data || error.message
+      );
       throw error;
     }
   },
