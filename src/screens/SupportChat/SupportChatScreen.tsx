@@ -31,6 +31,7 @@ import {
   SupportRealtimeConnectionState,
 } from '../../types';
 import { useAuthStore } from '../../stores';
+import { useSupportChatStore } from '../../stores/useSupportChatStore';
 import { resolveImageUri } from '../../utils/image';
 import { format } from 'date-fns';
 
@@ -109,7 +110,7 @@ export default function SupportChatScreen() {
   const flatListRef = useRef<FlatList>(null);
   const activeConversationIdRef = useRef<number | null>(null);
   const realtimeStateRef = useRef<SupportRealtimeConnectionState>('disconnected');
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTypingSentRef = useRef<boolean>(false);
   const pendingOfflineCheckRef = useRef(false);
 
@@ -171,6 +172,9 @@ export default function SupportChatScreen() {
   }, [consultantParticipant, consultantIsOnline]);
 
   useEffect(() => {
+    useSupportChatStore.getState().setChatScreenActive(true);
+    useSupportChatStore.getState().clearUnread();
+
     const unsubscribeMessage = supportRealtimeService.onMessage((message) => {
       if (message.chatSessionId !== activeConversationIdRef.current) {
         return;
@@ -263,6 +267,8 @@ export default function SupportChatScreen() {
     });
 
     return () => {
+      useSupportChatStore.getState().setChatScreenActive(false);
+
       unsubscribeMessage();
       unsubscribeConversation();
       unsubscribeConnection();
@@ -274,25 +280,7 @@ export default function SupportChatScreen() {
         clearTimeout(typingTimeoutRef.current);
       }
 
-      const activeConversationId = activeConversationIdRef.current;
       activeConversationIdRef.current = null;
-
-      if (activeConversationId !== null) {
-        supportRealtimeService
-          .leaveConversation(activeConversationId)
-          .catch((error) =>
-            console.error('Failed to leave support conversation:', error)
-          )
-          .finally(() => {
-            supportRealtimeService.disconnect().catch((error) =>
-              console.error('Failed to disconnect support realtime:', error)
-            );
-          });
-      } else {
-        supportRealtimeService.disconnect().catch((error) =>
-          console.error('Failed to disconnect support realtime:', error)
-        );
-      }
     };
   }, []);
 

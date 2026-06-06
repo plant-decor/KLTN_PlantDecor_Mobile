@@ -9,3 +9,4 @@ export { useWishlistStore } from './useWishlistStore';
 export { useNotificationStore } from './useNotificationStore';
 
 export * from './useCameraStore';
+export { useSupportChatStore } from './useSupportChatStore';

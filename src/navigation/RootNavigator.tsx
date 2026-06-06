@@ -3,6 +3,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
 import BottomTabNavigator from './BottomTabNavigator';
 import { useAuthStore, useEnumStore } from '../stores';
+import { useSupportChatConnection } from '../hooks';
 import {
   PlantDetailScreen,
   PlantInstanceDetailScreen,
@@ -74,6 +75,8 @@ export default function RootNavigator() {
   const initialRouteName: keyof RootStackParamList = !isAuthenticated
     ? 'Login'
     : roleRoute;
+
+  useSupportChatConnection();
 
   useEffect(() => {
     void preloadResources(['plants', 'plant-sort', 'users', 'orders', 'payments']);

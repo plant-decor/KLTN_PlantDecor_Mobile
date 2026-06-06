@@ -15,7 +15,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import i18n from '../../i18n';
 import { APP_CONFIG, COLORS, FONTS, SPACING, RADIUS, SHADOWS } from '../../constants';
-import { useAuthStore, useCartStore } from '../../stores';
+import { useAuthStore, useCartStore, useSupportChatStore } from '../../stores';
 import { RootStackParamList } from '../../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -29,6 +29,7 @@ export default function ProfileScreen() {
   const logoutAll = useAuthStore((state) => state.logoutAll);
   const isSigningOut = useAuthStore((state) => state.isSigningOut);
   const { totalItems } = useCartStore();
+  const unreadCount = useSupportChatStore((state) => state.unreadCount);
 
   const selectedLanguage = i18n.language === 'vi' ? 'vi' : 'en';
   const normalizedTierName =
@@ -123,7 +124,12 @@ export default function ProfileScreen() {
     );
   }
 
-  const menuItems = [
+  const menuItems: Array<{
+    icon: React.ComponentProps<typeof Ionicons>['name'];
+    label: string;
+    onPress: () => void;
+    badge?: number;
+  }> = [
     {
       icon: 'person-outline' as const,
       label: t('profile.editProfile'),
@@ -163,6 +169,7 @@ export default function ProfileScreen() {
       icon: 'chatbubble-ellipses-outline' as const,
       label: t('profile.supportChat', { defaultValue: 'Support Chat' }),
       onPress: () => navigation.navigate('SupportChat'),
+      badge: unreadCount > 0 ? unreadCount : undefined,
     },
     {
       icon: 'sparkles' as const,
@@ -214,11 +221,16 @@ export default function ProfileScreen() {
                 <Ionicons name={item.icon} size={22} color={COLORS.gray700} />
                 <Text style={styles.menuItemLabel}>{item.label}</Text>
               </View>
-              <Ionicons
-                name="chevron-forward"
-                size={20}
-                color={COLORS.gray400}
-              />
+              <View style={styles.menuItemRight}>
+                {item.badge !== undefined && item.badge > 0 && (
+                  <View style={styles.chatBadge}>
+                    <Text style={styles.chatBadgeText}>
+                      {item.badge > 99 ? '99+' : String(item.badge)}
+                    </Text>
+                  </View>
+                )}
+                <Ionicons name="chevron-forward" size={20} color={COLORS.gray400} />
+              </View>
             </TouchableOpacity>
           ))}
         </View>
@@ -447,6 +459,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.md,
+  },
+  menuItemRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  chatBadge: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: RADIUS.full,
+    backgroundColor: '#ef4444',
+    paddingHorizontal: 5,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  chatBadgeText: {
+    color: COLORS.white,
+    fontSize: 11,
+    fontWeight: '700',
+    lineHeight: 14,
   },
   menuItemLabel: {
     fontSize: FONTS.sizes.lg,
