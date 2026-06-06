@@ -134,6 +134,8 @@ export default function OrderDetailScreen() {
   const [isCancellingOrder, setIsCancellingOrder] = useState(false);
   const [processingInvoiceId, setProcessingInvoiceId] = useState<number | null>(null);
   const [processingNurseryOrderId, setProcessingNurseryOrderId] = useState<number | null>(null);
+  const [notReceivedNurseryOrderId, setNotReceivedNurseryOrderId] = useState<number | null>(null);
+  const [notReceivedReason, setNotReceivedReason] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [currentReturnTickets, setCurrentReturnTickets] = useState<ReturnTicket[]>([]);
   const [ticketReason, setTicketReason] = useState('');
@@ -490,6 +492,69 @@ export default function OrderDetailScreen() {
       );
     },
     [handleConfirmNurseryOrderReceived, processingNurseryOrderId, t]
+  );
+
+  const handleConfirmNurseryOrderNotReceived = useCallback(
+    async (nurseryOrderId: number, reason: string) => {
+      if (!order || processingNurseryOrderId !== null) {
+        return;
+      }
+
+      const trimmedReason = reason.trim();
+      if (trimmedReason.length === 0) {
+        Alert.alert(
+          t('common.error', { defaultValue: 'Error' }),
+          t('orderDetail.notReceivedReasonRequired', {
+            defaultValue: 'Please provide a reason for this report.',
+          })
+        );
+        return;
+      }
+
+      setProcessingNurseryOrderId(nurseryOrderId);
+
+      try {
+        const payload = await orderService.confirmNurseryOrderNotReceived(nurseryOrderId, {
+          reason: trimmedReason,
+        });
+        setOrder(payload);
+        setNotReceivedNurseryOrderId(null);
+        setNotReceivedReason('');
+
+        notify({
+          title: t('common.success', { defaultValue: 'Success' }),
+          message: t('orderDetail.notReceivedSuccess', {
+            defaultValue: 'Nursery order not received report submitted successfully.',
+          }),
+        });
+      } catch (error: any) {
+        const apiMessage = error?.response?.data?.message;
+
+        Alert.alert(
+          t('common.error', { defaultValue: 'Error' }),
+          typeof apiMessage === 'string' && apiMessage.trim().length > 0
+            ? apiMessage
+            : t('orderDetail.notReceivedFailed', {
+                defaultValue: 'Unable to submit the not received report. Please try again.',
+              })
+        );
+      } finally {
+        setProcessingNurseryOrderId(null);
+      }
+    },
+    [order, processingNurseryOrderId, t]
+  );
+
+  const handleConfirmNurseryOrderNotReceivedPress = useCallback(
+    (nurseryOrderId: number) => {
+      if (processingNurseryOrderId !== null) {
+        return;
+      }
+
+      setNotReceivedNurseryOrderId(nurseryOrderId);
+      setNotReceivedReason('');
+    },
+    [processingNurseryOrderId]
   );
 
   const toggleReturnItemSelection = useCallback((lineItem: OrderLineItem) => {
@@ -1169,25 +1234,43 @@ export default function OrderDetailScreen() {
                   nurseryOrder.statusName,
                   currentReturnTickets.length > 0
                 ) ? (
-                  <TouchableOpacity
-                    style={[
-                      styles.confirmReceivedButton,
-                      processingNurseryOrderId === nurseryOrder.id &&
-                        styles.actionButtonDisabled,
-                    ]}
-                    onPress={() => handleConfirmNurseryOrderReceivedPress(nurseryOrder.id)}
-                    disabled={processingNurseryOrderId === nurseryOrder.id}
-                  >
-                    {processingNurseryOrderId === nurseryOrder.id ? (
-                      <ActivityIndicator size="small" color={COLORS.white} />
-                    ) : (
-                      <Text style={styles.confirmReceivedButtonText}>
-                        {t('orderDetail.confirmReceivedAction', {
-                          defaultValue: 'Confirm received',
+                  <View style={styles.nurseryActionRow}>
+                    <TouchableOpacity
+                      style={[
+                        styles.notReceivedButton,
+                        processingNurseryOrderId === nurseryOrder.id &&
+                          styles.actionButtonDisabled,
+                      ]}
+                      onPress={() => handleConfirmNurseryOrderNotReceivedPress(nurseryOrder.id)}
+                      disabled={processingNurseryOrderId === nurseryOrder.id}
+                    >
+                      <Text style={styles.notReceivedButtonText}>
+                        {t('orderDetail.notReceivedAction', {
+                          defaultValue: 'Not received',
                         })}
                       </Text>
-                    )}
-                  </TouchableOpacity>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.confirmReceivedButton,
+                        processingNurseryOrderId === nurseryOrder.id &&
+                          styles.actionButtonDisabled,
+                      ]}
+                      onPress={() => handleConfirmNurseryOrderReceivedPress(nurseryOrder.id)}
+                      disabled={processingNurseryOrderId === nurseryOrder.id}
+                    >
+                      {processingNurseryOrderId === nurseryOrder.id ? (
+                        <ActivityIndicator size="small" color={COLORS.white} />
+                      ) : (
+                        <Text style={styles.confirmReceivedButtonText}>
+                          {t('orderDetail.confirmReceivedAction', {
+                            defaultValue: 'Confirm received',
+                          })}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
                 ) : null}
               </View>
             ))}
@@ -1598,6 +1681,93 @@ export default function OrderDetailScreen() {
           ) : null}
         </View>
       </Modal>
+
+      <Modal
+        visible={notReceivedNurseryOrderId !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (processingNurseryOrderId !== null) {
+            return;
+          }
+          setNotReceivedNurseryOrderId(null);
+          setNotReceivedReason('');
+        }}
+      >
+        <View style={styles.reasonModalOverlay}>
+          <View style={styles.reasonModalCard}>
+            <Text style={styles.reasonModalTitle}>
+              {t('orderDetail.notReceivedTitle', { defaultValue: 'Report not received?' })}
+            </Text>
+            <Text style={styles.reasonModalMessage}>
+              {t('orderDetail.notReceivedMessage', {
+                defaultValue: 'Please tell us why this nursery order was not received.',
+              })}
+            </Text>
+
+            <Text style={styles.reasonModalLabel}>
+              {t('orderDetail.notReceivedReasonLabel', { defaultValue: 'Reason' })}
+            </Text>
+            <TextInput
+              style={styles.reasonModalInput}
+              multiline
+              numberOfLines={4}
+              placeholder={t('orderDetail.notReceivedReasonPlaceholder', {
+                defaultValue: 'Describe why the nursery order was not received',
+              })}
+              placeholderTextColor={COLORS.gray400}
+              value={notReceivedReason}
+              onChangeText={setNotReceivedReason}
+              editable={processingNurseryOrderId === null}
+            />
+
+            <View style={styles.reasonModalActions}>
+              <TouchableOpacity
+                style={styles.reasonModalCancelButton}
+                onPress={() => {
+                  if (processingNurseryOrderId !== null) {
+                    return;
+                  }
+                  setNotReceivedNurseryOrderId(null);
+                  setNotReceivedReason('');
+                }}
+                disabled={processingNurseryOrderId !== null}
+              >
+                <Text style={styles.reasonModalCancelButtonText}>
+                  {t('common.cancel', { defaultValue: 'Cancel' })}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.reasonModalSubmitButton,
+                  processingNurseryOrderId !== null && styles.actionButtonDisabled,
+                ]}
+                onPress={() => {
+                  if (notReceivedNurseryOrderId === null) {
+                    return;
+                  }
+                  void handleConfirmNurseryOrderNotReceived(
+                    notReceivedNurseryOrderId,
+                    notReceivedReason
+                  );
+                }}
+                disabled={processingNurseryOrderId !== null}
+              >
+                {processingNurseryOrderId === notReceivedNurseryOrderId ? (
+                  <ActivityIndicator size="small" color={COLORS.white} />
+                ) : (
+                  <Text style={styles.reasonModalSubmitButtonText}>
+                    {t('orderDetail.notReceivedAction', {
+                      defaultValue: 'Not received',
+                    })}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1684,6 +1854,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'flex-end',
   },
+  nurseryActionRow: {
+    marginTop: SPACING.md,
+    flexDirection: 'row',
+    gap: SPACING.sm,
+  },
   cancelOrderButton: {
     minWidth: 132,
     alignItems: 'center',
@@ -1700,8 +1875,24 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.error,
   },
+  notReceivedButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: COLORS.error,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+    backgroundColor: COLORS.white,
+  },
+  notReceivedButtonText: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '700',
+    color: COLORS.error,
+  },
   confirmReceivedButton: {
-    marginTop: SPACING.md,
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: RADIUS.full,
@@ -1959,6 +2150,81 @@ const styles = StyleSheet.create({
   fullImagePreview: {
     width: '100%',
     height: '82%',
+  },
+  reasonModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.lg,
+  },
+  reasonModalCard: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: RADIUS.xl,
+    backgroundColor: COLORS.white,
+    padding: SPACING.lg,
+    gap: SPACING.sm,
+  },
+  reasonModalTitle: {
+    fontSize: FONTS.sizes.lg,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  reasonModalMessage: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+  },
+  reasonModalLabel: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    marginTop: SPACING.xs,
+  },
+  reasonModalInput: {
+    minHeight: 96,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.gray50,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    textAlignVertical: 'top',
+    fontSize: FONTS.sizes.md,
+    color: COLORS.textPrimary,
+  },
+  reasonModalActions: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginTop: SPACING.sm,
+  },
+  reasonModalCancelButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: RADIUS.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
+  },
+  reasonModalCancelButtonText: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  reasonModalSubmitButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: RADIUS.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.error,
+  },
+  reasonModalSubmitButtonText: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '700',
+    color: COLORS.white,
   },
   nurseryBlock: {
     borderTopWidth: 1,

@@ -225,6 +225,8 @@ export const API = {
     ORDER_DELIVERED: (id: number) => `/Order/${id}/delivered`,
     CONFIRM_NURSERY_ORDER_RECEIVED: (nurseryOrderId: number) =>
       `/Order/nursery-orders/${nurseryOrderId}/confirm-received`,
+    CONFIRM_NURSERY_ORDER_NOT_RECEIVED: (nurseryOrderId: number) =>
+      `/Order/nursery-orders/${nurseryOrderId}/confirm-not-received`,
 
     // Payment
     PAYMENT_CREATE: "/Payment/create",
