@@ -334,6 +334,7 @@ export const API = {
     SERVICE_PROGRESS_CHECK_IN: (id: number) => `/service-progress/${id}/check-in`,
     SERVICE_PROGRESS_CHECK_OUT: (id: number) => `/service-progress/${id}/check-out`,
     SERVICE_PROGRESS_INCIDENT_REPORT: (id: number) => `/service-progress/${id}/incident-report`,
+    SERVICE_PROGRESS_CUSTOMER_COMMENT: (id: number) => `/service-progress/${id}/customer-comment`,
 
     // Design Service
     DESIGN_FLOW_ENUMS: "/system/enums/design-flow",
@@ -355,6 +356,7 @@ export const API = {
     DESIGN_TASK_MATERIAL_USAGE: (id: number) => `/design-tasks/${id}/material-usage`,
     DESIGN_TASK_COMPLETE: (id: number) => `/design-tasks/${id}/complete`,
     DESIGN_TASK_PACKAGE_MATERIALS: (id: number) => `/design-tasks/${id}/package-materials`,
+    DESIGN_TASK_CUSTOMER_COMMENT: (id: number) => `/design-tasks/${id}/customer-comment`,
 
     // Support Conversations
     SUPPORT_CONVERSATIONS: "/support-conversations",

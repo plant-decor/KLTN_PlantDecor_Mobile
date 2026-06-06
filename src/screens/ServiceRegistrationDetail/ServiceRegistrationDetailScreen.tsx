@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
+import { RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { BrandedHeader } from '../../components/branding';
@@ -24,6 +24,7 @@ import {
   canContinueOrderPayment,
   formatVietnamDate,
   formatVietnamDateTime,
+  hasCustomerFeedback,
   isServiceRegistrationAwaitPaymentStatus,
   isServiceRegistrationCancellableStatus,
   notify,
@@ -165,9 +166,11 @@ export default function ServiceRegistrationDetailScreen() {
     }
   }, [registrationId, t]);
 
-  useEffect(() => {
-    void loadDetail();
-  }, [loadDetail]);
+  useFocusEffect(
+    useCallback(() => {
+      void loadDetail();
+    }, [loadDetail])
+  );
 
   useEffect(() => {
     setCancelReason(registration?.cancelReason ?? '');
@@ -850,6 +853,17 @@ export default function ServiceRegistrationDetailScreen() {
                       </View>
                     ) : null}
 
+                    {hasCustomerFeedback(item.customerFeedback) ? (
+                      <View style={styles.feedbackSnippet}>
+                        <Text style={styles.feedbackSnippetLabel}>
+                          {t('careService.customerFeedbackLabel', { defaultValue: 'Your feedback' })}
+                        </Text>
+                        <Text style={styles.feedbackSnippetText} numberOfLines={2}>
+                          {item.customerFeedback}
+                        </Text>
+                      </View>
+                    ) : null}
+
                     <TouchableOpacity
                       style={styles.taskDetailButton}
                       onPress={() =>
@@ -1217,6 +1231,24 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.sm,
     fontWeight: '700',
     color: COLORS.primary,
+  },
+  feedbackSnippet: {
+    backgroundColor: COLORS.gray50,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: SPACING.sm,
+    gap: SPACING.xs,
+  },
+  feedbackSnippetLabel: {
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  feedbackSnippetText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textPrimary,
+    lineHeight: 18,
   },
   emptyProgressText: {
     fontSize: FONTS.sizes.sm,

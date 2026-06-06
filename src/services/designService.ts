@@ -28,6 +28,8 @@ import {
   GetMyDesignTasksResponse,
   ReportDesignTaskMaterialUsageRequest,
   ReportDesignTaskMaterialUsageResponse,
+  SubmitDesignTaskCustomerCommentRequest,
+  SubmitDesignTaskCustomerCommentResponse,
   UpdateDesignSurveyInfoRequest,
 } from '../types';
 import api from './api';
@@ -372,6 +374,17 @@ export const designService = {
       API.ENDPOINTS.DESIGN_TASK_PACKAGE_MATERIALS(id)
     );
     return response.data.payload ?? [];
+  },
+
+  submitDesignTaskCustomerComment: async (
+    id: number,
+    request: SubmitDesignTaskCustomerCommentRequest
+  ): Promise<DesignTask> => {
+    const response = await api.post<SubmitDesignTaskCustomerCommentResponse>(
+      API.ENDPOINTS.DESIGN_TASK_CUSTOMER_COMMENT(id),
+      request
+    );
+    return response.data.payload;
   },
 
   resolveTierItemName: async (item: DesignTemplateTierItem): Promise<string> => {

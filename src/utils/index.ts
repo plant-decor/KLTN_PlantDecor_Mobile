@@ -115,3 +115,8 @@ export {
 } from './designFlow';
 
 export * from './camera';
+export {
+  canSubmitCustomerTaskFeedback,
+  hasCustomerFeedback,
+  isCompletedTaskStatus,
+} from './taskFeedback';

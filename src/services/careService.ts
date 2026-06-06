@@ -31,6 +31,8 @@ import {
   ServiceProgress,
   ServiceRegistration,
   ServiceRegistrationShift,
+  SubmitServiceProgressCustomerCommentRequest,
+  SubmitServiceProgressCustomerCommentResponse,
 } from '../types';
 import api from './api';
 
@@ -489,5 +491,16 @@ export const careService = {
       );
       throw error;
     }
+  },
+
+  submitServiceProgressCustomerComment: async (
+    id: number,
+    request: SubmitServiceProgressCustomerCommentRequest
+  ): Promise<ServiceProgress> => {
+    const response = await api.post<SubmitServiceProgressCustomerCommentResponse>(
+      API.ENDPOINTS.SERVICE_PROGRESS_CUSTOMER_COMMENT(id),
+      request
+    );
+    return response.data.payload;
   },
 };

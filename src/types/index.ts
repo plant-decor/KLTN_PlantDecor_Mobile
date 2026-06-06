@@ -1884,9 +1884,22 @@ export interface ServiceProgress {
   hasIncidents?: boolean;
   incidentReason?: string | null;
   incidentImageUrl?: string | null;
+  customerFeedback?: string | null;
+  isReviewed?: boolean;
   shift: ServiceRegistrationShift | null;
   caretaker: ServiceRegistrationCaretaker | null;
   serviceRegistration: ServiceProgressRegistrationSummary | null;
+}
+
+export interface SubmitServiceProgressCustomerCommentRequest {
+  comment: string;
+}
+
+export interface SubmitServiceProgressCustomerCommentResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: ServiceProgress;
 }
 
 export interface GetServiceProgressTodayResponse {
@@ -2179,9 +2192,22 @@ export interface DesignTask {
   createdAt: string;
   status: number;
   statusName: string;
+  customerFeedback?: string | null;
+  isReviewed?: boolean;
   assignedStaff: DesignTaskAssignedStaff | null;
   registration: DesignTaskRegistrationSummary | null;
   taskMaterialUsages: DesignTaskMaterialUsage[];
+}
+
+export interface SubmitDesignTaskCustomerCommentRequest {
+  comment: string;
+}
+
+export interface SubmitDesignTaskCustomerCommentResponse {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  payload: DesignTask;
 }
 
 export interface DesignRegistration {

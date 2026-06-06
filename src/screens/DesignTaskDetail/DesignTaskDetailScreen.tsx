@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Modal,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -19,8 +21,12 @@ import { API, COLORS, FONTS, RADIUS, SHADOWS, SPACING } from '../../constants';
 import { designService } from '../../services';
 import { DesignTask, RootStackParamList } from '../../types';
 import {
+  canSubmitCustomerTaskFeedback,
   formatVietnamDateTime,
   getDesignTaskStatusPalette,
+  hasCustomerFeedback,
+  isCompletedTaskStatus,
+  notify,
   resolveImageUri,
 } from '../../utils';
 
@@ -53,6 +59,8 @@ export default function DesignTaskDetailScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [previewImageUri, setPreviewImageUri] = useState<string | null>(null);
+  const [feedbackDraft, setFeedbackDraft] = useState('');
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
 
   const loadDetail = useCallback(async () => {
     try {
@@ -82,6 +90,55 @@ export default function DesignTaskDetailScreen() {
     () => getDesignTaskStatusPalette(task?.statusName ?? ''),
     [task?.statusName]
   );
+
+  const canSubmitFeedback = task
+    ? canSubmitCustomerTaskFeedback(task.statusName, task.customerFeedback)
+    : false;
+  const showReadOnlyFeedback = task
+    ? isCompletedTaskStatus(task.statusName) && hasCustomerFeedback(task.customerFeedback)
+    : false;
+
+  const handleSubmitFeedback = useCallback(async () => {
+    if (!task || isSubmittingFeedback) {
+      return;
+    }
+    const trimmed = feedbackDraft.trim();
+    if (!trimmed) {
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        t('designService.customerFeedbackRequired', {
+          defaultValue: 'Please enter your feedback before submitting.',
+        })
+      );
+      return;
+    }
+    try {
+      setIsSubmittingFeedback(true);
+      const updated = await designService.submitDesignTaskCustomerComment(task.id, {
+        comment: trimmed,
+      });
+      setTask(updated);
+      setFeedbackDraft('');
+      notify({
+        title: t('common.success', { defaultValue: 'Success' }),
+        message: t('designService.customerFeedbackSuccess', {
+          defaultValue: 'Your feedback has been submitted.',
+        }),
+      });
+    } catch (error: any) {
+      const apiMessage = error?.response?.data?.message;
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        typeof apiMessage === 'string' && apiMessage.trim().length > 0
+          ? apiMessage
+          : t('designService.customerFeedbackFailed', {
+              defaultValue: 'Unable to submit feedback. Please try again.',
+            })
+      );
+    } finally {
+      setIsSubmittingFeedback(false);
+    }
+  }, [feedbackDraft, isSubmittingFeedback, t, task]);
 
   const reportImageUri = resolveBackendImageUri(task?.reportImageUrl);
 
@@ -255,6 +312,64 @@ export default function DesignTaskDetailScreen() {
             </Text>
           )}
         </View>
+
+        {(canSubmitFeedback || showReadOnlyFeedback) ? (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>
+              {t('designService.customerFeedbackTitle', { defaultValue: 'Customer feedback' })}
+            </Text>
+
+            {canSubmitFeedback ? (
+              <>
+                <Text style={styles.feedbackHint}>
+                  {t('designService.customerFeedbackHint', {
+                    defaultValue: 'Share your experience with this task.',
+                  })}
+                </Text>
+                <TextInput
+                  value={feedbackDraft}
+                  onChangeText={setFeedbackDraft}
+                  style={[styles.feedbackInput, isSubmittingFeedback && styles.feedbackInputDisabled]}
+                  editable={!isSubmittingFeedback}
+                  placeholder={t('designService.customerFeedbackPlaceholder', {
+                    defaultValue: 'Write your feedback here...',
+                  })}
+                  placeholderTextColor={COLORS.textLight}
+                  multiline
+                  numberOfLines={4}
+                  textAlignVertical="top"
+                />
+                <TouchableOpacity
+                  style={[styles.primaryButton, isSubmittingFeedback && styles.primaryButtonDisabled]}
+                  onPress={() => void handleSubmitFeedback()}
+                  disabled={isSubmittingFeedback}
+                >
+                  {isSubmittingFeedback ? (
+                    <ActivityIndicator size="small" color={COLORS.white} />
+                  ) : (
+                    <Text style={styles.primaryButtonText}>
+                      {t('designService.customerFeedbackSubmit', { defaultValue: 'Submit feedback' })}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text style={styles.feedbackLabel}>
+                  {t('designService.customerFeedbackLabel', { defaultValue: 'Your feedback' })}
+                </Text>
+                <Text style={styles.feedbackText}>{task.customerFeedback}</Text>
+                {task.isReviewed ? (
+                  <View style={styles.reviewedBadge}>
+                    <Text style={styles.reviewedBadgeText}>
+                      {t('designService.customerFeedbackReviewedBadge', { defaultValue: 'Reviewed' })}
+                    </Text>
+                  </View>
+                ) : null}
+              </>
+            )}
+          </View>
+        ) : null}
       </ScrollView>
 
       {previewImageUri ? (
@@ -406,9 +521,53 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     marginTop: SPACING.sm,
   },
+  primaryButtonDisabled: {
+    opacity: 0.6,
+  },
   primaryButtonText: {
     color: COLORS.white,
     fontSize: FONTS.sizes.sm,
+    fontWeight: '700',
+  },
+  feedbackHint: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+  },
+  feedbackInput: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textPrimary,
+    minHeight: 96,
+    backgroundColor: COLORS.gray50,
+  },
+  feedbackInputDisabled: {
+    opacity: 0.6,
+  },
+  feedbackLabel: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  feedbackText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textPrimary,
+    lineHeight: 20,
+  },
+  reviewedBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 3,
+    backgroundColor: COLORS.secondaryLight,
+    borderWidth: 1,
+    borderColor: COLORS.secondary,
+  },
+  reviewedBadgeText: {
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.primaryDark,
     fontWeight: '700',
   },
   errorText: {

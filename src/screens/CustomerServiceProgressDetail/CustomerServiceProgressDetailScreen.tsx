@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Modal,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -18,7 +20,14 @@ import { BrandedHeader } from '../../components/branding';
 import { COLORS, FONTS, RADIUS, SHADOWS, SPACING } from '../../constants';
 import { careService } from '../../services';
 import { RootStackParamList, ServiceProgress } from '../../types';
-import { formatVietnamDate, formatVietnamDateTime } from '../../utils';
+import {
+  canSubmitCustomerTaskFeedback,
+  formatVietnamDate,
+  formatVietnamDateTime,
+  hasCustomerFeedback,
+  isCompletedTaskStatus,
+  notify,
+} from '../../utils';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'CustomerServiceProgressDetail'>;
 type ScreenRouteProp = RouteProp<RootStackParamList, 'CustomerServiceProgressDetail'>;
@@ -69,6 +78,8 @@ export default function CustomerServiceProgressDetailScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [previewImageUri, setPreviewImageUri] = useState<string | null>(null);
+  const [feedbackDraft, setFeedbackDraft] = useState('');
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
 
   const loadDetail = useCallback(async () => {
     try {
@@ -101,6 +112,55 @@ export default function CustomerServiceProgressDetailScreen() {
       (typeof progress.incidentReason === 'string' && progress.incidentReason.trim().length > 0) ||
       (typeof progress.incidentImageUrl === 'string' && progress.incidentImageUrl.trim().length > 0)
     : false;
+
+  const canSubmitFeedback = progress
+    ? canSubmitCustomerTaskFeedback(progress.statusName, progress.customerFeedback)
+    : false;
+  const showReadOnlyFeedback = progress
+    ? isCompletedTaskStatus(progress.statusName) && hasCustomerFeedback(progress.customerFeedback)
+    : false;
+
+  const handleSubmitFeedback = useCallback(async () => {
+    if (!progress || isSubmittingFeedback) {
+      return;
+    }
+    const trimmed = feedbackDraft.trim();
+    if (!trimmed) {
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        t('careService.customerFeedbackRequired', {
+          defaultValue: 'Please enter your feedback before submitting.',
+        })
+      );
+      return;
+    }
+    try {
+      setIsSubmittingFeedback(true);
+      const updated = await careService.submitServiceProgressCustomerComment(progress.id, {
+        comment: trimmed,
+      });
+      setProgress(updated);
+      setFeedbackDraft('');
+      notify({
+        title: t('common.success', { defaultValue: 'Success' }),
+        message: t('careService.customerFeedbackSuccess', {
+          defaultValue: 'Your feedback has been submitted.',
+        }),
+      });
+    } catch (error: any) {
+      const apiMessage = error?.response?.data?.message;
+      Alert.alert(
+        t('common.error', { defaultValue: 'Error' }),
+        typeof apiMessage === 'string' && apiMessage.trim().length > 0
+          ? apiMessage
+          : t('careService.customerFeedbackFailed', {
+              defaultValue: 'Unable to submit feedback. Please try again.',
+            })
+      );
+    } finally {
+      setIsSubmittingFeedback(false);
+    }
+  }, [feedbackDraft, isSubmittingFeedback, progress, t]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -334,6 +394,68 @@ export default function CustomerServiceProgressDetailScreen() {
                 </View>
               </>
             ) : null}
+
+            {(canSubmitFeedback || showReadOnlyFeedback) ? (
+              <>
+                <View style={styles.separator} />
+
+                <View style={styles.infoSection}>
+                  <Text style={styles.sectionLabel}>
+                    {t('careService.customerFeedbackTitle', { defaultValue: 'Customer feedback' })}
+                  </Text>
+
+                  {canSubmitFeedback ? (
+                    <>
+                      <Text style={styles.feedbackHint}>
+                        {t('careService.customerFeedbackHint', {
+                          defaultValue: 'Share your experience with this visit.',
+                        })}
+                      </Text>
+                      <TextInput
+                        value={feedbackDraft}
+                        onChangeText={setFeedbackDraft}
+                        style={[styles.feedbackInput, isSubmittingFeedback && styles.feedbackInputDisabled]}
+                        editable={!isSubmittingFeedback}
+                        placeholder={t('careService.customerFeedbackPlaceholder', {
+                          defaultValue: 'Write your feedback here...',
+                        })}
+                        placeholderTextColor={COLORS.textLight}
+                        multiline
+                        numberOfLines={4}
+                        textAlignVertical="top"
+                      />
+                      <TouchableOpacity
+                        style={[styles.submitButton, isSubmittingFeedback && styles.submitButtonDisabled]}
+                        onPress={() => void handleSubmitFeedback()}
+                        disabled={isSubmittingFeedback}
+                      >
+                        {isSubmittingFeedback ? (
+                          <ActivityIndicator size="small" color={COLORS.white} />
+                        ) : (
+                          <Text style={styles.submitButtonText}>
+                            {t('careService.customerFeedbackSubmit', { defaultValue: 'Submit feedback' })}
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.feedbackLabel}>
+                        {t('careService.customerFeedbackLabel', { defaultValue: 'Your feedback' })}
+                      </Text>
+                      <Text style={styles.feedbackText}>{progress.customerFeedback}</Text>
+                      {progress.isReviewed ? (
+                        <View style={styles.reviewedBadge}>
+                          <Text style={styles.reviewedBadgeText}>
+                            {t('careService.customerFeedbackReviewedBadge', { defaultValue: 'Reviewed' })}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </>
+                  )}
+                </View>
+              </>
+            ) : null}
           </View>
         </ScrollView>
       )}
@@ -545,5 +667,63 @@ const styles = StyleSheet.create({
   fullImagePreview: {
     width: '90%',
     height: '70%',
+  },
+  feedbackHint: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+  },
+  feedbackInput: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textPrimary,
+    minHeight: 96,
+    backgroundColor: COLORS.gray50,
+  },
+  feedbackInputDisabled: {
+    opacity: 0.6,
+  },
+  feedbackLabel: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  feedbackText: {
+    fontSize: FONTS.sizes.sm,
+    color: COLORS.textPrimary,
+    lineHeight: 20,
+  },
+  submitButton: {
+    minHeight: 42,
+    borderRadius: RADIUS.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.md,
+    marginTop: SPACING.sm,
+  },
+  submitButtonDisabled: {
+    opacity: 0.6,
+  },
+  submitButtonText: {
+    color: COLORS.white,
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '700',
+  },
+  reviewedBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 3,
+    backgroundColor: COLORS.secondaryLight,
+    borderWidth: 1,
+    borderColor: COLORS.secondary,
+  },
+  reviewedBadgeText: {
+    fontSize: FONTS.sizes.xs,
+    color: COLORS.primaryDark,
+    fontWeight: '700',
   },
 });
