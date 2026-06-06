@@ -1,3 +1,4 @@
+import { launchInAppCamera } from '../../utils';
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -496,10 +497,7 @@ export default function ShippingListScreen() {
       return;
     }
 
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: false,
-      quality: 0.8,
-    });
+    const result = await launchInAppCamera(navigation);
 
     if (result.canceled) {
       return;

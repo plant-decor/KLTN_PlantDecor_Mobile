@@ -1,3 +1,4 @@
+import { launchInAppCamera } from '../../utils';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -376,11 +377,7 @@ export default function EditProfileScreen() {
       return;
     }
 
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
+    const result = await launchInAppCamera(navigation);
 
     await handleImagePickerResult(result);
   };

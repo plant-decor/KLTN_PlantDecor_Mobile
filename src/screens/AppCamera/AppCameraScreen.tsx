@@ -1,41 +1,34 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+﻿import React, { useCallback, useMemo, useRef, useState, useEffect } from 'react';
 import { ActivityIndicator, Alert, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CameraType, CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, FONTS, RADIUS, SPACING } from '../../constants';
-import { RootStackParamList, RoomDesignImageFile } from '../../types';
+import { useCameraStore } from '../../stores';
 
-type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
-type AIDesignCameraRouteProp = RouteProp<RootStackParamList, 'AIDesignCamera'>;
-
-export default function AIDesignCameraScreen() {
-  const navigation = useNavigation<NavigationProp>();
-  const route = useRoute<AIDesignCameraRouteProp>();
+export default function AppCameraScreen() {
+  const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
   const [facing, setFacing] = useState<CameraType>('back');
   const [isCapturing, setIsCapturing] = useState(false);
   const cameraRef = useRef<React.ElementRef<typeof CameraView> | null>(null);
 
-  const slotIndex = route.params.slotIndex;
+  const resolveCamera = useCameraStore((state) => state.resolve);
+  const setResolve = useCameraStore((state) => state.setResolve);
 
-  const slotLabel = useMemo(() => `Photo ${slotIndex}`, [slotIndex]);
-
-  const returnCapturedPhoto = useCallback(
-    (imageFile: RoomDesignImageFile) => {
-      navigation.navigate('AIDesign', {
-        capturedRoomPhoto: {
-          slotIndex,
-          imageFile,
-        },
-      });
-    },
-    [navigation, slotIndex],
-  );
+  // If user unmounts/goes back without capturing, we should resolve with canceled: true
+  useEffect(() => {
+    return () => {
+      const currentResolve = useCameraStore.getState().resolve;
+      if (currentResolve) {
+        currentResolve({ canceled: true, assets: null });
+        useCameraStore.getState().setResolve(null);
+      }
+    };
+  }, []);
 
   const handleCapture = useCallback(async () => {
     if (isCapturing) {
@@ -60,17 +53,31 @@ export default function AIDesignCameraScreen() {
         return;
       }
 
-      returnCapturedPhoto({
-        uri: photo.uri,
-        fileName: `room-photo-${Date.now()}.jpg`,
-        mimeType: 'image/jpeg',
-      });
+      if (resolveCamera) {
+        const mimeType = photo.uri.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+        const fileName = 'app-photo-' + Date.now() + '.jpg';
+
+        resolveCamera({
+          canceled: false,
+          assets: [{
+            uri: photo.uri,
+            width: photo.width,
+            height: photo.height,
+            fileName: fileName,
+            mimeType: mimeType,
+          }]
+        });
+        setResolve(null);
+        navigation.goBack();
+      } else {
+        navigation.goBack();
+      }
     } catch {
       Alert.alert('Capture failed', 'Could not take the photo. Please try again.');
     } finally {
       setIsCapturing(false);
     }
-  }, [isCapturing, returnCapturedPhoto]);
+  }, [isCapturing, resolveCamera, setResolve, navigation]);
 
   if (!permission) {
     return (
@@ -90,7 +97,7 @@ export default function AIDesignCameraScreen() {
           </View>
           <Text style={styles.permissionTitle}>Camera access required</Text>
           <Text style={styles.permissionText}>
-            Allow camera access to take a room photo without leaving the app.
+            Allow camera access to take a photo without leaving the app.
           </Text>
           <Pressable style={styles.permissionButton} onPress={() => void requestPermission()}>
             <Text style={styles.permissionButtonText}>Grant access</Text>
@@ -127,7 +134,7 @@ export default function AIDesignCameraScreen() {
 
           <View style={styles.topTitleWrap}>
             <Text style={styles.topTitle}>Take a photo</Text>
-            <Text style={styles.topSubtitle}>{slotLabel}</Text>
+            <Text style={styles.topSubtitle}></Text>
           </View>
 
           <Pressable
@@ -141,7 +148,7 @@ export default function AIDesignCameraScreen() {
         <View style={styles.helpWrap}>
           <View style={styles.helpPill}>
             <Ionicons name="sparkles-outline" size={14} color={COLORS.white} />
-            <Text style={styles.helpText}>Keep the room centered and well lit.</Text>
+            <Text style={styles.helpText}>Keep the subject centered and well lit.</Text>
           </View>
         </View>
 

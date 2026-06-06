@@ -2838,9 +2838,7 @@ export type RootStackParamList = {
   AIDesign: {
     capturedRoomPhoto?: AIDesignCapturedRoomPhoto;
   } | undefined;
-  AIDesignCamera: {
-    slotIndex: number;
-  };
+  AppCamera: { returnScreen?: keyof RootStackParamList; returnParam?: string; };
   MyDesign: undefined;
   AIDesignResult: { resultId: string };
   Cart: undefined;

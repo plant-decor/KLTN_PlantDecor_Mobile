@@ -113,3 +113,5 @@ export {
   isDesignRegistrationCancellableStatus,
   sortDesignTasks,
 } from './designFlow';
+
+export * from './camera';

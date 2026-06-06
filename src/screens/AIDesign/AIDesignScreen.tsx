@@ -1,3 +1,4 @@
+import { launchInAppCamera } from '../../utils';
 import React, {
   useCallback,
   useEffect,
@@ -1259,9 +1260,17 @@ export default function AIDesignScreen() {
 
   const selectRoomPhotoFromCamera = useCallback(
     async (slotIndex: number) => {
-      navigation.navigate("AIDesignCamera", { slotIndex });
+      const result = await launchInAppCamera(navigation);
+      if (!result.canceled && result.assets?.[0]) {
+        const asset = result.assets[0];
+        updateRoomPhotoSlot(slotIndex, {
+          uri: asset.uri,
+          fileName: asset.fileName || 'room-photo-' + Date.now() + '.jpg',
+          mimeType: asset.mimeType || 'image/jpeg'
+        });
+      }
     },
-    [navigation],
+    [navigation, updateRoomPhotoSlot],
   );
 
   const openRoomPhotoSourcePicker = useCallback((slotIndex: number) => {
@@ -1299,18 +1308,7 @@ export default function AIDesignScreen() {
     ],
   );
 
-  useEffect(() => {
-    const capturedRoomPhoto = route.params?.capturedRoomPhoto;
-    if (!capturedRoomPhoto) {
-      return;
-    }
-
-    updateRoomPhotoSlot(
-      capturedRoomPhoto.slotIndex,
-      capturedRoomPhoto.imageFile,
-    );
-    navigation.setParams({ capturedRoomPhoto: undefined });
-  }, [navigation, route.params?.capturedRoomPhoto, updateRoomPhotoSlot]);
+  
 
   const openRoomSelectField = useCallback((field: RoomSelectField) => {
     setActiveRoomSelectField(field);

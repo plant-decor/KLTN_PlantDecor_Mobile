@@ -4,7 +4,7 @@ export { default as PlantInstanceDetailScreen } from './PlantInstanceDetail/Plan
 export { default as CartScreen } from './Cart/CartScreen';
 export { default as ProfileScreen } from './Profile/ProfileScreen';
 export { default as AIDesignScreen } from './AIDesign/AIDesignScreen';
-export { default as AIDesignCameraScreen } from './AIDesignCamera/AIDesignCameraScreen';
+export { default as AppCameraScreen } from './AppCamera/AppCameraScreen';
 export { default as CheckoutScreen } from './Checkout/CheckoutScreen';
 export { default as PaymentWebViewScreen } from './PaymentWebView/PaymentWebViewScreen';
 export { default as PaymentSuccessScreen } from './PaymentSuccess/PaymentSuccessScreen';

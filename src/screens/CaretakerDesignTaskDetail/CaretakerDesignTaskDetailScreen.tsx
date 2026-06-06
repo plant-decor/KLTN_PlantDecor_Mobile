@@ -1,3 +1,4 @@
+import { launchInAppCamera } from '../../utils';
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -220,10 +221,7 @@ export default function CaretakerDesignTaskDetailScreen() {
               allowsEditing: false,
               quality: 0.8,
             })
-          : await ImagePicker.launchCameraAsync({
-              allowsEditing: false,
-              quality: 0.8,
-            });
+          : await launchInAppCamera(navigation);
 
       if (result.canceled) {
         return;

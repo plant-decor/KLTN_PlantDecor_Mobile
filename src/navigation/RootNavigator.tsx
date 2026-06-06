@@ -47,7 +47,7 @@ import {
   CaretakerTaskDetailScreen,
   HomeScreen,
   MyDesignScreen,
-  AIDesignCameraScreen,
+  AppCameraScreen,
   SupportChatScreen,
   PolicyScreen,
   PolicyDetailScreen,
@@ -107,8 +107,8 @@ export default function RootNavigator() {
       />
       <Stack.Screen name="AIDesign" component={AIDesignScreen} />
       <Stack.Screen
-        name="AIDesignCamera"
-        component={AIDesignCameraScreen}
+        name="AppCamera"
+        component={AppCameraScreen}
         options={{ animation: 'slide_from_bottom' }}
       />
       <Stack.Screen name="MyDesign" component={MyDesignScreen} />
