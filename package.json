@@ -23,6 +23,8 @@
     "expo-application": "^55.0.10",
     "expo-camera": "~17.0.10",
     "expo-device": "~8.0.10",
+    "expo-dynamic-image-crop": "^1.4.51",
+    "expo-image-manipulator": "~14.0.8",
     "expo-image-picker": "~17.0.10",
     "expo-linear-gradient": "~15.0.8",
     "expo-localization": "^17.0.8",
