@@ -2835,7 +2835,12 @@ export type RootStackParamList = {
   ComboDetail: {
     comboId: number;
   };
-  AIDesign: undefined;
+  AIDesign: {
+    capturedRoomPhoto?: AIDesignCapturedRoomPhoto;
+  } | undefined;
+  AIDesignCamera: {
+    slotIndex: number;
+  };
   MyDesign: undefined;
   AIDesignResult: { resultId: string };
   Cart: undefined;
@@ -2896,4 +2901,9 @@ export type MainTabParamList = {
   AIDesignTab: undefined;
   ServiceTab: undefined;
   Profile: undefined;
+};
+
+export type AIDesignCapturedRoomPhoto = {
+  slotIndex: number;
+  imageFile: RoomDesignImageFile;
 };

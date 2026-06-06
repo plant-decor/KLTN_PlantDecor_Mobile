@@ -26,7 +26,7 @@ import {
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { useNavigation } from "@react-navigation/native";
+import { RouteProp, useNavigation, useRoute } from "@react-navigation/native";
 import { useTranslation } from "react-i18next";
 import { BrandedHeader } from "../../components/branding";
 import { API, COLORS, FONTS, RADIUS, SHADOWS, SPACING } from "../../constants";
@@ -47,6 +47,7 @@ import { isCustomerRole } from "../../utils/authFlow";
 import { notify, resolveImageUris } from "../../utils";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+type AIDesignRouteProp = RouteProp<RootStackParamList, "AIDesign">;
 
 type StaticOption<Value extends string> = {
   value: Value;
@@ -518,6 +519,7 @@ const dedupeImageList = (
 export default function AIDesignScreen() {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
+  const route = useRoute<AIDesignRouteProp>();
   const insets = useSafeAreaInsets();
   const locale = i18n.language === "vi" ? "vi-VN" : "en-US";
 
@@ -1198,33 +1200,6 @@ export default function AIDesignScreen() {
       return null;
     }, [handleSelectImageAsset, t]);
 
-  const takePhoto =
-    useCallback(async (): Promise<RoomDesignImageFile | null> => {
-      const permission = await ImagePicker.requestCameraPermissionsAsync();
-      if (permission.status !== "granted") {
-        Alert.alert(
-          t("aiDesign.permissionTitle", {
-            defaultValue: "Permission required",
-          }),
-          t("aiDesign.cameraPermissionMessage", {
-            defaultValue: "Please grant camera access.",
-          }),
-        );
-        return null;
-      }
-
-      const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
-        quality: 0.9,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        return handleSelectImageAsset(result.assets[0]);
-      }
-
-      return null;
-    }, [handleSelectImageAsset, t]);
-
   const updateRoomPhotoSlot = useCallback(
     (slotIndex: number, imageFile: RoomDesignImageFile | null) => {
       setRoomPhotos((current) =>
@@ -1284,14 +1259,9 @@ export default function AIDesignScreen() {
 
   const selectRoomPhotoFromCamera = useCallback(
     async (slotIndex: number) => {
-      const imageFile = await takePhoto();
-      if (!imageFile) {
-        return;
-      }
-
-      updateRoomPhotoSlot(slotIndex, imageFile);
+      navigation.navigate("AIDesignCamera", { slotIndex });
     },
-    [takePhoto, updateRoomPhotoSlot],
+    [navigation],
   );
 
   const openRoomPhotoSourcePicker = useCallback((slotIndex: number) => {
@@ -1328,6 +1298,19 @@ export default function AIDesignScreen() {
       selectRoomPhotoFromLibrary,
     ],
   );
+
+  useEffect(() => {
+    const capturedRoomPhoto = route.params?.capturedRoomPhoto;
+    if (!capturedRoomPhoto) {
+      return;
+    }
+
+    updateRoomPhotoSlot(
+      capturedRoomPhoto.slotIndex,
+      capturedRoomPhoto.imageFile,
+    );
+    navigation.setParams({ capturedRoomPhoto: undefined });
+  }, [navigation, route.params?.capturedRoomPhoto, updateRoomPhotoSlot]);
 
   const openRoomSelectField = useCallback((field: RoomSelectField) => {
     setActiveRoomSelectField(field);
