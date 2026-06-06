@@ -386,6 +386,10 @@ export const SUPPORT_CHAT_REALTIME = {
       "SupportConversationClosed",
       "ConversationClosed",
     ],
+    CONSULTANT_STATUS_CHANGED: [
+      "consultantStatusChanged",
+      "ConsultantStatusChanged",
+    ],
     USER_TYPING: [
       "userTyping",
       "UserTyping",

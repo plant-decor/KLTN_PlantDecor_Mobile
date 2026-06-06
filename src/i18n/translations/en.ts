@@ -46,6 +46,11 @@ const en = {
     bookCareNow: 'Book now',
     defaultSubtitle: 'Easy care • Indoor',
   },
+  supportChat: {
+    online: 'Online',
+    offline: 'Offline',
+    offlineNotice: 'Consultant is offline, customer can use chatbot in the meantime.',
+  },
   login: {
     title: 'Welcome!',
     subtitle: 'Take care of your garden today.',

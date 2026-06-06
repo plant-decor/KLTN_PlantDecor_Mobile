@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next';
 import { COLORS, SPACING, FONTS, IMAGES, RADIUS, SHADOWS } from '../../constants';
 import { supportRealtimeService, supportService } from '../../services';
 import {
+  ConsultantStatusChangedPayload,
   SupportConversation,
   SupportConversationRealtimeUpdate,
   SupportMessage,
@@ -102,12 +103,72 @@ export default function SupportChatScreen() {
   const [realtimeState, setRealtimeState] =
     useState<SupportRealtimeConnectionState>('disconnected');
   const [typingUserIds, setTypingUserIds] = useState<Set<number | string>>(new Set());
+  const [consultantIsOnline, setConsultantIsOnline] = useState(false);
+  const [showOfflineReply, setShowOfflineReply] = useState(false);
 
   const flatListRef = useRef<FlatList>(null);
   const activeConversationIdRef = useRef<number | null>(null);
   const realtimeStateRef = useRef<SupportRealtimeConnectionState>('disconnected');
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastTypingSentRef = useRef<boolean>(false);
+  const pendingOfflineCheckRef = useRef(false);
+
+  const consultantParticipant = useMemo(() => {
+    if (!conversation?.participants?.length) {
+      return null;
+    }
+
+    return (
+      conversation.participants.find((participant) => String(participant.userId) !== String(user?.id)) ??
+      null
+    );
+  }, [conversation?.participants, user?.id]);
+
+  useEffect(() => {
+    setConsultantIsOnline(consultantParticipant?.isOnline ?? false);
+  }, [consultantParticipant]);
+
+  useEffect(() => {
+    const consultantId = consultantParticipant?.userId;
+    if (!consultantId) return;
+
+    const off = supportRealtimeService.onConsultantStatusChanged(
+      (payload: ConsultantStatusChangedPayload) => {
+        if (payload.consultantId === consultantId) {
+          setConsultantIsOnline(payload.isOnline);
+          if (payload.isOnline) {
+            setShowOfflineReply(false);
+          }
+        }
+      }
+    );
+
+    return off;
+  }, [consultantParticipant?.userId]);
+
+  useEffect(() => {
+    if (!conversation) {
+      setShowOfflineReply(false);
+      pendingOfflineCheckRef.current = false;
+      return;
+    }
+
+    pendingOfflineCheckRef.current = Boolean(
+      consultantParticipant && !consultantIsOnline
+    );
+
+    if (consultantParticipant && consultantIsOnline) {
+      setShowOfflineReply(false);
+    }
+  }, [conversation?.id, consultantParticipant?.userId, consultantIsOnline]);
+
+  useEffect(() => {
+    if (!pendingOfflineCheckRef.current || !consultantParticipant) return;
+    pendingOfflineCheckRef.current = false;
+    if (!consultantIsOnline) {
+      setShowOfflineReply(true);
+    }
+  }, [consultantParticipant, consultantIsOnline]);
 
   useEffect(() => {
     const unsubscribeMessage = supportRealtimeService.onMessage((message) => {
@@ -450,6 +511,10 @@ export default function SupportChatScreen() {
       Keyboard.dismiss();
       setSending(true);
 
+      if (consultantParticipant && !consultantIsOnline) {
+        pendingOfflineCheckRef.current = true;
+      }
+
       // Send stopped typing event and clear typing state
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
@@ -575,9 +640,26 @@ export default function SupportChatScreen() {
           <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>
-            {t('profile.supportChat', { defaultValue: 'Support Chat' })}
-          </Text>
+          <View style={styles.headerCenter}>
+            <View style={styles.headerTitleRow}>
+              <Image source={IMAGES.ConsultantAvatar} style={styles.headerAvatar} />
+              <Text style={styles.headerTitle}>
+                {t('profile.supportChat', { defaultValue: 'Support Chat' })}
+              </Text>
+            </View>
+            {conversation !== null && (
+              <Text
+                style={[
+                  styles.headerStatus,
+                  consultantIsOnline ? styles.headerStatusOnline : styles.headerStatusOffline,
+                ]}
+              >
+                {consultantIsOnline
+                  ? t('supportChat.online', { defaultValue: 'Online' })
+                  : t('supportChat.offline', { defaultValue: 'Offline' })}
+              </Text>
+            )}
+          </View>
           <View style={styles.headerRight}>
             {realtimeState === 'connecting' || realtimeState === 'reconnecting' ? (
               <ActivityIndicator size="small" color={COLORS.primary} />
@@ -611,6 +693,18 @@ export default function SupportChatScreen() {
                   showsVerticalScrollIndicator={false}
                   keyboardShouldPersistTaps="handled"
                 />
+              )}
+              {showOfflineReply && (
+                <View style={styles.offlineNoticeWrap}>
+                  <View style={styles.offlineNotice}>
+                    <Text style={styles.offlineNoticeText}>
+                      {t('supportChat.offlineNotice', {
+                        defaultValue:
+                          'Consultant is offline, customer can use chatbot in the meantime.',
+                      })}
+                    </Text>
+                  </View>
+                </View>
               )}
               {/* Input */}
               <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, SPACING.md) }]}>
@@ -664,10 +758,36 @@ const styles = StyleSheet.create({
   backButton: {
     padding: SPACING.xs,
   },
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 2,
+  },
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  headerAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+  },
   headerTitle: {
     fontSize: FONTS.sizes.lg,
     fontWeight: '700',
     color: COLORS.textPrimary,
+  },
+  headerStatus: {
+    fontSize: 11.5,
+    lineHeight: 14,
+    fontWeight: '600',
+  },
+  headerStatusOnline: {
+    color: '#16a34a',
+  },
+  headerStatusOffline: {
+    color: '#94a3b8',
   },
   headerRight: {
     width: 40,
@@ -700,6 +820,25 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
+  },
+  offlineNoticeWrap: {
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.xs,
+  },
+  offlineNotice: {
+    alignSelf: 'center',
+    maxWidth: '88%',
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(148,163,184,0.28)',
+    backgroundColor: 'rgba(148,163,184,0.12)',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+  },
+  offlineNoticeText: {
+    fontSize: FONTS.sizes.sm,
+    color: '#475569',
+    textAlign: 'center',
   },
   messageRow: {
     flexDirection: 'row',

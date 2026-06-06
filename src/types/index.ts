@@ -2722,6 +2722,7 @@ export interface SupportParticipant {
   phoneNumber: string | null;
   avatarUrl: string | null;
   joinedAt: string;
+  isOnline?: boolean;
 }
 
 export interface SupportMessage {
@@ -2764,6 +2765,11 @@ export interface SupportConversationRealtimeUpdate {
   endedAt?: string | null;
   latestMessage?: SupportMessage | null;
   conversation?: SupportConversation | null;
+}
+
+export interface ConsultantStatusChangedPayload {
+  consultantId: number;
+  isOnline: boolean;
 }
 
 export interface SupportTypingPayload {

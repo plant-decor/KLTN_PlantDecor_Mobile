@@ -45,6 +45,11 @@ const vi = {
     bookCareNow: 'Đặt lịch ngay',
     defaultSubtitle: 'Dễ chăm sóc • Trong nhà',
   },
+  supportChat: {
+    online: 'Đang online',
+    offline: 'Ngoại tuyến',
+    offlineNotice: 'Chuyên viên đang ngoại tuyến, khách hàng có thể dùng chatbot trong lúc chờ.',
+  },
   login: {
     title: 'Chào mừng bạn!',
     subtitle: 'Hãy chăm sóc khu vườn của bạn ngay hôm nay.',

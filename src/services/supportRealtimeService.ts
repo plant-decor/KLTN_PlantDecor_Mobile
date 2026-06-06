@@ -7,6 +7,7 @@ import {
 } from '@microsoft/signalr';
 import { API, APP_CONFIG, SUPPORT_CHAT_REALTIME } from '../constants';
 import {
+  ConsultantStatusChangedPayload,
   SupportConversationRealtimeUpdate,
   SupportRealtimeIncomingMessage,
   SupportMessage,
@@ -22,6 +23,7 @@ type ConnectionStateHandler = (
   state: SupportRealtimeConnectionState
 ) => void;
 type TypingHandler = (payload: SupportTypingPayload) => void;
+type ConsultantStatusHandler = (payload: ConsultantStatusChangedPayload) => void;
 
 class SupportRealtimeService {
   private connection: HubConnection | null = null;
@@ -31,6 +33,7 @@ class SupportRealtimeService {
   private connectionStateHandlers = new Set<ConnectionStateHandler>();
   private typingHandlers = new Set<TypingHandler>();
   private stoppedTypingHandlers = new Set<TypingHandler>();
+  private consultantStatusHandlers = new Set<ConsultantStatusHandler>();
   private registeredEventNames = new Set<string>();
 
   async connect(): Promise<void> {
@@ -197,6 +200,13 @@ class SupportRealtimeService {
     };
   }
 
+  onConsultantStatusChanged(handler: ConsultantStatusHandler): () => void {
+    this.consultantStatusHandlers.add(handler);
+    return () => {
+      this.consultantStatusHandlers.delete(handler);
+    };
+  }
+
   private createConnection(): HubConnection {
     return new HubConnectionBuilder()
       .withUrl(this.getHubUrl(), {
@@ -275,6 +285,15 @@ class SupportRealtimeService {
             endedAt: update.endedAt ?? new Date().toISOString(),
           })
         );
+      }
+    );
+
+    this.registerEventNames(
+      connection,
+      SUPPORT_CHAT_REALTIME.EVENTS.CONSULTANT_STATUS_CHANGED,
+      (payload: ConsultantStatusChangedPayload) => {
+        if (!payload) return;
+        this.consultantStatusHandlers.forEach((handler) => handler(payload));
       }
     );
 
