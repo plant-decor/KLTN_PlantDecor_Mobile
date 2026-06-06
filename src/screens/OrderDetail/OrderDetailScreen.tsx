@@ -77,10 +77,19 @@ const isPendingConfirmationStatus = (status: string): boolean =>
 const isDeliveredStatus = (status: string): boolean =>
   normalizeStatusToken(status) === 'delivered';
 
+const isRemainingPaymentPendingStatus = (status: string): boolean =>
+  normalizeStatusToken(status) === 'remainingpaymentpending';
+
 const canConfirmNurseryOrderReceived = (
   status: string,
   hasReturnTickets: boolean
 ): boolean => isDeliveredStatus(status) && !hasReturnTickets;
+
+const canConfirmNurseryOrderNotReceived = (
+  status: string,
+  hasReturnTickets: boolean
+): boolean =>
+  (isDeliveredStatus(status) || isRemainingPaymentPendingStatus(status)) && !hasReturnTickets;
 
 const resolveReturnEligibleItemId = (lineItem: OrderLineItem): number | null => {
   if (
@@ -1228,46 +1237,60 @@ export default function OrderDetailScreen() {
                     })}
                   </View>
                 ) : null}
-                {canConfirmNurseryOrderReceived(
+                {canConfirmNurseryOrderNotReceived(
+                  nurseryOrder.statusName,
+                  currentReturnTickets.length > 0
+                ) ||
+                canConfirmNurseryOrderReceived(
                   nurseryOrder.statusName,
                   currentReturnTickets.length > 0
                 ) ? (
                   <View style={styles.nurseryActionRow}>
-                    <TouchableOpacity
-                      style={[
-                        styles.notReceivedButton,
-                        processingNurseryOrderId === nurseryOrder.id &&
-                          styles.actionButtonDisabled,
-                      ]}
-                      onPress={() => handleConfirmNurseryOrderNotReceivedPress(nurseryOrder.id)}
-                      disabled={processingNurseryOrderId === nurseryOrder.id}
-                    >
-                      <Text style={styles.notReceivedButtonText}>
-                        {t('orderDetail.notReceivedAction', {
-                          defaultValue: 'Not received',
-                        })}
-                      </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[
-                        styles.confirmReceivedButton,
-                        processingNurseryOrderId === nurseryOrder.id &&
-                          styles.actionButtonDisabled,
-                      ]}
-                      onPress={() => handleConfirmNurseryOrderReceivedPress(nurseryOrder.id)}
-                      disabled={processingNurseryOrderId === nurseryOrder.id}
-                    >
-                      {processingNurseryOrderId === nurseryOrder.id ? (
-                        <ActivityIndicator size="small" color={COLORS.white} />
-                      ) : (
-                        <Text style={styles.confirmReceivedButtonText}>
-                          {t('orderDetail.confirmReceivedAction', {
-                            defaultValue: 'Confirm received',
+                    {canConfirmNurseryOrderNotReceived(
+                      nurseryOrder.statusName,
+                      currentReturnTickets.length > 0
+                    ) ? (
+                      <TouchableOpacity
+                        style={[
+                          styles.notReceivedButton,
+                          processingNurseryOrderId === nurseryOrder.id &&
+                            styles.actionButtonDisabled,
+                        ]}
+                        onPress={() => handleConfirmNurseryOrderNotReceivedPress(nurseryOrder.id)}
+                        disabled={processingNurseryOrderId === nurseryOrder.id}
+                      >
+                        <Text style={styles.notReceivedButtonText}>
+                          {t('orderDetail.notReceivedAction', {
+                            defaultValue: 'Not received',
                           })}
                         </Text>
-                      )}
-                    </TouchableOpacity>
+                      </TouchableOpacity>
+                    ) : null}
+
+                    {canConfirmNurseryOrderReceived(
+                      nurseryOrder.statusName,
+                      currentReturnTickets.length > 0
+                    ) ? (
+                      <TouchableOpacity
+                        style={[
+                          styles.confirmReceivedButton,
+                          processingNurseryOrderId === nurseryOrder.id &&
+                            styles.actionButtonDisabled,
+                        ]}
+                        onPress={() => handleConfirmNurseryOrderReceivedPress(nurseryOrder.id)}
+                        disabled={processingNurseryOrderId === nurseryOrder.id}
+                      >
+                        {processingNurseryOrderId === nurseryOrder.id ? (
+                          <ActivityIndicator size="small" color={COLORS.white} />
+                        ) : (
+                          <Text style={styles.confirmReceivedButtonText}>
+                            {t('orderDetail.confirmReceivedAction', {
+                              defaultValue: 'Confirm received',
+                            })}
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    ) : null}
                   </View>
                 ) : null}
               </View>
